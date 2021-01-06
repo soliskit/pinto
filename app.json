@@ -1,0 +1,20 @@
+{
+  "success_url": "/pinto",
+  "env": {
+    "KEY": "pinto",
+    "NPM_CONFIG_LOGLEVEL": "info",
+    "NODE_MODULES_CACHE": "false",
+    "NODE_VERBOSE": "true"
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "free"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
+}
