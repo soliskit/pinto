@@ -32,7 +32,7 @@ const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
 }
 
-let activeClients: IClient[]
+const clients: Set<IClient> = new Set()
 const app = express()
 const server = app.listen(PORT)
 const peerServer = ExpressPeerServer(server, { key: KEY })
@@ -64,27 +64,19 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
 
 // GET:- List of all connected peers
 app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFunction) => {
-  if (activeClients) {
-    response.status(200).json(activeClients.length)
-  } else {
+  if (clients.size === 0) {
     response.status(200).json('[]')
+  } else {
+    response.status(200).json(clients.size)
   }
   next()
 })
 
 peerServer.on('connection', (client: IClient) => {
-  const activeClient = activeClients.find(activeClient => {
-    return activeClient === client
-  })
-  if (!activeClient) {
-    activeClients.push(client)
-  }
+  clients.add(client)
   console.dir(`Client connected ${client.getId()}`)
 })
 
 peerServer.on('disconnect', (client: IClient) => {
-  activeClients = activeClients.filter(activeClient => {
-    return activeClient !== client
-  })
-  console.dir(`Client disconnected ${client.getId()}`)
+  console.dir(`Client disconnected ${client.getId()}: ${clients.delete(client)}`)
 })
