@@ -1,5 +1,5 @@
 import cors, { CorsOptions } from 'cors'
-import express, { Request, Response, NextFunction } from 'express'
+import express, { Request, Response, NextFunction, Application } from 'express'
 import { ExpressPeerServer } from 'peer'
 import { EventEmitter } from 'events'
 import WebSocketLib from 'ws'
@@ -36,6 +36,10 @@ let activeClients: IClient[]
 const app = express()
 app.use(cors(corsOptions))
 
+const peerServer = ExpressPeerServer(app.listen(PORT), { key: KEY })
+
+app.use(`/${KEY}`, peerServer)
+
 // GET:- Redirect to welcome page
 app.get('/', (request: Request, response: Response, next: NextFunction) => {
   response.redirect(301, `./${KEY}`)
@@ -57,20 +61,6 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
   }
   next()
 })
-
-const server = app.listen(PORT, () => {
-  let url: string
-  if (process.env.NODE_ENV === 'production') {
-    url = `https://pintopinto.herokuapp.com/${KEY}`
-  } else {
-    url = `http://127.0.0.1:${PORT}/${KEY}`
-  }
-  console.dir(`Started ExpressPeerServer on port: ${PORT}, url: ${url}`)
-})
-
-const peerServer = ExpressPeerServer(server, { key: KEY })
-
-app.use(`/${KEY}`, peerServer)
 
 peerServer.on('connection', (client: IClient) => {
   const activeClient = activeClients.find(activeClient => {
