@@ -2,9 +2,9 @@ import cors, { CorsOptions } from 'cors'
 import express, { Request, Response, NextFunction, Application } from 'express'
 import { ExpressPeerServer } from 'peer'
 import { EventEmitter } from 'events'
-import WebSocketLib from 'ws'
+import WebSocket from 'ws'
 
-declare type MyWebSocket = WebSocketLib & EventEmitter
+declare type MyWebSocket = WebSocket & EventEmitter
 declare interface IClient {
   getId(): string
   getToken(): string
@@ -16,13 +16,13 @@ declare interface IClient {
 }
 const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
-const whitelist = new Set(['https://web-player.vercel.app', 'https://www.pintopinto.org', 'https://pintopinto.herokuapp.com'])
+const allowedList = new Set(['https://web-player.vercel.app', 'https://www.pintopinto.org', 'http://localhost:5000'])
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
-    if (whitelist.has(origin)) {
-      callback(null, true)
+    if (!origin || allowedList.has(origin)) {
+      return callback(null, true)
     } else {
-      callback(new Error('Not allowed by CORS'))
+      return callback(new Error('Not allowed by CORS'))
     }
   },
   methods: ['GET', 'POST'],
