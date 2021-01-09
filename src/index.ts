@@ -34,9 +34,19 @@ const generateClientId = (): string => {
 
 let activeClients: IClient[]
 const app = express()
+const server = app.listen(PORT)
+const peerServer = ExpressPeerServer(server, { key: KEY })
 app.use(cors(corsOptions))
 
-const peerServer = ExpressPeerServer(app.listen(PORT), { key: KEY })
+peerServer.on('mount', (app: Application) => {
+  let url: string
+  if (app.settings.env === 'development') {
+    url = `http://localhost:${PORT}/${KEY}`
+  } else {
+    url = `https://pintopinto.herokuapp.com/${KEY}`
+  }
+  console.log(`Started ExpressPeerServer on port: ${PORT} --- ${url}`)
+})
 
 app.use(`/${KEY}`, peerServer)
 
