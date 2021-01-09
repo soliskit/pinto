@@ -16,10 +16,10 @@ declare interface IClient {
 }
 const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
-const whitelist = ['http://localhost:5000', 'https://web-player.vercel.app', 'https://www.pintopinto.org']
+const whitelist = new Set(['https://web-player.vercel.app', 'https://www.pintopinto.org', 'https://pintopinto.herokuapp.com'])
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
-    if (whitelist.indexOf(origin) !== -1 || !origin) {
+    if (whitelist.has(origin)) {
       callback(null, true)
     } else {
       callback(new Error('Not allowed by CORS'))
