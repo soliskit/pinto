@@ -38,6 +38,16 @@ app.use(cors(corsOptions))
 
 const peerServer = ExpressPeerServer(app.listen(PORT), { key: KEY })
 
+peerServer.on('mount', (app: Application) => {
+  let url: string
+  if (app.settings.env === 'development') {
+    url = `http://localhost:${PORT}/${KEY}`
+  } else {
+    url = `https://pintopinto.herokuapp.com/${KEY}`
+  }
+  console.log(`Started ExpressPeerServer on: ${url}`)
+})
+
 app.use(`/${KEY}`, peerServer)
 
 // GET:- Redirect to welcome page
