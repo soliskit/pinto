@@ -1,10 +1,11 @@
+import http from 'http'
 import cors, { CorsOptions } from 'cors'
 import express, { Request, Response, NextFunction, Application } from 'express'
 import { ExpressPeerServer } from 'peer'
 import { EventEmitter } from 'events'
-import WebSocketLib from 'ws'
+import WebSocket from 'ws'
 
-declare type MyWebSocket = WebSocketLib & EventEmitter
+declare type MyWebSocket = WebSocket & EventEmitter
 declare interface IClient {
   getId(): string
   getToken(): string
@@ -16,13 +17,13 @@ declare interface IClient {
 }
 const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
-const whitelist = new Set(['https://web-player.vercel.app', 'https://www.pintopinto.org', 'https://pintopinto.herokuapp.com'])
+const allowedList = new Set(['https://web-player.vercel.app', 'https://www.pintopinto.org', 'http://localhost:5000'])
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
-    if (whitelist.has(origin)) {
-      callback(null, true)
+    if (!origin || allowedList.has(origin)) {
+      return callback(null, true)
     } else {
-      callback(new Error('Not allowed by CORS'))
+      return callback(Error('Not allowed by CORS'))
     }
   },
   methods: ['GET', 'POST'],
@@ -34,7 +35,7 @@ const generateClientId = (): string => {
 
 const clients: Set<IClient> = new Set()
 const app = express()
-const server = app.listen(PORT)
+const server = http.createServer(app)
 const peerServer = ExpressPeerServer(server, { key: KEY })
 app.use(cors(corsOptions))
 
@@ -48,7 +49,10 @@ peerServer.on('mount', (app: Application) => {
   console.log(`Started ExpressPeerServer on port: ${PORT} --- ${url}`)
 })
 
+app.use(cors(corsOptions))
 app.use(`/${KEY}`, peerServer)
+
+// Routes after configuring Middleware
 
 // GET:- Redirect to welcome page
 app.get('/', (request: Request, response: Response, next: NextFunction) => {
@@ -80,3 +84,5 @@ peerServer.on('connection', (client: IClient) => {
 peerServer.on('disconnect', (client: IClient) => {
   console.dir(`Client disconnected ${client.getId()}: ${clients.delete(client)}`)
 })
+
+server.listen(PORT)
