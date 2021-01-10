@@ -70,6 +70,11 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
   next()
 })
 
+app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
+  console.dir(request)
+  next()
+})
+
 // GET:- List of all connected peers
 app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFunction) => {
   if (clients.size === 0) {
