@@ -27,7 +27,7 @@ const corsOptions: CorsOptions = {
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
 }
 const socketOptions: Partial<ServerOptions> = {
-  path: `/${KEY}.io`,
+  path: '/peerjs',
   serveClient: false,
   transports: ['websocket', 'polling'],
   cors: corsOptions
@@ -81,7 +81,7 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
 })
 
 server.on('connection', (socket: Socket) => {
-  console.dir(`Connected Clients Count: ${clients.size}`)
+  console.dir(socket.connected)
 })
 
 peerServer.on('connection', (socket: Socket, request: Request) => {
