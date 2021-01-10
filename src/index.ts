@@ -85,8 +85,9 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
   next()
 })
 
-server.on('connection', (socket: Socket) => {
-  console.dir(socket.connected)
+server.on('connection', (socket: Socket, request: any) => {
+  console.dir(request)
+  console.dir(socket.request)
 })
 
 peerServer.on('connection', (socket: Socket, request: Request) => {
