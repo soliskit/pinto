@@ -72,12 +72,15 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
   next()
 })
 
-// GET:- Possible client handshake request
-// app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
-//   console.dir(`GET /peerjs - Request: ${request}`)
-//   console.dir(`GET /peerjs - Response: ${response}`)
-//   next()
-// })
+// GET:- Client handshake request
+app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
+  const { key, id, token } = request.params
+  console.dir(`Key: ${key}`)
+  console.dir(`ID: ${id}`)
+  console.dir(`Token: ${token}`)
+  response.status(200).json('Client handshake request recieved')
+  next()
+})
 
 // GET:- List of all connected peers
 app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFunction) => {
