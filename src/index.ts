@@ -80,9 +80,9 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
   next()
 })
 
-server.on('connection', (listener) => {
+server.on('connection', (socket: Socket) => {
   console.dir('ExpressServer')
-  console.dir(listener)
+  console.dir(socket)
 })
 
 peerServer.on('connection', (socket: Socket, request: Request) => {
