@@ -80,7 +80,26 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
   next()
 })
 
+server.on('connection', (socket: Socket, request: Request) => {
+  console.dir('ExpressServer')
+  const { key, id, token } = request.params
+  console.dir(`Key: ${key}`)
+  console.dir(`ID: ${id}`)
+  console.dir(`Token: ${token}`)
+  console.dir(`Socket: ${socket}`)
+})
+
 peerServer.on('connection', (socket: Socket, request: Request) => {
+  console.dir('PeerServer')
+  const { key, id, token } = request.params
+  console.dir(`Key: ${key}`)
+  console.dir(`ID: ${id}`)
+  console.dir(`Token: ${token}`)
+  console.dir(`Socket: ${socket}`)
+})
+
+socketServer.on('connection', (socket: Socket, request: Request) => {
+  console.dir('SocketServer')
   const { key, id, token } = request.params
   console.dir(`Key: ${key}`)
   console.dir(`ID: ${id}`)
