@@ -58,19 +58,24 @@ app.use(`/${KEY}`, peerServer)
 
 // GET:- Redirect to welcome page
 app.get('/', (request: Request, response: Response, next: NextFunction) => {
+  console.dir(`GET / - Request: ${request}`)
+  console.dir(`GET / - Response: ${response}`)
   response.redirect(301, `./${KEY}`)
   next()
 })
 
 // GET:- Retrieve a new user ID
 app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction) => {
-  response.status(200).json(generateClientId())
+  const lastGeneratedId = generateClientId()
+  console.dir(`Last Generated Id: ${lastGeneratedId}`)
+  response.status(200).json(lastGeneratedId)
   next()
 })
 
-// GET:- Client handshake request
+// GET:- Possible client handshake request
 app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
-  console.dir(request)
+  console.dir(`GET /peerjs - Request: ${request}`)
+  console.dir(`GET /peerjs - Response: ${response}`)
   next()
 })
 
