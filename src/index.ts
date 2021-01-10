@@ -73,11 +73,11 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
 })
 
 // GET:- Possible client handshake request
-app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
-  console.dir(`GET /peerjs - Request: ${request}`)
-  console.dir(`GET /peerjs - Response: ${response}`)
-  next()
-})
+// app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
+//   console.dir(`GET /peerjs - Request: ${request}`)
+//   console.dir(`GET /peerjs - Response: ${response}`)
+//   next()
+// })
 
 // GET:- List of all connected peers
 app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFunction) => {
