@@ -31,9 +31,9 @@ const generateClientId = (): string => {
 
 const clients: Set<IClient> = new Set()
 const app = express()
+app.use(cors(corsOptions))
 const server = app.listen(PORT)
 const peerServer = ExpressPeerServer(server, { key: KEY })
-app.use(cors(corsOptions))
 
 peerServer.on('mount', (app: Application) => {
   let url: string
