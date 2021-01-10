@@ -82,10 +82,8 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
 
 server.on('connection', (socket: Socket) => {
   console.dir('ExpressServer')
-  console.dir(socket.id)
-  console.dir(socket.nsp)
-  console.dir(socket.handshake)
-  console.dir(socket.request.url)
+  console.dir(socket.eventNames())
+  console.dir(socket.client)
 })
 
 peerServer.on('connection', (socket: Socket, request: Request) => {
