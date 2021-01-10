@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction, Application } from 'express'
 import { ExpressPeerServer } from 'peer'
 import { EventEmitter } from 'events'
 import WebSocket from 'ws'
+import { Server as SocketServer, ServerOptions, Socket } from 'socket.io'
 
 declare type MyWebSocket = WebSocket & EventEmitter
 declare interface IClient {
@@ -25,6 +26,12 @@ const corsOptions: CorsOptions = {
   methods: ['GET', 'POST'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
 }
+const socketOptions: Partial<ServerOptions> = {
+  path: `/${KEY}.io`,
+  serveClient: false,
+  transports: ['websocket', 'polling'],
+  cors: corsOptions
+}
 const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
 }
@@ -33,7 +40,9 @@ const clients: Set<IClient> = new Set()
 const app = express()
 app.use(cors(corsOptions))
 const server = app.listen(PORT)
+const socketServer = new SocketServer(server, socketOptions)
 const peerServer = ExpressPeerServer(server, { key: KEY })
+socketServer.attach(server)
 
 peerServer.on('mount', (app: Application) => {
   let url: string
@@ -72,8 +81,14 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
 peerServer.on('connection', (client: IClient) => {
   clients.add(client)
   console.dir(`Client connected ${client.getId()}`)
+  socketServer.on('connection', (socket: Socket) => {
+    console.dir(socket)
+  })
 })
 
 peerServer.on('disconnect', (client: IClient) => {
   console.dir(`Client disconnected ${client.getId()}: ${clients.delete(client)}`)
+  socketServer.on('disconnect', (socket: Socket) => {
+    console.dir(socket)
+  })
 })
