@@ -69,7 +69,7 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
 })
 
 // GET:- Client handshake request
-app.get('peerjs', (request: Request, response: Response, next: NextFunction) => {
+app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
   console.dir(request)
   next()
 })
