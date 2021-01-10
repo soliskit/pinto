@@ -16,14 +16,11 @@ declare interface IClient {
 }
 const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
+// eslint-disable-next-line no-unused-vars
 const allowedList = new Set(['https://web-player.vercel.app', 'https://www.pintopinto.org', 'http://localhost:5000'])
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
-    if (!origin || allowedList.has(origin)) {
-      return callback(null, true)
-    } else {
-      return callback(new Error('Not allowed by CORS'))
-    }
+    return callback(null, true)
   },
   methods: ['GET', 'POST'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
