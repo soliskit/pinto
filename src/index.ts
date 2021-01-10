@@ -58,8 +58,6 @@ app.use(`/${KEY}`, peerServer)
 
 // GET:- Redirect to welcome page
 app.get('/', (request: Request, response: Response, next: NextFunction) => {
-  console.dir(`GET / - Request: ${request}`)
-  console.dir(`GET / - Response: ${response}`)
   response.redirect(301, `./${KEY}`)
   next()
 })
@@ -69,16 +67,6 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
   const lastGeneratedId = generateClientId()
   console.dir(`Last Generated Id: ${lastGeneratedId}`)
   response.status(200).json(lastGeneratedId)
-  next()
-})
-
-// GET:- Client handshake request
-app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
-  const { key, id, token } = request.params
-  console.dir(`Key: ${key}`)
-  console.dir(`ID: ${id}`)
-  console.dir(`Token: ${token}`)
-  response.status(200).json('Client handshake request recieved')
   next()
 })
 
@@ -92,12 +80,12 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
   next()
 })
 
-peerServer.on('connection', (client: IClient) => {
-  clients.add(client)
-  console.dir(`Client connected ${client.getId()}`)
-  socketServer.on('connection', (socket: Socket) => {
-    console.dir(socket)
-  })
+peerServer.on('connection', (socket: Socket, request: Request) => {
+  const { key, id, token } = request.params
+  console.dir(`Key: ${key}`)
+  console.dir(`ID: ${id}`)
+  console.dir(`Token: ${token}`)
+  console.dir(`Socket: ${socket}`)
 })
 
 peerServer.on('disconnect', (client: IClient) => {
