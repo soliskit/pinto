@@ -71,7 +71,7 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
 })
 
 // GET:- Client connection handshake
-app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
+app.get('/peerjs/:key/:id/:token', (request: Request, response: Response, next: NextFunction) => {
   const { id, key, token } = request.params
   console.dir(id)
   console.dir(key)
