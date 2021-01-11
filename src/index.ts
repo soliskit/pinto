@@ -70,8 +70,10 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
   next()
 })
 
+// GET:- Client connection handshake
 app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
   console.dir(request)
+  console.dir(response)
   next()
 })
 
@@ -85,32 +87,18 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
   next()
 })
 
-server.on('connection', (socket: Socket, request: any) => {
-  console.dir(request)
-  console.dir(socket.request)
+server.on('connection', (socket: MyWebSocket) => {
+  console.dir(socket)
 })
 
-peerServer.on('connection', (socket: Socket, request: Request) => {
-  console.dir('PeerServer')
-  const { key, id, token } = request.params
-  console.dir(`Key: ${key}`)
-  console.dir(`ID: ${id}`)
-  console.dir(`Token: ${token}`)
-  console.dir(`Socket: ${socket}`)
+server.on('listening', (listener: any) => {
+  console.dir(listener)
 })
 
-socketServer.on('connection', (socket: Socket, request: Request) => {
-  console.dir('SocketServer')
-  const { key, id, token } = request.params
-  console.dir(`Key: ${key}`)
-  console.dir(`ID: ${id}`)
-  console.dir(`Token: ${token}`)
-  console.dir(`Socket: ${socket}`)
+server.on('error', (error: Error) => {
+  console.dir(error)
 })
 
-peerServer.on('disconnect', (client: IClient) => {
-  console.dir(`Client disconnected ${client.getId()}: ${clients.delete(client)}`)
-  socketServer.on('disconnect', (socket: Socket) => {
-    console.dir(socket)
-  })
+server.on('close', (listener: any) => {
+  console.dir(listener)
 })
