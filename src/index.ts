@@ -88,7 +88,11 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
 })
 
 server.on('connection', (socket: MyWebSocket) => {
-  console.dir(socket)
+  console.dir('Connected')
+  console.dir(socket.protocol)
+  console.dir(socket.readyState)
+  console.dir(socket.url)
+  console.dir(socket.CONNECTING)
 })
 
 server.on('listening', (listener: any) => {
