@@ -72,8 +72,10 @@ app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction)
 
 // GET:- Client connection handshake
 app.get('/peerjs', (request: Request, response: Response, next: NextFunction) => {
-  console.dir(request)
-  console.dir(response)
+  const { id, key, token } = request.params
+  console.dir(id)
+  console.dir(key)
+  console.dir(token)
   next()
 })
 
@@ -87,12 +89,8 @@ app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFuncti
   next()
 })
 
-server.on('connection', (socket: MyWebSocket) => {
-  console.dir('Connected')
-  console.dir(socket.protocol)
-  console.dir(socket.readyState)
-  console.dir(socket.url)
-  console.dir(socket.CONNECTING)
+server.on('connection', (socket: Socket) => {
+  console.dir(socket.id)
 })
 
 server.on('listening', (listener: any) => {
