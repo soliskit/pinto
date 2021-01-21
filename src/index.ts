@@ -1,6 +1,6 @@
 import http from 'http'
 import cors, { CorsOptions } from 'cors'
-import express, { Request, Response, NextFunction, Application } from 'express'
+import express, { Application } from 'express'
 import { ExpressPeerServer } from 'peer'
 import { EventEmitter } from 'events'
 import WebSocket from 'ws'
@@ -17,7 +17,21 @@ declare interface IClient {
 }
 const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
-const allowedList = new Set(['https://web-player.vercel.app', 'https://www.pintopinto.org', 'http://localhost:5000'])
+const allowedList = new Set([
+  'https://web-player.vercel.app',
+  'https://www.pintopinto.org',
+  'http://localhost:5000'
+])
+const peerEndpoint = [
+  '/',
+  `/${KEY}/id`,
+  `/${KEY}/peers`,
+  '/peerjs',
+  `/${KEY}/:userId/:userToken/offer`,
+  `/${KEY}/:userId/:userToken/candidate`,
+  `/${KEY}/:userId/:userToken/answer`,
+  `/${KEY}/:userId/:userToken/leave`
+]
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
     if (!origin || allowedList.has(origin)) {
@@ -33,11 +47,15 @@ const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
 }
 
-const clients: Set<IClient> = new Set()
 const app = express()
 const server = http.createServer(app)
-const peerServer = ExpressPeerServer(server, { key: KEY })
-app.use(cors(corsOptions))
+const peerServer = ExpressPeerServer(server, {
+  key: KEY,
+  allow_discovery: true,
+  generateClientId: generateClientId
+})
+
+const clients: Set<IClient> = new Set()
 
 peerServer.on('mount', (app: Application) => {
   let url: string
@@ -50,31 +68,7 @@ peerServer.on('mount', (app: Application) => {
 })
 
 app.use(cors(corsOptions))
-app.use(`/${KEY}`, peerServer)
-
-// Routes after configuring Middleware
-
-// GET:- Redirect to welcome page
-app.get('/', (request: Request, response: Response, next: NextFunction) => {
-  response.redirect(301, `./${KEY}`)
-  next()
-})
-
-// GET:- Retrieve a new user ID
-app.get(`/${KEY}/id`, (request: Request, response: Response, next: NextFunction) => {
-  response.status(200).json(generateClientId())
-  next()
-})
-
-// GET:- List of all connected peers
-app.get(`/${KEY}/peers`, (request: Request, response: Response, next: NextFunction) => {
-  if (clients.size === 0) {
-    response.status(200).json('[]')
-  } else {
-    response.status(200).json(clients.size)
-  }
-  next()
-})
+app.use(peerEndpoint, peerServer)
 
 peerServer.on('connection', (client: IClient) => {
   clients.add(client)
