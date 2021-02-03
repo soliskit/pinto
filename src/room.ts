@@ -8,7 +8,7 @@ import WebSocket from 'ws'
 import { Server as SocketServer, ServerOptions, Socket } from 'socket.io'
 
 declare type MyWebSocket = WebSocket & EventEmitter
-declare interface IClient {
+declare interface Client {
   getId(): string
   getToken(): string
   getSocket(): MyWebSocket | null
@@ -19,6 +19,7 @@ declare interface IClient {
 }
 const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
+const clients: Set<Client> = new Set()
 const allowedList = new Set([
   'http://localhost:5000',
   `https://${process.env.VERCEL_URL}`,
@@ -56,7 +57,6 @@ const peerServer = ExpressPeerServer(server, {
   generateClientId: generateClientId
 })
 const io = new SocketServer(server, socketOptions)
-const clients: Set<IClient> = new Set()
 
 peerServer.on('mount', (app: Application) => {
   let url: string
@@ -86,12 +86,12 @@ io.on('connection', (socket: Socket) => {
   })
 })
 
-peerServer.on('connection', (client: IClient) => {
+peerServer.on('connection', (client: Client) => {
   clients.add(client)
   console.dir(`Client connected ${client.getId()}`)
 })
 
-peerServer.on('disconnect', (client: IClient) => {
+peerServer.on('disconnect', (client: Client) => {
   console.dir(`Client disconnected ${client.getId()}: ${clients.delete(client)}`)
 })
 
