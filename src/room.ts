@@ -1,6 +1,5 @@
 
 import http from 'http'
-import https from 'https'
 import cors, { CorsOptions } from 'cors'
 import express, { Application } from 'express'
 import { ExpressPeerServer } from 'peer'
@@ -40,40 +39,35 @@ const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
 }
 
-/* eslint-disable */
-type HTTPServer = http.Server | https.Server
-function RoomServer(server: HTTPServer) {
-  const app = express()
-  const io = new SocketServer(server, {
-    cors: {
-      origin: ["http://localhost:5000", "https://web-player.vercel.app", "https://www.pintopinto.org"],
-      methods: ["GET", "POST"],
-      allowedHeaders: ["origin", "x-requested-with", "content-type"]
-    }
-  })
-  io.on("connection", (socket: Socket) => {
-    socket.on("join-room", (roomId: string, userId: string) => {
-      console.log(`join-room: ${roomId} ${userId}`)
-      if(!roomId || !userId) {
-        return
-      }
-      socket.join(roomId)
-      socket.to(roomId).broadcast.emit("user-connected", userId)
-      socket.on("disconnect", () => {
-        socket.to(roomId).broadcast.emit("user-disconnected", userId)
-      })
-    })
-  })
-  return app
-}
-/* eslint-enable */
-
 const app = express()
 const server = http.createServer(app)
 const peerServer = ExpressPeerServer(server, {
   allow_discovery: true,
   generateClientId: generateClientId
 })
+
+/* eslint-disable */
+const io = new SocketServer(server, {
+  cors: {
+    origin: ["http://localhost:5000", "https://web-player.vercel.app", "https://www.pintopinto.org"],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["origin", "x-requested-with", "content-type"]
+  }
+})
+io.on("connection", (socket: Socket) => {
+  socket.on("join-room", (roomId: string, userId: string) => {
+    console.log(`join-room: ${roomId} ${userId}`)
+    if(!roomId || !userId) {
+      return
+    }
+    socket.join(roomId)
+    socket.to(roomId).broadcast.emit("user-connected", userId)
+    socket.on("disconnect", () => {
+      socket.to(roomId).broadcast.emit("user-disconnected", userId)
+    })
+  })
+})
+/* eslint-enable */
 
 const clients: Set<IClient> = new Set()
 
@@ -89,8 +83,7 @@ peerServer.on('mount', (app: Application) => {
 
 app.use(cors(corsOptions))
 app.use(peerServer)
-const roomServer = RoomServer(server)
-peerServer.use(roomServer)
+io.listen(server)
 
 app.get('/test', (request, response, next) => {
   console.dir(request.originalUrl)
