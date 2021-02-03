@@ -1,4 +1,3 @@
-
 import http from 'http'
 import cors, { CorsOptions } from 'cors'
 import express, { Application } from 'express'
