@@ -20,9 +20,9 @@ declare interface IClient {
 const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
 const allowedList = new Set([
+  'http://localhost:5000',
   'https://web-player.vercel.app',
-  'https://www.pintopinto.org',
-  'http://localhost:5000'
+  'https://www.pintopinto.org'
 ])
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
