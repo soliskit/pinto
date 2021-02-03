@@ -55,22 +55,7 @@ const peerServer = ExpressPeerServer(server, {
   allow_discovery: true,
   generateClientId: generateClientId
 })
-
 const io = new SocketServer(server, socketOptions)
-io.on('connection', (socket: Socket) => {
-  socket.on('join-room', (roomId: string, userId: string) => {
-    console.log(`join-room: ${roomId} ${userId}`)
-    if (!roomId || !userId) {
-      return
-    }
-    socket.join(roomId)
-    socket.to(roomId).broadcast.emit('user-connected', userId)
-    socket.on('disconnect', () => {
-      socket.to(roomId).broadcast.emit('user-disconnected', userId)
-    })
-  })
-})
-
 const clients: Set<IClient> = new Set()
 
 peerServer.on('mount', (app: Application) => {
@@ -87,10 +72,18 @@ app.use(cors(corsOptions))
 app.use(peerServer)
 io.listen(server)
 
-app.get('/test', (request, response, next) => {
-  console.dir(request.originalUrl)
-  response.status(200).type('html').send('Test Success!')
-  next()
+io.on('connection', (socket: Socket) => {
+  socket.on('join-room', (roomId: string, userId: string) => {
+    console.log(`join-room: ${roomId} ${userId}`)
+    if (!roomId || !userId) {
+      return
+    }
+    socket.join(roomId)
+    socket.to(roomId).broadcast.emit('user-connected', userId)
+    socket.on('disconnect', () => {
+      socket.to(roomId).broadcast.emit('user-disconnected', userId)
+    })
+  })
 })
 
 peerServer.on('connection', (client: IClient) => {
