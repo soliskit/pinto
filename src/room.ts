@@ -35,7 +35,15 @@ const corsOptions: CorsOptions = {
   methods: ['GET', 'POST'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
 }
-const socketOptions: Partial<ServerOptions> = { path: `/${KEY}.io`, serveClient: false }
+const socketOptions: Partial<ServerOptions> = {
+  path: `/${KEY}.io`,
+  serveClient: false,
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
+  }
+}
 const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
 }
