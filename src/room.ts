@@ -79,7 +79,12 @@ io.on('connection', (socket: Socket) => {
     }
     socket.join(roomId)
     socket.to(roomId).broadcast.emit('user-connected', userId)
-    socket.on('disconnect', () => {
+
+    socket.on('disconnecting', (reason) => {
+      console.log(`${reason}: ${userId} from - ${socket.rooms}`)
+    })
+    socket.on('disconnect', (reason) => {
+      console.log(`${reason}: ${userId}`)
       socket.to(roomId).broadcast.emit('user-disconnected', userId)
     })
   })
