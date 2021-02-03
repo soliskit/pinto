@@ -43,6 +43,7 @@ const generateClientId = (): string => {
 const app = express()
 const server = http.createServer(app)
 const peerServer = ExpressPeerServer(server, {
+  key: KEY,
   allow_discovery: true,
   generateClientId: generateClientId
 })
