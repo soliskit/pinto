@@ -35,6 +35,7 @@ const corsOptions: CorsOptions = {
   methods: ['GET', 'POST'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
 }
+const socketOptions: Partial<ServerOptions> = { path: `/${KEY}.io`, serveClient: false }
 const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
 }
@@ -46,7 +47,7 @@ const peerServer = ExpressPeerServer(server, {
   generateClientId: generateClientId
 })
 
-const io = new SocketServer(server)
+const io = new SocketServer(server, socketOptions)
 io.on('connection', (socket: Socket) => {
   socket.on('join-room', (roomId: string, userId: string) => {
     console.log(`join-room: ${roomId} ${userId}`)
