@@ -46,13 +46,7 @@ const peerServer = ExpressPeerServer(server, {
   generateClientId: generateClientId
 })
 
-const io = new SocketServer(server, {
-  cors: {
-    origin: ['http://localhost:5000', 'https://web-player.vercel.app', 'https://www.pintopinto.org'],
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['origin', 'x-requested-with', 'content-type']
-  }
-})
+const io = new SocketServer(server)
 io.on('connection', (socket: Socket) => {
   socket.on('join-room', (roomId: string, userId: string) => {
     console.log(`join-room: ${roomId} ${userId}`)
