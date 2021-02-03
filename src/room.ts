@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
 const allowedList = new Set([
   'http://localhost:5000',
-  'https://web-player.vercel.app',
+  `https://${process.env.VERCEL_URL}`,
   'https://www.pintopinto.org'
 ])
 const corsOptions: CorsOptions = {
