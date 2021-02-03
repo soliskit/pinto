@@ -29,7 +29,7 @@ const corsOptions: CorsOptions = {
     if (!origin || allowedList.has(origin)) {
       return callback(null, true)
     } else {
-      return callback(Error('Not allowed by CORS'))
+      return callback(Error(`Not allowed by CORS: Origin ${origin} not included in [ http://localhost:5000, https://${process.env.VERCEL_URL}, https://www.pintopinto.org ]`))
     }
   },
   methods: ['GET', 'POST'],
