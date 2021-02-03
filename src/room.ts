@@ -46,28 +46,26 @@ const peerServer = ExpressPeerServer(server, {
   generateClientId: generateClientId
 })
 
-/* eslint-disable */
 const io = new SocketServer(server, {
   cors: {
-    origin: ["http://localhost:5000", "https://web-player.vercel.app", "https://www.pintopinto.org"],
-    methods: ["GET", "POST"],
-    allowedHeaders: ["origin", "x-requested-with", "content-type"]
+    origin: ['http://localhost:5000', 'https://web-player.vercel.app', 'https://www.pintopinto.org'],
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['origin', 'x-requested-with', 'content-type']
   }
 })
-io.on("connection", (socket: Socket) => {
-  socket.on("join-room", (roomId: string, userId: string) => {
+io.on('connection', (socket: Socket) => {
+  socket.on('join-room', (roomId: string, userId: string) => {
     console.log(`join-room: ${roomId} ${userId}`)
-    if(!roomId || !userId) {
+    if (!roomId || !userId) {
       return
     }
     socket.join(roomId)
-    socket.to(roomId).broadcast.emit("user-connected", userId)
-    socket.on("disconnect", () => {
-      socket.to(roomId).broadcast.emit("user-disconnected", userId)
+    socket.to(roomId).broadcast.emit('user-connected', userId)
+    socket.on('disconnect', () => {
+      socket.to(roomId).broadcast.emit('user-disconnected', userId)
     })
   })
 })
-/* eslint-enable */
 
 const clients: Set<IClient> = new Set()
 
