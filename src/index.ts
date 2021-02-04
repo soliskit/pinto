@@ -59,9 +59,9 @@ const peerServer = ExpressPeerServer(server, {
 peerServer.on('mount', (app: Application) => {
   let url: string
   if (app.settings.env === 'development') {
-    url = `http://localhost:${PORT}/${KEY}`
+    url = `http://localhost:${PORT}`
   } else {
-    url = `https://pintopinto.herokuapp.com/${KEY}`
+    url = 'https://pintopinto.herokuapp.com'
   }
   console.log(`Started ExpressPeerServer on port: ${PORT} --- ${url}`)
 })
