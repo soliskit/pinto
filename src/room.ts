@@ -94,11 +94,12 @@ io.on('connection', (socket: Socket) => {
 
 peerServer.on('connection', (client: Client) => {
   clients.add(client)
-  console.dir(`Client connected ${client.getId()}`)
+  console.log(`PeerClient connected: ${client.getId()}`)
 })
 
 peerServer.on('disconnect', (client: Client) => {
-  console.dir(`Client disconnected ${client.getId()}: ${clients.delete(client)}`)
+  clients.delete(client)
+  console.log(`PeerClient disconnected: ${client.getId()}`)
 })
 
 server.listen(PORT)
