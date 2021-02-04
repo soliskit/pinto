@@ -38,7 +38,7 @@ const corsOptions: CorsOptions = {
     if (!origin || allowedList.has(origin)) {
       return callback(null, true)
     } else {
-      return callback(Error('Not allowed by CORS'))
+      return callback(Error(`Not allowed by CORS: Origin - ${origin}`))
     }
   },
   methods: ['GET', 'POST'],
