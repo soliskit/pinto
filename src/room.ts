@@ -73,9 +73,8 @@ io.listen(server)
 
 io.on('connection', (socket: Socket) => {
   socket.on('join-room', (roomId: string, userId: string) => {
-    console.log(`join-room: ${roomId} ${userId}`)
     if (!roomId || !userId) {
-      return
+      throw Error('Missing roomId or userId')
     }
     socket.join(roomId)
     socket.to(roomId).broadcast.emit('user-connected', userId)
