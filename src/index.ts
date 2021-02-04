@@ -23,16 +23,6 @@ const allowedList = new Set([
   `https://${process.env.VERCEL_URL}`,
   'https://www.pintopinto.org'
 ])
-const peerEndpoint = [
-  '/',
-  `/${KEY}/id`,
-  `/${KEY}/peers`,
-  '/peerjs',
-  `/${KEY}/:userId/:userToken/offer`,
-  `/${KEY}/:userId/:userToken/candidate`,
-  `/${KEY}/:userId/:userToken/answer`,
-  `/${KEY}/:userId/:userToken/leave`
-]
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
     if (!origin || allowedList.has(origin)) {
@@ -67,7 +57,7 @@ peerServer.on('mount', (app: Application) => {
 })
 
 app.use(cors(corsOptions))
-app.use(peerEndpoint, peerServer)
+app.use(peerServer)
 
 peerServer.on('connection', (client: Client) => {
   clients.add(client)
