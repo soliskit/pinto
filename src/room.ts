@@ -77,13 +77,16 @@ io.on('connection', (socket: Socket) => {
       throw Error('Missing roomId or userId')
     }
     socket.join(roomId)
+    console.log(`User: ${userId} joined: ${roomId}`)
     socket.to(roomId).broadcast.emit('user-connected', userId)
 
     socket.on('disconnecting', (reason) => {
-      console.log(`${reason}: ${userId} from - ${socket.rooms}`)
+      console.dir(reason)
+      console.log(`User: ${userId} - disconnecting - left: [${Array.from(socket.rooms).join(', ')}]`)
     })
     socket.on('disconnect', (reason) => {
-      console.log(`${reason}: ${userId}`)
+      console.dir(reason)
+      console.log(`User disconnected: ${userId}`)
       socket.to(roomId).broadcast.emit('user-disconnected', userId)
     })
   })
