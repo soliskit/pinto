@@ -1,5 +1,5 @@
 {
-  "success_url": "/pinto",
+  "success_url": "/",
   "env": {
     "KEY": "pinto",
     "NPM_CONFIG_LOGLEVEL": "info",
