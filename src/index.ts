@@ -19,9 +19,9 @@ const PORT = Number(process.env.PORT) || 9000
 const KEY = process.env.KEY || 'pinto'
 const clients: Set<Client> = new Set()
 const allowedList = new Set([
-  'https://web-player.vercel.app',
-  'https://www.pintopinto.org',
-  'http://localhost:5000'
+  'http://localhost:5000',
+  `https://${process.env.VERCEL_URL}`,
+  'https://www.pintopinto.org'
 ])
 const peerEndpoint = [
   '/',
