@@ -4,6 +4,7 @@ import express, { Application } from 'express'
 import { ExpressPeerServer } from 'peer'
 import { EventEmitter } from 'events'
 import WebSocket from 'ws'
+import { Server as SocketServer, ServerOptions, Socket } from 'socket.io'
 
 declare type MyWebSocket = WebSocket & EventEmitter
 declare interface Client {
@@ -34,6 +35,15 @@ const corsOptions: CorsOptions = {
   methods: ['GET', 'POST'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
 }
+const socketOptions: Partial<ServerOptions> = {
+  path: `/${KEY}.io`,
+  serveClient: false,
+  cors: {
+    origin: Array.from(allowedList),
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
+  }
+}
 const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
 }
@@ -45,6 +55,7 @@ const peerServer = ExpressPeerServer(server, {
   allow_discovery: true,
   generateClientId: generateClientId
 })
+const io = new SocketServer(server, socketOptions)
 
 peerServer.on('mount', (app: Application) => {
   let url: string
@@ -58,6 +69,29 @@ peerServer.on('mount', (app: Application) => {
 
 app.use(cors(corsOptions))
 app.use(peerServer)
+io.listen(server)
+
+io.on('connection', (socket: Socket) => {
+  socket.on('join-room', (roomId: string, userId: string) => {
+    if (!roomId || !userId) {
+      throw Error('Missing roomId or userId')
+    }
+    console.log(`User: ${userId} joined: ${roomId}`)
+
+    socket.join(roomId)
+    socket.to(roomId).broadcast.emit('user-connected', userId)
+
+    socket.on('disconnecting', (reason) => {
+      console.dir(reason)
+      console.log(`User: ${userId} - disconnecting - left: [${Array.from(socket.rooms).join(', ')}]`)
+    })
+    socket.on('disconnect', (reason) => {
+      console.dir(reason)
+      console.log(`User disconnected: ${userId}`)
+      socket.to(roomId).broadcast.emit('user-disconnected', userId)
+    })
+  })
+})
 
 peerServer.on('connection', (client: Client) => {
   clients.add(client)
