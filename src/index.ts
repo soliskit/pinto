@@ -61,6 +61,8 @@ peerServer.on('mount', (app: Application) => {
   let url: string
   if (app.settings.env === 'development') {
     url = `http://localhost:${PORT}`
+  } else if (process.env.HEROKU_APP_NAME) {
+    url = `https://${process.env.HEROKU_APP_NAME}.herokuapp.com`
   } else {
     url = 'https://pintopinto.herokuapp.com'
   }
