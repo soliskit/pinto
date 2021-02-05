@@ -1,6 +1,7 @@
 {
   "success_url": "/",
   "env": {
+    "VERCEL_URL": "web-player-XXX.vercel.app",
     "KEY": "pinto",
     "NPM_CONFIG_LOGLEVEL": "info",
     "NODE_MODULES_CACHE": "false",
