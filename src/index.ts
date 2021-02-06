@@ -53,7 +53,9 @@ const server = http.createServer(app)
 const peerServer = ExpressPeerServer(server, {
   key: KEY,
   allow_discovery: true,
-  generateClientId: generateClientId
+  generateClientId: generateClientId,
+  alive_timeout: 120000,
+  expire_timeout: 12000
 })
 const io = new SocketServer(server, socketOptions)
 
