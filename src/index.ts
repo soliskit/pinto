@@ -42,7 +42,9 @@ const socketOptions: Partial<ServerOptions> = {
     origin: Array.from(allowedList),
     methods: ['GET', 'POST'],
     allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']
-  }
+  },
+  pingTimeout: 10000,
+  upgradeTimeout: 20000
 }
 const generateClientId = (): string => {
   return Math.round(Math.random() * 99).toString(10)
