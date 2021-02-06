@@ -86,7 +86,7 @@ io.on('connection', (socket: Socket) => {
       console.error('Missing roomId')
       return
     }
-    console.log(`User: ${userId} joined: ${roomId}`)
+    console.log(`User: ${userId} joined: ${roomId} with ${clients.size} users`)
 
     socket.join(roomId)
     socket.to(roomId).broadcast.emit('user-connected', userId)
