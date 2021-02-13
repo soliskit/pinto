@@ -38,6 +38,6 @@ To locally start all of the process types that are defined in your Procfile:
 heroku local
 ```
 
-Open [http://localhost:5000](http://localhost:5000) with your browser to see the result.
+Open [http://localhost:443](http://localhost:443) with your browser to see the result.
 
 You can modify the Signal Server by opening `src/index.ts`. `Nodemon` will auto restart your development server for you as you make changes to files within the `src` directory.
