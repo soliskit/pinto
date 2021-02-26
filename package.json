@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node ./build/index.js",
     "dev": "npm run build && npx nodemon",
-    "prod": "npx heroku local -p 9000",
+    "prod": "npx heroku local -p 443",
     "logs": "npx heroku logs --tail --source app"
   },
   "dependencies": {
