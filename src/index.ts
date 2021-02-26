@@ -16,7 +16,7 @@ declare interface Client {
   setLastPing(lastPing: number): void
   send(data: any): void
 }
-const PORT = Number(process.env.PORT) || 9000
+const PORT = Number(process.env.PORT) || 443
 const KEY = process.env.KEY || 'pinto'
 const clients: Set<Client> = new Set()
 const allowedList = new Set([
