@@ -17,3 +17,6 @@ results
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
+
+# Git Hooks
+.husky
