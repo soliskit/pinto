@@ -22,7 +22,7 @@ const clients: Set<Client> = new Set()
 const allowedList = new Set([
   'http://localhost:5000',
   `https://${process.env.VERCEL_URL}`,
-  'https://www.pintopinto.org'
+  'https://pintopinto.org'
 ])
 const corsOptions: CorsOptions = {
   origin: (origin: any, callback: any) => {
