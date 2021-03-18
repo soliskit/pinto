@@ -86,7 +86,7 @@ io.on('connection', (socket: Socket) => {
 
     socket.on('disconnecting', (reason) => {
       console.dir(reason)
-      console.log(`User: ${userId} - disconnecting - left: [${Array.from(socket.rooms).join(', ')}]`)
+      console.log(`User: ${userId} - disconnecting - left: [${Array.from(socket.rooms.values())}]`)
     })
     socket.on('disconnect', (reason) => {
       console.dir(reason)
