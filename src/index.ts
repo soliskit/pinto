@@ -91,12 +91,12 @@ io.on('connection', (socket: Socket) => {
     console.log(`${socket.id} - user: ${userId} - joined: ${roomId}`)
 
     socket.join(roomId)
-    socket.to(roomId).broadcast.emit('user-connected', userId)
+    socket.to(roomId).emit('user-connected', userId)
 
     socket.on('disconnect', (reason) => {
       console.dir(reason)
       console.log(`${socket.id} - user: ${userId} - disconnected: ${socket.disconnected}`)
-      socket.to(roomId).broadcast.emit('user-disconnected', userId)
+      socket.to(roomId).emit('user-disconnected', userId)
       switch (reason) {
         case 'server namespace disconnect':
           console.log('Socket manually disconnected by server')
