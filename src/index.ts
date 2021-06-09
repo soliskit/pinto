@@ -75,23 +75,50 @@ app.use(peerServer)
 io.listen(server)
 
 io.on('connection', (socket: Socket) => {
+  console.dir('client namespace connect')
+  console.log(`${socket.id} - connected: ${socket.connected}`)
+  socket.on('error', (error) => {
+    console.error('Socket.io Error')
+    console.error(error)
+  })
+  socket.on('disconnecting', () => {
+    console.log(`${socket.id} - disconnecting: ${Array.from(socket.rooms.values()).pop()}`)
+  })
   socket.on('join-room', (roomId: string, userId: string) => {
     if (!roomId || !userId) {
       throw Error('Missing roomId or userId')
     }
-    console.log(`User: ${userId} joined: ${roomId}`)
+    console.log(`${socket.id} - user: ${userId} - joined: ${roomId}`)
 
     socket.join(roomId)
     socket.to(roomId).broadcast.emit('user-connected', userId)
 
-    socket.on('disconnecting', (reason) => {
-      console.dir(reason)
-      console.log(`User: ${userId} - disconnecting - left: [${Array.from(socket.rooms.values())}]`)
-    })
     socket.on('disconnect', (reason) => {
       console.dir(reason)
-      console.log(`User disconnected: ${userId}`)
+      console.log(`${socket.id} - user: ${userId} - disconnected: ${socket.disconnected}`)
       socket.to(roomId).broadcast.emit('user-disconnected', userId)
+      switch (reason) {
+        case 'server namespace disconnect':
+          console.log('Socket manually disconnected by server')
+          break
+        case 'client namespace disconnect':
+          console.log('Socket manually disconnected by client')
+          break
+        case 'server shutting down':
+          console.log('Server is shutting down')
+          break
+        case 'ping timeout':
+          console.error('Client failed to send PONG packet within timeout range')
+          break
+        case 'transport close':
+          console.error('User lost connection or network was changed')
+          break
+        case 'transport error':
+          console.error('Connection encountered server error')
+          break
+        default:
+          console.error('Socket disconnected for unknown reason')
+      }
     })
   })
 })
