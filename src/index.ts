@@ -14,18 +14,20 @@ declare interface Client {
   setSocket(socket: MyWebSocket | null): void
   getLastPing(): number
   setLastPing(lastPing: number): void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   send(data: any): void
 }
 const PORT = Number(process.env.PORT) || 443
 const KEY = process.env.KEY || 'pinto'
 const clients: Set<Client> = new Set()
 const allowedList = new Set([
-  'http://localhost:5000',
+  'http://localhost:4000',
   `https://${process.env.VERCEL_URL}`,
   'https://pintopinto.org',
   'https://meet.pintopinto.org'
 ])
 const corsOptions: CorsOptions = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   origin: (origin: any, callback: any) => {
     if (!origin || allowedList.has(origin)) {
       return callback(null, true)
@@ -82,7 +84,9 @@ io.on('connection', (socket: Socket) => {
     console.error(error)
   })
   socket.on('disconnecting', () => {
-    console.log(`${socket.id} - disconnecting: ${Array.from(socket.rooms.values()).pop()}`)
+    console.log(
+      `${socket.id} - disconnecting: ${Array.from(socket.rooms.values()).pop()}`
+    )
   })
   socket.on('join-room', (roomId: string, userId: string) => {
     if (!roomId || !userId) {
@@ -95,7 +99,9 @@ io.on('connection', (socket: Socket) => {
 
     socket.on('disconnect', (reason) => {
       console.dir(reason)
-      console.log(`${socket.id} - user: ${userId} - disconnected: ${socket.disconnected}`)
+      console.log(
+        `${socket.id} - user: ${userId} - disconnected: ${socket.disconnected}`
+      )
       socket.to(roomId).emit('user-disconnected', userId)
       switch (reason) {
         case 'server namespace disconnect':
@@ -108,7 +114,9 @@ io.on('connection', (socket: Socket) => {
           console.log('Server is shutting down')
           break
         case 'ping timeout':
-          console.error('Client failed to send PONG packet within timeout range')
+          console.error(
+            'Client failed to send PONG packet within timeout range'
+          )
           break
         case 'transport close':
           console.error('User lost connection or network was changed')
