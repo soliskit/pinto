@@ -13,14 +13,16 @@
     "sourceType": "module"
   },
   "extends": [
-    "eslint:recommended",
-    "standard"
+    "plugin:@typescript-eslint/recommended",
+    "standard",
+    "prettier",
+    "plugin:prettier/recommended"
   ],
   "plugins": [
-    "@typescript-eslint"
+    "@typescript-eslint", "prettier"
   ],
   "rules": {
-    "eol-last": ["warn", "never"]
+    "prettier/prettier": "error"
   },
   "reportUnusedDisableDirectives": true
 }
