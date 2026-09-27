@@ -1,25 +1,12 @@
 import http from 'http'
 import cors, { CorsOptions } from 'cors'
 import express, { Application } from 'express'
-import { ExpressPeerServer } from 'peer'
-import { EventEmitter } from 'events'
-import WebSocket from 'ws'
+import { ExpressPeerServer, IClient } from 'peer'
 import { Server as SocketServer, ServerOptions, Socket } from 'socket.io'
 
-declare type MyWebSocket = WebSocket & EventEmitter
-declare interface Client {
-  getId(): string
-  getToken(): string
-  getSocket(): MyWebSocket | null
-  setSocket(socket: MyWebSocket | null): void
-  getLastPing(): number
-  setLastPing(lastPing: number): void
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  send(data: any): void
-}
 const PORT = Number(process.env.PORT) || 443
 const KEY = process.env.KEY || 'pinto'
-const clients: Set<Client> = new Set()
+const clients: Set<IClient> = new Set()
 const allowedList = new Set([
   'http://localhost:4000',
   `https://${process.env.VERCEL_URL}`,
@@ -60,7 +47,8 @@ const peerServer = ExpressPeerServer(server, {
 })
 const io = new SocketServer(server, socketOptions)
 
-peerServer.on('mount', (app: Application) => {
+// 'mount' is emitted by Express itself, not declared in PeerServerEvents
+;(peerServer as unknown as Application).on('mount', (app: Application) => {
   let url: string
   if (app.settings.env === 'development') {
     url = `http://localhost:${PORT}`
@@ -131,12 +119,12 @@ io.on('connection', (socket: Socket) => {
   })
 })
 
-peerServer.on('connection', (client: Client) => {
+peerServer.on('connection', (client: IClient) => {
   clients.add(client)
   console.log(`PeerClient connected: ${client.getId()}`)
 })
 
-peerServer.on('disconnect', (client: Client) => {
+peerServer.on('disconnect', (client: IClient) => {
   clients.delete(client)
   console.log(`PeerClient disconnected: ${client.getId()}`)
 })
