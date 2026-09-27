@@ -1,7 +1,6 @@
 # Node.js Tools for Visual Studio
 .ntvs_analysis.dat
 node_modules/
-build
 
 # Misc
 *.pem
@@ -17,6 +16,3 @@ results
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
-
-# Git Hooks
-.husky

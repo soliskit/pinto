@@ -5,7 +5,7 @@ import promise from 'eslint-plugin-promise'
 import prettierRecommended from 'eslint-plugin-prettier/recommended'
 
 export default tseslint.config(
-  { ignores: ['node_modules/', 'build/'] },
+  { ignores: ['node_modules/'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   promise.configs['flat/recommended'],

@@ -4,14 +4,13 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "types": ["node"],
-    "sourceMap": true,
-    "outDir": "./build",
-    "rootDir": "./src",
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "allowSyntheticDefaultImports": true
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src"]
 }
