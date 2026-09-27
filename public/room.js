@@ -1,5 +1,6 @@
 // @ts-check
 import { element } from './element.js'
+import { ordinal } from './ordinal.js'
 
 /** @typedef {import('peerjs').MediaConnection} MediaConnection */
 
@@ -131,17 +132,6 @@ function showError(heading, message) {
   errorTitle.textContent = heading
   errorMessage.textContent = message
   errorBox.hidden = false
-}
-
-/** @param {number} n */
-function ordinal(n) {
-  const tens = n % 100
-  if (tens < 11 || tens > 13) {
-    if (n % 10 === 1) return `${n}st`
-    if (n % 10 === 2) return `${n}nd`
-    if (n % 10 === 3) return `${n}rd`
-  }
-  return `${n}th`
 }
 
 function render() {
