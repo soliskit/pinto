@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1.0, user-scalable=no, width=device-width"
+    />
+    <title>Pinto Pinto</title>
+    <meta property="og:title" content="Video conferencing for the rest of us" />
+    <meta
+      property="og:description"
+      content="Open a room to get started today"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/hero_thumbnail.png" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/home.js"></script>
+  </head>
+  <body>
+    <main class="home">
+      <time id="clock"></time>
+      <h2>Type name or press open to generate a room name</h2>
+      <form id="join-form" class="join-form">
+        <input
+          id="room-name"
+          type="text"
+          placeholder="Enter room name"
+          autocomplete="off"
+        />
+        <button type="submit" class="open-room" autofocus>Open</button>
+      </form>
+    </main>
+  </body>
+</html>
