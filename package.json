@@ -5,15 +5,12 @@
   "engines": {
     "node": "^22.18.0"
   },
-  "website": "https://pintopinto.herokuapp.com/",
   "scripts": {
     "start": "node src/index.ts",
     "dev": "node --watch src/index.ts",
     "typecheck": "tsc && tsc -p tsconfig.client.json",
     "lint": "eslint .",
-    "format": "prettier --write .",
-    "prod": "npx heroku local -p 443",
-    "logs": "npx heroku logs --tail --source app"
+    "format": "prettier --write ."
   },
   "dependencies": {
     "express": "^5.2.1",
