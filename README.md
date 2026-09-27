@@ -45,7 +45,10 @@ While the camera is off, peers see a placeholder image. Click your own preview t
 | `public/`                   | The web client, served as is                               |
 | `public/home.js`            | Home page: clock and room name form                        |
 | `public/room.js`            | Room page: camera, microphone, calls and controls          |
+| `public/element.js`         | Finds an element by id and checks its type                 |
+| `public/ordinal.js`         | 1st, 2nd, 3rd for the room page's count of people          |
 | `types/client-globals.d.ts` | Types for the `Peer` and `io` globals the room page loads  |
+| `test/`                     | Tests, described under [Testing](#testing)                 |
 
 ## Configuration
 
@@ -79,12 +82,39 @@ The client is plain JavaScript with types in JSDoc comments, checked by `tsconfi
 
 `npm run typecheck` checks both.
 
+## Testing
+
+```bash
+npm test
+```
+
+Node's built in test runner runs every `test/*.test.ts` file. Like the server, the tests are TypeScript that Node runs directly. To run one file, use `node --test test/room.test.ts`.
+
+| File                       | What it tests                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `test/server.test.ts`      | The server in its own process: pages, `/config`, PeerJS and Socket.IO rooms    |
+| `test/ice-servers.test.ts` | Getting servers from Twilio, caching them and falling back, with `fetch` faked |
+| `test/ordinal.test.ts`     | `ordinal()`                                                                    |
+| `test/element.test.ts`     | `element()`, in the browser                                                    |
+| `test/home.test.ts`        | The home page clock and room name form                                         |
+| `test/room.test.ts`        | The room page: controls, photos, calls between pages and reconnecting          |
+| `test/helpers.ts`          | Starts the server and Chromium for the tests                                   |
+
+The browser tests drive Chromium through [Playwright](https://playwright.dev), with a fake camera and microphone, and make real calls between pages. Install Chromium for Playwright once:
+
+```bash
+npx playwright install chromium
+```
+
+To use a Chromium that is already installed instead, set `CHROMIUM_PATH` to its executable.
+
 ## Scripts
 
 | Command             | Description                                            |
 | ------------------- | ------------------------------------------------------ |
 | `npm run dev`       | Run with `node --watch`                                |
 | `npm start`         | Run the server                                         |
+| `npm test`          | Run the tests                                          |
 | `npm run typecheck` | Type check the server and the client (no output files) |
 | `npm run lint`      | Lint with ESLint                                       |
 | `npm run format`    | Format files with Prettier                             |
