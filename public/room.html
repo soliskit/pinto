@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1.0, user-scalable=no, width=device-width"
+    />
+    <title>Pinto Pinto</title>
+    <meta property="og:title" content="Video conferencing for the rest of us" />
+    <meta
+      property="og:description"
+      content="Join the room now to get started"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/room_thumbnail.png" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/vendor/peerjs.min.js" defer></script>
+    <script src="/socket.io/socket.io.min.js" defer></script>
+    <script type="module" src="/room.js"></script>
+  </head>
+  <body>
+    <div id="error" hidden>
+      <h1 id="error-title"></h1>
+      <h2 id="error-message"></h2>
+    </div>
+    <h1 id="title"></h1>
+    <h2 id="status"></h2>
+    <div class="attendees">
+      <div id="attendees" class="attendee-grid"></div>
+    </div>
+
+    <div class="presenter">
+      <div class="controls">
+        <button id="mute" class="mute">Mute</button>
+        <button id="camera" class="camera" disabled>Start Video</button>
+        <button id="remove-photo" class="remove-photo" hidden>
+          Remove photo
+        </button>
+        <button id="call" class="call" disabled>Join Now</button>
+      </div>
+      <label for="photo" id="self-label">
+        <video id="self" muted playsinline autoplay></video>
+      </label>
+      <input id="photo" type="file" accept="image/*" hidden />
+    </div>
+  </body>
+</html>
