@@ -1,6 +1,11 @@
-# Pinto
+# Pinto Pinto
 
-WebRTC signal server for [Pinto Pinto](https://github.com/soliskit/pinto-meet). It runs a [PeerJS](https://peerjs.com/) server and a [Socket.IO](https://socket.io/) server on one Express 5 app, so browsers can find each other and join rooms.
+Video calls in the browser. One small Node server does everything:
+
+- serves the web client, plain HTML, CSS and JavaScript with no build step
+- runs a [PeerJS](https://peerjs.com/) server so browsers can connect to each other directly over WebRTC
+- runs a [Socket.IO](https://socket.io/) server that tracks who is in each room
+- hands browsers STUN and TURN servers, from Twilio when configured
 
 ## Requirements
 
@@ -15,36 +20,65 @@ Install dependencies:
 npm install
 ```
 
-Start the development server. Node restarts it whenever a file it loads changes:
+Start the development server. Node restarts it whenever a server file changes; refresh the browser after editing files in `public/`:
 
 ```bash
-npm run dev
+PORT=4000 npm run dev
 ```
 
-The server listens on [http://localhost:443](http://localhost:443) by default. Set `PORT` to use another one.
+Open [http://localhost:4000](http://localhost:4000). Type a room name, or press **Open** to get a random one, and share the room link. Without `PORT` the server listens on 443.
 
-### Writing TypeScript
+## How a call works
 
-Node strips the types at startup instead of compiling them, so only syntax that can be erased works: import types with `import type`, and avoid `enum`, `namespace` and parameter properties. `tsconfig.json` enforces this with `verbatimModuleSyntax` and `erasableSyntaxOnly`, so `npm run typecheck` flags anything Node can't run.
+1. The room page fetches `/config` for the PeerJS key and the STUN and TURN servers.
+2. It connects to the PeerJS server, which gives it a random peer id, and to Socket.IO.
+3. **Join Now** emits `join-room` with the room name and peer id. The server tells everyone already in the room with `user-connected`, and they call the new peer.
+4. Video and audio then flow directly between browsers. **End** or closing the tab sends `user-disconnected` to the room.
+
+While the camera is off, peers see a placeholder image. Click your own preview to show a photo instead.
+
+## Project layout
+
+| Path                        | What it is                                                 |
+| --------------------------- | ---------------------------------------------------------- |
+| `src/index.ts`              | The server: static files, `/config`, PeerJS and Socket.IO  |
+| `src/ice-servers.ts`        | Fetches STUN and TURN servers from Twilio, with a fallback |
+| `public/`                   | The web client, served as is                               |
+| `public/home.js`            | Home page: clock and room name form                        |
+| `public/room.js`            | Room page: camera, microphone, calls and controls          |
+| `types/client-globals.d.ts` | Types for the `Peer` and `io` globals the room page loads  |
 
 ## Configuration
 
-| Variable          | Default | Purpose                                                                               |
-| ----------------- | ------- | ------------------------------------------------------------------------------------- |
-| `PORT`            | `443`   | Port the HTTP server listens on                                                       |
-| `KEY`             | `pinto` | PeerJS key. Also sets the PeerJS path (`/<KEY>`) and the Socket.IO path (`/<KEY>.io`) |
-| `VERCEL_URL`      |         | Preview host of the client, added to the CORS allow list                              |
-| `HEROKU_APP_NAME` |         | Used for the URL printed at startup on Heroku review apps                             |
+| Variable             | Default | Purpose                                                          |
+| -------------------- | ------- | ---------------------------------------------------------------- |
+| `PORT`               | `443`   | Port the HTTP server listens on                                  |
+| `KEY`                | `pinto` | PeerJS key; the PeerJS API lives under `/<KEY>`                  |
+| `TWILIO_ACCOUNT_SID` |         | With `TWILIO_AUTH_TOKEN`, enables Twilio's STUN and TURN servers |
+| `TWILIO_AUTH_TOKEN`  |         | Twilio auth token                                                |
 
-Requests are accepted from `http://localhost:4000`, `https://pintopinto.org`, `https://meet.pintopinto.org` and `https://$VERCEL_URL`. Edit `allowedList` in `src/index.ts` to change that.
+Without Twilio credentials, browsers get a public STUN server only. That works for most home networks, but calls between people behind strict corporate or mobile networks need a TURN relay to connect.
 
 ## Endpoints
 
-| Path           | Description                                                                                                                                |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/<KEY>/id`    | New PeerJS client id                                                                                                                       |
-| `/<KEY>/peers` | Connected PeerJS ids (discovery is on)                                                                                                     |
-| `/<KEY>.io`    | Socket.IO. Clients emit `join-room` with a room id and peer id; the server broadcasts `user-connected` and `user-disconnected` to the room |
+| Path                          | Description                                                           |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `/`                           | Home page                                                             |
+| `/room/<name>`                | Room page                                                             |
+| `/config`                     | `{ key, iceServers }` for the client                                  |
+| `/<KEY>/id`                   | New PeerJS client id                                                  |
+| `/peerjs`                     | PeerJS WebSocket                                                      |
+| `/socket.io`                  | Socket.IO, with `join-room`, `user-connected` and `user-disconnected` |
+| `/vendor/peerjs.min.js`       | PeerJS browser client, served from `node_modules`                     |
+| `/socket.io/socket.io.min.js` | Socket.IO browser client, served by Socket.IO                         |
+
+## Writing TypeScript and JavaScript
+
+The server is TypeScript that Node runs by stripping the types at startup, so only syntax that can be erased works: import types with `import type`, and avoid `enum`, `namespace` and parameter properties. `tsconfig.json` enforces this with `verbatimModuleSyntax` and `erasableSyntaxOnly`.
+
+The client is plain JavaScript with types in JSDoc comments, checked by `tsconfig.client.json`. Start each file with `// @ts-check` and describe types in comments, for example `/** @param {string} peerId */`.
+
+`npm run typecheck` checks both.
 
 ## Scripts
 
@@ -52,7 +86,7 @@ Requests are accepted from `http://localhost:4000`, `https://pintopinto.org`, `h
 | ------------------- | -------------------------------------------------------- |
 | `npm run dev`       | Run with `node --watch`                                  |
 | `npm start`         | Run the server                                           |
-| `npm run typecheck` | Type check with `tsc` (no output files)                  |
+| `npm run typecheck` | Type check the server and the client (no output files)   |
 | `npm run lint`      | Lint with ESLint                                         |
 | `npm run format`    | Format files with Prettier                               |
 | `npm run prod`      | Run the Procfile locally with `heroku local` on port 443 |
@@ -60,7 +94,7 @@ Requests are accepted from `http://localhost:4000`, `https://pintopinto.org`, `h
 
 ## Deployment
 
-The app deploys to Heroku with the Node.js buildpack. There is no build step: the `web` process in `Procfile` runs `src/index.ts` directly. `app.json` holds the defaults for review apps.
+Any host that runs Node 22.18 or newer works, since the app is a single process with no build step. On Heroku, the Node.js buildpack installs dependencies and the `web` process in `Procfile` runs `src/index.ts`. `app.json` holds the defaults for review apps. Browsers only allow camera access on HTTPS or `localhost`, so serve it over HTTPS.
 
 ## License
 
