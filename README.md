@@ -10,7 +10,6 @@ Video calls in the browser. One small Node server does everything:
 ## Requirements
 
 - [Node.js](https://nodejs.org) `22.18` or newer in the 22 line (npm comes with it). Node runs the TypeScript source directly, so there is no build step
-- [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli), only needed to run the Procfile locally or to deploy
 
 ## Getting started
 
@@ -82,15 +81,13 @@ The client is plain JavaScript with types in JSDoc comments, checked by `tsconfi
 
 ## Scripts
 
-| Command             | Description                                              |
-| ------------------- | -------------------------------------------------------- |
-| `npm run dev`       | Run with `node --watch`                                  |
-| `npm start`         | Run the server                                           |
-| `npm run typecheck` | Type check the server and the client (no output files)   |
-| `npm run lint`      | Lint with ESLint                                         |
-| `npm run format`    | Format files with Prettier                               |
-| `npm run prod`      | Run the Procfile locally with `heroku local` on port 443 |
-| `npm run logs`      | Tail the Heroku app logs                                 |
+| Command             | Description                                            |
+| ------------------- | ------------------------------------------------------ |
+| `npm run dev`       | Run with `node --watch`                                |
+| `npm start`         | Run the server                                         |
+| `npm run typecheck` | Type check the server and the client (no output files) |
+| `npm run lint`      | Lint with ESLint                                       |
+| `npm run format`    | Format files with Prettier                             |
 
 ## Deployment
 
@@ -108,7 +105,7 @@ To add TURN relays later, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under
 
 ### Other hosts
 
-Any host that runs Node 22.18 or newer as a single long running process works. `Procfile` and `app.json` are there for Heroku.
+Any host that runs Node 22.18 or newer as a single long running process works.
 
 ## License
 

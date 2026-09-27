@@ -26,15 +26,9 @@ const verifySpecificty = (description: string): string => {
 > [ Description of behavior ]
 
 ### Versions:
-**Server**
 ```
-dependency: ^1.0.0
-stack:      Heroku-20
-Node.js:    15.x
-```
-**Client**
-```
-dependency:  ^1.0.0
-stack:       Next.js 10.0.6
-LTS Node.js: 14.x
+commit:  [ Git commit of pinto ]
+host:    [ Render, localhost, ... ]
+Node.js: 22.x
+browser: [ Name and version ]
 ```
