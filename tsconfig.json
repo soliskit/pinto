@@ -1,14 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ESNEXT",
-    "module": "commonjs",
+    "target": "ES2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
     "sourceMap": true,
     "outDir": "./build",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
-    "moduleResolution": "node",
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true
-  }
+  },
+  "include": ["src"]
 }
