@@ -1,11 +1,18 @@
 {
   "success_url": "/",
   "env": {
-    "VERCEL_URL": "pintopinto-git-XXX.vercel.app",
     "KEY": "pinto",
     "NPM_CONFIG_LOGLEVEL": "info",
     "NODE_MODULES_CACHE": "false",
-    "NODE_VERBOSE": "true"
+    "NODE_VERBOSE": "true",
+    "TWILIO_ACCOUNT_SID": {
+      "description": "Twilio account SID, for TURN servers (optional)",
+      "required": false
+    },
+    "TWILIO_AUTH_TOKEN": {
+      "description": "Twilio auth token, for TURN servers (optional)",
+      "required": false
+    }
   },
   "formation": {
     "web": {

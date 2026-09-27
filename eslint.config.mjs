@@ -17,5 +17,11 @@ export default tseslint.config(
     linterOptions: {
       reportUnusedDisableDirectives: true
     }
+  },
+  {
+    files: ['public/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.browser, Peer: 'readonly', io: 'readonly' }
+    }
   }
 )
