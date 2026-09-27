@@ -1,45 +1,25 @@
 {
   "name": "pinto",
   "version": "0.1.0",
+  "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": "^22.18.0"
   },
   "website": "https://pintopinto.herokuapp.com/",
   "scripts": {
-    "build": "tsc",
-    "start": "node ./build/index.js",
-    "dev": "npm run build && npx nodemon",
-    "prod": "npx heroku local -p 443",
-    "logs": "npx heroku logs --tail --source app",
-    "pretty-quick": "pretty-quick",
+    "start": "node src/index.ts",
+    "dev": "node --watch src/index.ts",
+    "typecheck": "tsc",
     "lint": "eslint .",
-    "prepare": "husky"
+    "format": "prettier --write .",
+    "prod": "npx heroku local -p 443",
+    "logs": "npx heroku logs --tail --source app"
   },
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "peer": "^1.0.2",
     "socket.io": "^4.8.4"
-  },
-  "husky": {
-    "hooks": {
-      "pre-commit": "npx lint-staged && npx pretty-quick --staged",
-      "pre-push": "npx tsc && npm run lint"
-    }
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix"
-    ]
-  },
-  "nodemonConfig": {
-    "verbose": true,
-    "watch": [
-      ".env",
-      "src"
-    ],
-    "ext": "ts",
-    "exec": "ts-node ./src/index.ts --pretty"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -51,12 +31,7 @@
     "eslint-plugin-prettier": "^5.5.6",
     "eslint-plugin-promise": "^7.3.0",
     "globals": "^17.12.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^17.6.0",
-    "nodemon": "^3.1.14",
     "prettier": "^3.9.9",
-    "pretty-quick": "^4.2.2",
-    "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1"
   },

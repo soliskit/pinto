@@ -1,8 +1,12 @@
 import http from 'http'
-import cors, { CorsOptions } from 'cors'
-import express, { Application } from 'express'
-import { ExpressPeerServer, IClient } from 'peer'
-import { Server as SocketServer, ServerOptions, Socket } from 'socket.io'
+import cors, { type CorsOptions } from 'cors'
+import express, { type Application } from 'express'
+import { ExpressPeerServer, type IClient } from 'peer'
+import {
+  Server as SocketServer,
+  type ServerOptions,
+  type Socket
+} from 'socket.io'
 
 const PORT = Number(process.env.PORT) || 443
 const KEY = process.env.KEY || 'pinto'
@@ -62,7 +66,6 @@ const io = new SocketServer(server, socketOptions)
 
 app.use(cors(corsOptions))
 app.use(peerServer)
-io.listen(server)
 
 io.on('connection', (socket: Socket) => {
   console.dir('client namespace connect')
