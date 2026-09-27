@@ -108,6 +108,8 @@ npx playwright install chromium
 
 To use a Chromium that is already installed instead, set `CHROMIUM_PATH` to its executable.
 
+GitHub Actions runs the type check, lint and tests on every push, and on pull requests from forks, with `.github/workflows/test.yml`.
+
 ## Scripts
 
 | Command             | Description                                            |
