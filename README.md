@@ -94,7 +94,21 @@ The client is plain JavaScript with types in JSDoc comments, checked by `tsconfi
 
 ## Deployment
 
-Any host that runs Node 22.18 or newer works, since the app is a single process with no build step. On Heroku, the Node.js buildpack installs dependencies and the `web` process in `Procfile` runs `src/index.ts`. `app.json` holds the defaults for review apps. Browsers only allow camera access on HTTPS or `localhost`, so serve it over HTTPS.
+### Render (free)
+
+`render.yaml` describes the app as a free Render web service.
+
+1. Sign in at [render.com](https://render.com) with GitHub.
+2. Choose **New**, then **Blueprint**, and pick this repo. Render reads `render.yaml`, installs production dependencies and runs `npm start`.
+3. Open the `onrender.com` address Render gives you. It is HTTPS, which browsers require for camera access.
+
+Every push to `main` deploys again. Free services sleep after 15 minutes without traffic, and the next visit takes about a minute to wake them. An active call keeps the service awake.
+
+To add TURN relays later, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under the service's **Environment** tab. Twilio bills for TURN usage.
+
+### Other hosts
+
+Any host that runs Node 22.18 or newer as a single long running process works. `Procfile` and `app.json` are there for Heroku.
 
 ## License
 
