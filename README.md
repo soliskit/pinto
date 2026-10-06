@@ -49,6 +49,10 @@ While the camera is off, peers see a placeholder image. Click your own preview t
 | `public/ordinal.js`         | 1st, 2nd, 3rd for the room page's count of people          |
 | `types/client-globals.d.ts` | Types for the `Peer` and `io` globals the room page loads  |
 | `test/`                     | Tests, described under [Testing](#testing)                 |
+| `tsconfig.json`             | Type check settings for the server and the tests           |
+| `tsconfig.client.json`      | Type check settings for the client in `public/`            |
+| `eslint.config.mjs`         | ESLint settings, run by `npm run lint`                     |
+| `render.yaml`               | Render Blueprint, see [Deployment](#deployment)            |
 
 ## Configuration
 
