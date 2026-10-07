@@ -1,23 +1,25 @@
 # Audit readiness
 
-What to hold still before an audit of Pinto, and what the audit should record about calls, connections and camera shutdown. This page sets no audit scope, phases or dates. Code facts come from reading the repo on October 7, 2026. They are untested.
+This is a proposed checklist for a future audit of Pinto, kept as a record. It is not an active audit or a freeze rule. Nothing here sets audit scope, phases or dates, and nothing here changes how the repo is used today. An authorized audit would decide which items apply. Code facts come from reading the repo on October 7, 2026. They have not been tested.
 
-## What to freeze
+## What an audit would hold still and record
 
-1. **Code version.** Record the commit ID of `main` and the date. Merge no feature work until the audit ends. Fixes the audit finds go in separately.
-2. **Live site.** Record which deploy is live on Render. The Blueprint uses the free plan, which sleeps after 15 idle minutes and can take about a minute to wake ([Render free plan](https://render.com/docs/free)). Change no settings.
-3. **Packages.** `package-lock.json` pins versions. Make no dependency updates during the audit.
-4. **Settings.** List the names of the environment variables in use (`PORT`, `KEY`, and whether the Twilio variables are set), never their values. Rotate nothing.
-5. **Test baseline.** Run the type check, lint and tests once, as CI does, and save the result.
-6. **Test devices.** Fix a list of devices and browsers with exact versions. Keep it the same throughout.
-7. **Repo name.** `package.json` points `repository` at `pinto-pinto/pinto`, but the repo is `soliskit/pinto`. Pick one.
+1. **Code version.** The commit ID of `main` and the date, and whether feature work was merged during the audit.
+2. **Live site.** Which deploy is live on Render. The Blueprint uses the free plan, which sleeps after 15 idle minutes and can take about a minute to wake ([Render free plan](https://render.com/docs/free)).
+3. **Packages.** The versions pinned by `package-lock.json`, and whether any updates landed during the audit.
+4. **Settings.** The names of the environment variables in use (`PORT`, `KEY`, and whether the Twilio variables are set), never their values.
+5. **Test baseline.** The result of the type check, lint and tests, run the way CI runs them.
+6. **Test devices.** The devices and browsers used, with exact versions, kept the same throughout.
+7. **Repo name.** The source repo is `soliskit/pinto`. `package.json` still has `pinto-pinto/pinto` in its `repository` field. That is stale metadata to reconcile later, not a change this page makes.
 
-## What the audit should record
+## What an audit would record about calls, connections and camera shutdown
 
 For each test: date and time, commit ID, device and browser versions, network, direct or relayed, result, pass or fail, and a screenshot or recording.
 
-- **Calls.** `join-room` starts a call, the server sends `user-connected`, and the others call the new peer. Record the order, and what happens when two people join at once. The server accepts any non-empty room name and id, so record what a stranger who guesses a room name can do. The server logs room names and ids.
-- **Connections.** Record direct or relayed for each call, and whether Twilio TURN is set. Test across separate networks. Cut the network mid-call and time the recovery (the client retries after 5 seconds). Time the first join after the free host has slept.
-- **Camera shutdown.** From reading `public/room.js` (untested): the page requests camera and microphone on load, before anyone joins. Camera off swaps the sent video to a photo with `replaceTrack` and finds no `.stop()`, so the camera may stay on. Mute sets `track.enabled = false`, so the microphone stays captured. End does `socket.disconnect().connect()` and stops no track. The camera light may stay on after End or closing the page.
+- **Calls.** From the code: `join-room` starts a call, the server sends `user-connected`, and the others call the new peer. Record the order, and what happens when two people join at once. The server accepts any non-empty room name and id, so record what a stranger who guesses a room name can do. The server logs room names and ids.
+- **Connections.** Record direct or relayed for each call, and whether Twilio TURN is set. Test across separate networks. Cut the network mid-call and time the recovery. The code has one specific attempt: when the PeerJS connection reports `disconnected`, the page calls `peer.reconnect()` after 5 seconds. Whether calls recover is untested. Time the first join after the free host has slept.
+- **Camera and microphone shutdown.** From reading `public/room.js` (untested): the page requests camera and microphone on load, before anyone joins. Camera off swaps the sent video to a photo with `replaceTrack`, and no `.stop()` call was found, so the camera may stay on. Mute sets `track.enabled = false`, so the microphone may stay captured. End calls `socket.disconnect().connect()` and stops no track that was found. The audit should check, after Camera off, Mute and End, whether the indicator is still on, what the other person sees and hears, and the seconds until it goes off.
 
-For each moment, record whether the indicator is on, what the other person sees and hears, and the seconds until it goes off: after Camera off, Mute, End, closing the tab, refresh, locking the phone, permission refused at the start, and permission revoked mid-call.
+## Untested acceptance cases
+
+These have no code finding either way and are listed only so an audit covers them: closing the tab, navigating away, refreshing, locking the phone and coming back, refusing camera permission at the start, and taking permission away mid-call. For each, record the same three things.
