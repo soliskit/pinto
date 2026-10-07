@@ -56,18 +56,28 @@ The rules below are the full reusable protocol. Thresholds are judgment rules, n
 - Reliability must not get worse. Record failures, crashes, abnormal exits, timeouts, memory pressure and cleanup faults, and explain each before accepting. An explanation is not a waiver. Do not delete bad runs or count retries as acceptance.
 - If no safe setup clears the rule, keep the current one. That is a valid result.
 - The final candidate gets seven more paired runs against the control as a reliability check. Keep every result. Clean runs do not prove there is no flakiness.
-- If faster feedback, total resource use and deployment time conflict, that goes to David and is not silently traded.
+- If faster feedback, total resource use and deployment time conflict, that goes to the owner and is not silently traded.
 
 ### What must not change
 
-Test removal, weaker assertions, hidden skips, longer timeouts that hide faults, retries that turn failure into success, narrower test discovery, repository or production settings, and deployment shortcuts are out of bounds. Required check names, branch protection, workflow permissions, triggers and the effective timeout and failure rules stay as they are unless David approves a change. Merge, release, deployment, accounts and spending are separate approvals.
+Test removal, weaker assertions, hidden skips, longer timeouts that hide faults, retries that turn failure into success, narrower test discovery, repository or production settings, and deployment shortcuts are out of bounds. Required check names, branch protection, workflow permissions, triggers and the effective timeout and failure rules stay as they are unless the owner approves a change. Merge, release, deployment, accounts and spending are separate approvals.
 
 ### Gate behavior and negative controls
 
 - Before counting timings, write the expected manifest for each event type: every required component succeeds exactly, with complete evidence from the current run. Required component and check names, skip and discovery meaning, and assertion outcomes are part of that manifest.
 - Tell a deliberate skip (the same-repository pull request rule) apart from an unexpected one. The collector must not accept a skipped result when a dependency fails.
 - Check these negative cases: type check failure, lint failure, unit test failure, server or integration failure, Chromium launch or test failure, test timeout, a required job that failed, was cancelled or was skipped unexpectedly, a missing or stale report, a duplicate report or test identity, incomplete discovery, and a zero-test false success. If caching is tried, check a cache mismatch. If concurrency changes, check cleanup, port and resource faults.
-- Cancellation and deadline: a cancelled workflow must never count as a complete passing result or allow a deploy. If the platform stops the collector from running, check that the safety property still holds instead of demanding a red collector.
+- Deadline: the current 10-minute limit is per job. When splitting a job, keep the original effective deadline for the whole gate. Do not give each new job a fresh ten minutes, and do not lengthen the total budget or weaken detection that way. Test the deadline failure path: a run that hits the limit must fail the gate and never count as passing.
+- Cancellation: a cancelled workflow must never count as a complete passing result or allow a deploy. If the platform stops the collector from running, check that the safety property still holds instead of demanding a red collector.
+
+### Benchmark route (only if a reopened effort is authorized)
+
+- Use dedicated benchmark branches with push triggers. Check out the target and the harness separately.
+- Benchmark branches are never merged.
+- The normal Test workflow also runs on every branch push. Each harness push must account for that extra run, its resource load and any deployment consequences. Check the branch push against deployment hooks before first use.
+- The workflow's cancel-in-progress rule can cancel a sample when the same branch is pushed again. Use a distinct branch for each queued sample, or let a sample finish before the next push to the same branch. Never count a cancelled sample as evidence.
+- No benchmark-only workflow on `main`. If isolation cannot be shown, do not work around it by changing production settings or switching to a default-branch workflow without new approval.
+- Delete the temporary benchmark branches after the authorized work is complete.
 
 ### Runner identity and cost
 
@@ -88,7 +98,7 @@ Adding browser or device coverage, or new coverage rules, is a separate reliabil
 
 ### Finish
 
-Done means: a fixed-tree comparison, unchanged test, trigger and check meaning, passing negative controls, fresh complete reports, reliability evidence, cost confirmation and an independent review of the exact patch. Compare test, assertion and skip lists, not just a smaller green count. Report to David: what got faster and by how much, all latency and resource numbers, what stayed protected, rejected candidates, remaining doubt, the exact commit and a rollback plan. If there is no safe gain, say so and leave CI unchanged. After a separately approved merge, check the real post-merge result and any deployment effect.
+Done means: a fixed-tree comparison, unchanged test, trigger and check meaning, passing negative controls, fresh complete reports, reliability evidence, cost confirmation and an independent review of the exact patch. Compare test, assertion and skip lists, not just a smaller green count. Report to the owner: what got faster and by how much, all latency and resource numbers, what stayed protected, rejected candidates, remaining doubt, the exact commit and a rollback plan. If there is no safe gain, say so and leave CI unchanged. After a separately approved merge, check the real post-merge result and any deployment effect.
 
 ## Short summary (not the operating rules)
 
