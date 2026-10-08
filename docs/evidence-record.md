@@ -4,7 +4,7 @@
 
 ## 1. Requirements and checks
 
-The numbers match the Roadmap. The rows below remain Pending until their own evidence is recorded. Existing-app audit results do not close planned service checks.
+The rows below identify planned service checks and remain Pending until their own evidence is recorded. Existing-app audit results do not close planned service checks.
 
 - **P1 Audit first** Check: The repo has no service-dependent change before the audit report exists, and the audit results receive an independent review before any service implementation starts. Fail: Any such change earlier, or implementation starting before that review. Result: Pending.
 - **P2 Zero cost** Check: A list of enabled plans and features at each milestone, and a simulation of each free limit. Fail: Any billable item, or a limit that bills. Result: Pending.
@@ -33,7 +33,7 @@ The numbers match the Roadmap. The rows below remain Pending until their own evi
 
 ## 3. Existing app audit
 
-Not started. The scope and date are not set. The audit records the commit, the live deploy, pinned packages, setting names (never values), a test baseline, a device and browser list, and the camera teardown cases.
+The written existing-app audit is in docs/audit-report.md. It records its scope, source snapshot, local results and limits. Owner acceptance is pending; real-device behavior remains unproven. The audit records the commit, the live deploy, pinned packages, setting names (never values), a test baseline, a device and browser list, and the camera teardown cases.
 
 
 ## 4. Reviews
