@@ -1,6 +1,6 @@
 # Pinto Decision Log
 
-**Status.** Entries record the decision, its effect and its status. The Playbook (named Blueprint when chosen, renamed Playbook on 7 October) is three files for Pinto: Charter, Build Plan and Specification. This log and the Evidence Record live with the code.
+**Status.** Entries record the decision, its effect and its status. The current Pinto Playbook has three tabs: Charter, Roadmap and How It Works. This log and the Evidence Record live with the code.
 
 ## Settled by the owner
 
@@ -32,4 +32,4 @@
 
 - **Allowlist contents** Not set.
 - **Daily mail-quota abuse rule** Not set.
-- **Audit scope and date** Not set.
+- **Audit acceptance and next scope** Owner acceptance and the scope, order and timing of fixes and real-device checks remain pending.
