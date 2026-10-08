@@ -35,14 +35,14 @@ Every numbered finding below is labeled **Tested**, **Code reading only** or **N
 
 ### 2. Start Video and Stop Video change what the other side receives. Tested in one case
 
-- **Code reading only**: the outgoing stream is created with the photo track, so every call starts with a video sender. `sendVideo` replaces that sender's track and does not check the result of `replaceTrack`.
+- **Code reading only**: the outgoing stream starts with the photo video track, and `sendVideo` replaces the video sender's track and does not check the result of `replaceTrack`. **Tested**: in the normal two-page call below, a video sender existed before Start Video. The unsolicited call in finding 3 showed zero video tracks at the moment of its stream event, so this report does not claim that every call has a video sender.
 - **Tested** (two test pages, fake camera): after joining, the other page's tile was 400 by 300 (the photo). After Start Video the sending side's video sender carried the fake camera track and the other page's tile was 640 by 480. After Stop Video the sender carried the photo track again and the tile returned to 400 by 300. This shows the delivered picture size changing in step with the controls. It does not check picture content, and it is one run on one machine.
 - **Not established**: what happens if `replaceTrack` fails. In that case the old track could remain attached to the sender, so an outgoing camera feed continuing after Stop Video is a possible failure that was not tested.
 
 ### 3. Incoming calls are answered with no check of who is calling
 
 - **Code reading only**: `peer.on('call')` in `public/room.js` answers with the outgoing stream whenever the page is in the joined state. It does not check that the caller is in the same room or is an expected participant.
-- **Tested**: a caller page that never joined any room placed a call to a joined person's id and was answered. At the moment the caller's stream event fired, the stream had one audio track and no video track. The answering page's outgoing stream does carry a video track (finding 2), so why the count was zero at that moment was not investigated. The id came from a separate test client in the room (finding 4).
+- **Tested**: a caller page that never joined any room placed a call to a joined person's id and was answered. At the moment the caller's stream event fired, the stream had one audio track and no video track. The answering page's outgoing stream starts with a video track (finding 2), so why the count was zero at that moment was not investigated. The id came from a separate test client in the room (finding 4).
 - A received audio track is not measured audible audio. This report makes no claim that anyone heard anything. Hearing would need a joined, unmuted, captured person and measured delivery, which was not tested.
 
 ### 4. Room joining accepts any non-empty room name and id, and verifies neither
@@ -62,7 +62,7 @@ Every numbered finding below is labeled **Tested**, **Code reading only** or **N
 | Learning a peer id | Clients already in a room receive later joiners' ids. (Tested) |
 | Calling a peer id | A caller that never joined was answered. (Tested) |
 | Ending someone else's call | A client claiming another person's id and disconnecting ended that call on both sides. (Tested) |
-| Hearing or seeing anything | Not established. |
+| Audible audio or picture content | Not established. |
 
 The roadmap records open links as a product choice. The exposure in the table is a security fact. Whether to accept it is the owner's policy decision, and neither depends on the other.
 
