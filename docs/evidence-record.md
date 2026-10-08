@@ -1,10 +1,10 @@
 # Pinto Evidence Record
 
-**Status.** Empty by design until work starts. The Playbook consists of Charter, Build Plan and Specification. This Evidence Record is a separate supporting repo record.
+**Status.** This record tracks the planned service checks. The current Playbook has Charter, Roadmap and How It Works tabs. The existing-app audit is recorded separately in docs/audit-report.md; these service-check rows are not its results.
 
 ## 1. Requirements and checks
 
-The numbers match the Build Plan. Nothing has been tested, so every result is Pending.
+The rows below identify planned service checks and remain Pending until their own evidence is recorded. Existing-app audit results do not close planned service checks.
 
 - **P1 Audit first** Check: The repo has no service-dependent change before the audit report exists, and the audit results receive an independent review before any service implementation starts. Fail: Any such change earlier, or implementation starting before that review. Result: Pending.
 - **P2 Zero cost** Check: A list of enabled plans and features at each milestone, and a simulation of each free limit. Fail: Any billable item, or a limit that bills. Result: Pending.
@@ -33,13 +33,12 @@ The numbers match the Build Plan. Nothing has been tested, so every result is Pe
 
 ## 3. Existing app audit
 
-Not started. The scope and date are not set. The audit records the commit, the live deploy, pinned packages, setting names (never values), a test baseline, a device and browser list, and the camera teardown cases.
+The written existing-app audit is in docs/audit-report.md. It records its scope, source snapshot, local results and limits. Owner acceptance is pending; real-device behavior remains unproven. The audit records the commit, the live deploy, pinned packages, setting names (never values), a test baseline, a device and browser list, and the camera teardown cases.
 
 
 ## 4. Reviews
 
-- **Build Plan** Not yet independently reviewed.
-- **Charter, Specification, Decision Log, this record** Not yet independently reviewed. Verdicts, when they come, are as relayed by the coordinator.
+Playbook parts have received review comments and revisions. This record does not establish a review verdict for its own exact current bytes. Audit-report review does not certify these planned service checks.
 
 ## 5. Later phases
 
