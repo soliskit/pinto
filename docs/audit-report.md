@@ -2,7 +2,7 @@
 
 This is the written report for Phase A of the Pinto audit: an audit of the app as it exists today. It follows the held-still list and limits in [audit-readiness.md](audit-readiness.md). It is read-only. It fixes nothing, changes no code, tests, workflows or settings, and costs nothing. Fixes and new features wait until this report is accepted.
 
-Every finding and every record below is labeled **Tested**, **Code reading only** or **Not established**. "Tested" means a check run on a local copy of this commit, in headless Chromium with a fake camera and microphone on Linux. It shows what the page's code does with the camera and microphone tracks. It does not show what a phone or browser indicator light does, and it does not measure whether sound is audible. All physical-indicator checks and all real-device checks are **Not established**.
+Every numbered finding below is labeled **Tested**, **Code reading only** or **Not established**. The "What was recorded" table lists plain facts read from the repository, the live site or a run. They are records, not findings. "Tested" means a check run on a local copy of this commit, in one of two ways: (a) the page in headless Chromium with a fake camera and microphone on Linux, which shows what the page's code does with the camera and microphone tracks; or (b) the server alone, driven by plain Socket.IO test clients, which shows what the server does with room and id messages and nothing about the page. It does not show what a phone or browser indicator light does, and it does not measure whether sound is audible. All physical-indicator checks and all real-device checks are **Not established**.
 
 ## What was recorded
 
