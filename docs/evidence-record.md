@@ -10,14 +10,14 @@ The rows below identify planned service checks and remain Pending until their ow
 - **P2 Zero cost** Check: A list of enabled plans and features at each milestone, and a simulation of each free limit. Fail: Any billable item, or a limit that bills. Result: Pending.
 - **P3 Privileged pages off Pages** Check: A route inventory of the public page host. Fail: Any sign-in, code entry, host console or invite route there. Result: Pending.
 - **P4 Headers** Check: Real requests to each response type, saved, plus a CI check. Fail: Any generated response lacks the required headers. Result: Pending.
-- **P5 Link authority** Check: Tests for each race listed in the Specification, section 3. Fail: Any old or late token works. Result: Pending.
+- **P5 Link authority** Check: Tests for each race listed in How It Works, B5 Link authority and fencing. Fail: Any old or late token works. Result: Pending.
 - **P6 End revokes every token** Check: Tests including never-joined identities and provider failure. Fail: A revoked token works. Provider removal limits are unproven. Result: Pending.
 - **P7 Recovery fails closed** Check: A rehearsed restore. Fail: A disabled link, ended generation or revoked session works afterwards. Result: Pending.
 - **P8 Host sign-in** Check: Tests of the allowlist, limits and budget. Fail: A stranger receives a code or uses up the quota. Result: Pending.
 - **P9 Diagnostics** Check: Field and size tests and a read-access test. Fail: A forbidden field is stored, or someone other than the authorized owner can read reports. Result: Pending.
 - **P10 Quota messages** Check: A simulated cap for each limit. Fail: A cap bills or fails without a message. Result: Pending.
 - **P11 Release rules** Check: CI scan of the public artifact and history for secrets, keys, source maps, private URLs and third-party scripts. Fail: Any hit. Result: Pending.
-- **P12 Camera and microphone teardown** Check: Measured on real devices for each case in the Specification, section 9. Fail: An indicator stays on, or the time to off is not recorded. Result: Pending.
+- **P12 Camera and microphone teardown** Check: Measured on real devices for each control and case in How It Works, B12 Camera and microphone teardown. Fail: An indicator stays on, or the time to off is not recorded. Result: Pending.
 - **P13 Device matrix** Check: A recorded table of devices, browsers and versions, including separate networks and relay-forced runs. Fail: A missing cell. Simulated Safari does not count. Result: Pending.
 - **P14 Clean public repo** Check: Scans plus a manual read of the first pull request. Fail: Any secret or personal detail. Result: Pending.
 
