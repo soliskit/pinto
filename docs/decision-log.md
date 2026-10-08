@@ -32,4 +32,4 @@
 
 - **Allowlist contents** Not set.
 - **Daily mail-quota abuse rule** Not set.
-- **Audit scope and date** Not set.
+- **Audit acceptance and next scope** Owner acceptance and the scope, order and timing of fixes and real-device checks remain pending.
