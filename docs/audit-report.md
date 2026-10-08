@@ -35,8 +35,8 @@ Every numbered finding below is labeled **Tested**, **Code reading only** or **N
 
 ### 2. Start Video and Stop Video change what the other side receives. Tested in one case
 
-- **Code reading only**: the outgoing stream starts with the photo video track, and `sendVideo` replaces the video sender's track and does not check the result of `replaceTrack`. **Tested**: in the normal two-page call below, a video sender existed before Start Video. The unsolicited call in finding 3 showed zero video tracks at the moment of its stream event, so this report does not claim that every call has a video sender.
-- **Tested** (two test pages, fake camera): after joining, the other page's tile was 400 by 300 (the photo). After Start Video the sending side's video sender carried the fake camera track and the other page's tile was 640 by 480. After Stop Video the sender carried the photo track again and the tile returned to 400 by 300. This shows the delivered picture size changing in step with the controls. It does not check picture content, and it is one run on one machine.
+- **Code reading only**: the outgoing stream starts with the photo video track, and `sendVideo` attempts to replace the video sender's track and does not check the result of `replaceTrack`. If a device had no camera there would be no video sender to replace; that case was not tested. **Tested**: in the normal two-page call below, a video sender existed before Start Video. The unsolicited call in finding 3 showed zero video tracks at the moment of its stream event, so this report does not claim that every call has a video sender.
+- **Tested** (two test pages, fake camera): after joining, the other page's tile was 400 by 300 (decoded video size, read as `videoWidth` and `videoHeight`, not the size shown on screen) (the photo). After Start Video the sending side's video sender carried the fake camera track and the other page's tile was 640 by 480. After Stop Video the sender carried the photo track again and the tile returned to 400 by 300. This shows the delivered picture size changing in step with the controls. It does not check picture content, and it is one run on one machine.
 - **Not established**: what happens if `replaceTrack` fails. In that case the old track could remain attached to the sender, so an outgoing camera feed continuing after Stop Video is a possible failure that was not tested.
 
 ### 3. Incoming calls are answered with no check of who is calling
@@ -49,9 +49,10 @@ Every numbered finding below is labeled **Tested**, **Code reading only** or **N
 
 - **Code reading only**: the `join-room` handler in `src/index.ts` accepts any non-empty string as a room name and any non-empty string as an id. It does not check that the id belongs to the sender or matches a real PeerJS identity, and it shows no limit on how often a socket may join or how long the strings are. It sends the supplied id to the clients already in that room as `user-connected`; it does not send the existing list to the newcomer. On `user-connected` the page places a call to the supplied id, and on `user-disconnected` it removes the call with the supplied id (`public/room.js`).
 - **Tested** (server only): a client already in a room received the id of a later joiner. A client that claimed the id `not-my-peer-id` caused the room's other client to receive that id unchanged.
-- **Tested** (pages plus a plain test client): a test client in a room learned the ids of two people who then joined and connected. The client then claimed one person's id and disconnected. Both people's pages showed zero remote tiles afterward, so one false leave notice ended the call on both sides.
+- **Tested** (pages plus a plain test client, one step at a time): a test client in a room learned the ids of two people who then joined and connected (one remote tile each). The client then sent one false `join-room` using one person's id. One page then showed a second remote tile, because the page placed a second call to that id; the other still showed one. The client then disconnected, sending one false leave notice. Both pages then showed zero remote tiles and all their connection objects were `closed`. An earlier version of this check did both steps together and so did not show that the leave notice alone does this; this one does. One run, after fixed waits.
 - **Tested**: the PeerJS peer list address `/pinto/peers` and `/peerjs/peers` answered 401. This covers those two requests only. It does not show that no other way to learn ids exists, and the room notice above is such a way.
-- **Not established**: what the page does when it is told to call an id that is not a real peer.
+- **Tested** (page plus a plain test client): a joined page told to call an id that is not a real peer showed no error and no tile, and its button stayed "End". One run.
+- **Code reading only**: `GET /config` returns the PeerJS key and ICE server list to any requester. This is a code fact; whether it matters is the owner's decision.
 
 ### 5. Who can do what, kept separate (summary of evidence from other findings)
 
@@ -60,7 +61,7 @@ Every numbered finding below is labeled **Tested**, **Code reading only** or **N
 | Knowing a room name | Anyone can try any name. `src/index.ts`, read in full, has no sign-in or other check besides the static files and the PeerJS server. (Code reading only) |
 | Entering the room's signaling | `join-room` has no check beyond non-empty text. (Code reading only; tested for the server) |
 | Learning a peer id | Clients already in a room receive later joiners' ids. (Tested) |
-| Calling a peer id | A caller that never joined was answered. (Tested) |
+| Calling a peer id | A caller that never joined was answered. (Tested) Separately, a client that had not joined as a person, using its own peer id announced through a false join notice, was called by two joined pages and answered; at the stream event each of 4 calls showed one audio and one video track. This does not show audible audio or picture content. (Tested, one run) |
 | Ending someone else's call | A client claiming another person's id and disconnecting ended that call on both sides. (Tested) |
 | Audible audio or picture content | Not established. |
 
@@ -87,11 +88,13 @@ The roadmap records open links as a product choice. The exposure in the table is
 - After End on one side, the other side showed zero tiles when checked 1.5 seconds later. Rejoining showed one tile on each side.
 - After a refresh, the other side showed zero tiles when checked 1.5 seconds later. After closing a tab, the other side showed zero tiles when checked 2 seconds later. After the refresh the page showed "Choose Join Now", and rejoining showed one tile on each side.
 - These are checks after fixed waits, not timings, on one machine.
+- **Code reading only**: a call's tile is added when its stream arrives, without checking the call is still the current one for that person, so a stale tile after a replaced or closed call is possible. Not established in practice. The call's `error` handler only logs to the console; cleanup runs on the call's `close` event. Whether PeerJS fires `close` after an error was not tested.
 
 ### 9. Camera and microphone permission refusal. Tested in part
 
 - **Tested**: the check replaced `getUserMedia` with an injected rejection of the combined camera-and-microphone request. It was not a real browser permission decision. The page then showed "Camera and microphone are unavailable: Permission denied", and the Join Now button was enabled.
-- **Not established**: that someone can then join, deliver a photo, or hold a call. Join Now was not clicked.
+- **Code reading only**: the page asks for camera and microphone in one request. If it fails, the page still enables Join Now (it marks capture finished either way), so someone can join with an empty outgoing stream. There is no fallback to camera only or microphone only. While capture is pending, Join Now stays disabled (**Tested**, with capture delayed 4 seconds) and a call arriving before joining is closed (code reading only).
+- **Not established**: that someone can then deliver a photo or hold a call. Join Now was not clicked.
 - **Not established**: a real permission prompt, a camera-only refusal, a microphone-only refusal, and a missing individual device.
 
 ### 10. Recovery after a network cut. Not established
@@ -109,6 +112,7 @@ The roadmap records open links as a product choice. The exposure in the table is
 - Behavior in Safari, Firefox, and on phones.
 - Whether the deployed server code matches this commit.
 - Server memory, speed and stability under repeated joins.
+- Stale tiles after a replaced call, and PeerJS behavior after a call error.
 
 ### 12. Metadata. Code reading only
 
