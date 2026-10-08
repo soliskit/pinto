@@ -19,18 +19,17 @@
 
 ## Also settled by the owner
 
-- **P13 Email codes now, passkeys deferred** Effect: host sign-in uses emailed codes; passkeys are deferred. The sign-in provider decision was later reopened. Status: Settled for code sign-in; provider Open.
-- **P14 Diagnostics reports** Effect: the app shows exactly what it would send and sends only when the user taps Send; error information only; only the owner can read reports; reports are kept 7 days, with a deleted report lingering up to about 14 days. Status: Settled as the diagnostics direction; the retention redesign driven by platform limits is Open (decision 5).
+- **P13 Email codes now, passkeys deferred** Effect: host sign-in uses emailed codes; passkeys are deferred. The sign-in service and sender are set by P17. Status: Settled.
+- **P14 Diagnostics reports** Effect: the app shows exactly what it would send and sends only when the user taps Send; error information only; only the owner can read reports; reports are kept 30 days and then deleted; deleted data can remain in backups for up to 30 more days (P19). Status: Settled.
 
-## Proposals that are not decisions
-
-- **LiveKit Build, a Cloudflare control plane, a separate sign-in service** Recommendations in the plan, not decisions.
+- **P15 Hosting split** Effect: the public page stays on GitHub Pages; the app and its sign-in service run on Cloudflare. Status: Settled.
+- **P16 Domain layout** Effect: the public page, the app and the sign-in service each get their own soliskit.com subdomain, with host-only cookies so no cookie is shared across them. Status: Settled.
+- **P17 Sign-in service** Effect: Salutant, the sign-in service, runs on Cloudflare and sends codes through Resend from a soliskit.com mail subdomain. Only addresses on a private allowlist can sign in. Who is on the allowlist is not yet set. Status: Settled; allowlist contents Open.
+- **P18 LiveKit ceiling** Effect: the plan assumes a ceiling of 4,000 person-minutes per month on LiveKit; new call links stop at the ceiling. It is tested first; if the test fails, the fallback plan applies. Status: Settled.
+- **P19 Privacy wording and retention** Effect: the exact privacy wording lives once in the Specification. Sign-in codes expire in 10 minutes and are deleted after use. Bug reports are kept 30 days and then deleted, and only the owner reads them. No video or audio is recorded or stored. Deleted data can remain in backups for up to 30 more days. Status: Settled.
 
 ## Open decisions
 
-- **1 Hosting split** Open.
-- **2 Domain layout** Open.
-- **3 Connecting Pinto to the separate sign-in service, and the host allowlist** Open.
-- **4 LiveKit ceiling** Open.
-- **5 Retention redesign** Open.
+- **Allowlist contents** Not set.
+- **Daily mail-quota abuse rule** Not set.
 - **Audit scope and date** Not set.
