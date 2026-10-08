@@ -24,7 +24,7 @@
 
 - **P15 Hosting split** Effect: the public page stays on GitHub Pages; the app and its sign-in service run on Cloudflare. Status: Settled.
 - **P16 Domain layout** Effect: the public page, the app and the sign-in service each get their own soliskit.com subdomain, with host-only cookies so no cookie is shared across them. Status: Settled.
-- **P17 Sign-in service** Effect: the sign-in service runs on Cloudflare and sends codes through Resend. Only addresses on a private allowlist can sign in. Who is on the allowlist is not yet set. Status: Settled; allowlist contents Open.
+- **P17 Sign-in service** Effect: Salutant, the sign-in service, runs on Cloudflare and sends codes through Resend from a soliskit.com mail subdomain. Only addresses on a private allowlist can sign in. Who is on the allowlist is not yet set. Status: Settled; allowlist contents Open.
 - **P18 LiveKit ceiling** Effect: the plan assumes a ceiling of 4,000 person-minutes per month on LiveKit; new call links stop at the ceiling. It is tested first; if the test fails, the fallback plan applies. Status: Settled.
 - **P19 Privacy wording and retention** Effect: the exact privacy wording lives once in the Specification. Sign-in codes expire in 10 minutes and are deleted after use. Bug reports are kept 30 days and then deleted, and only the owner reads them. No video or audio is recorded or stored. Deleted data can remain in backups for up to 30 more days. Status: Settled.
 
