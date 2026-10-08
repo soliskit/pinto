@@ -10,7 +10,7 @@ This is a proposed checklist for a future audit of Pinto, kept as a record. It i
 4. **Settings.** The names of the environment variables in use (`PORT`, `KEY`, and whether the Twilio variables are set), never their values.
 5. **Test baseline.** The result of the type check, lint and tests, run the way CI runs them.
 6. **Test devices.** The devices and browsers used, with exact versions, kept the same throughout.
-7. **Repo name.** The source repo is `soliskit/pinto`. `package.json` still has `pinto-pinto/pinto` in its `repository` field. That is stale metadata to reconcile later, not a change this page makes.
+7. **Repo name.** The source repo is `soliskit/pinto`. `package.json` still has `pinto-pinto/pinto` in its `repository` field. That is stale metadata to reconcile later, not a change this page makes. The audit records the stale `repository` field and does not change it.
 
 ## What an audit would record about calls, connections and camera shutdown
 
@@ -23,3 +23,10 @@ For each test: date and time, commit ID, device and browser versions, network, d
 ## Untested acceptance cases
 
 These have no code finding either way and are listed only so an audit covers them: closing the tab, navigating away, refreshing, locking the phone and coming back, refusing camera permission at the start, and taking permission away mid-call. For each, record the same three things.
+
+## Audit limits
+
+- The audit is read-only on the repo and the live site.
+- It costs $0: no accounts are created and nothing is spent.
+- It changes no code, tests, workflows or settings.
+- Pinto fixes, including the microphone bug, wait until the audit is complete.
