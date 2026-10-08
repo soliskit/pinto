@@ -20,7 +20,7 @@ Every finding is labeled **Tested**, **Code reading only** or **Not established*
 - A script (`phase-a-headless-checks`) started the app's server from the clone on a free local port and opened pages in headless Chromium with a fake camera and microphone. It never touched the live site's rooms; the live site got plain page loads for the file comparison only.
 - Camera and microphone state was read from the page's own tracks (`readyState` and `enabled`) after each action.
 - Waits between actions were fixed sleeps (0.3 to 12 seconds). A result such as "the other side saw the leave" means it was observed after the stated wait, not that it was timed.
-- The results were saved as raw output from the run. The same run was made twice with the same results.
+- The results were saved as raw output from the run.
 
 ## Findings
 
