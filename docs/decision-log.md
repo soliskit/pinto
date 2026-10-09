@@ -28,8 +28,15 @@
 - **P18 LiveKit ceiling** Effect: the plan assumes a ceiling of 4,000 person-minutes per month on LiveKit; new call links stop at the ceiling. It is tested first; if the test fails, the fallback plan applies. Status: Settled.
 - **P19 Privacy wording and retention** Effect: the privacy wording is in How It Works, under Diagnostics (B9), and is shown only after B8 and B9 pass. Its code-expiry wording must match the Salutant contract (R1, R2 and R8); [10 minutes] remains proposed there, not an established production lifetime. Codes are single-use. Bug reports are kept 30 days and then deleted, and only the owner reads them. No video or audio is recorded or stored. Deleted data can remain in backups for up to 30 more days. Status: Settled.
 
+- **P20 Phase A audit accepted** Effect: the written Phase A audit report (`docs/audit-report.md`) and its stated limits are accepted as the basis for choosing fixes. Acceptance covers the findings and their limits only; it authorizes no app changes, no service features and no live-site testing. Status: Settled, October 9, 2026.
+- **P21 Privacy and call-access fixes before real-device checks** Effect: the fix plan is approved: Stop Video, Mute and End each stop their camera or microphone capture; capture starts only when joining; callers who are not in the room are blocked; and pretending to be another person can no longer end a call. This approves the plan, not code changes; implementation needs its own authorization. Reconnection and room-lifecycle fixes (audit findings 6 and 7) remain a later decision. Status: Settled, October 9, 2026.
+- **P22 Real-device test plan** Effect: real-device checks wait until the approved fixes are built and pass local checks. They then run on the owner's chosen iPhone and iPad (exact models kept in the private record), in Safari, with a throwaway call, checking camera and microphone shutoff, sound, picture and recovery after a network change. This approves the plan only, not a go-ahead to run the checks. Status: Settled, October 9, 2026.
+
+- **P23 Sign-in email safeguard** Effect: sign-in emails go only to approved hosts; repeated requests are limited; new sign-ins stop before the free daily email allowance is used up; existing sessions keep working; a warning shows before the limit. This settles the safeguard rule; the exact limits are not set. Status: Settled, October 9, 2026.
+- **P24 Host list stays owner-only** Effect: host sign-in stays limited to the owner until the owner-only test works; other hosts are added only when the owner chooses who; guests join calls without an account. No invitation or host addition is authorized. Status: Settled, October 9, 2026.
+
 ## Open decisions
 
-- **Allowlist expansion** The allowlist holds only the owner's email until the owner-only trial works; opening it to others remains separate.
-- **Daily mail-quota abuse rule** Not set.
-- **Audit acceptance and next scope** Owner acceptance and the scope, order and timing of fixes and real-device checks remain pending.
+- **Mail-quota limits** The safeguard rule is settled (P23); the exact limits are not set.
+- **Reconnection and room-lifecycle fixes** Whether audit findings 6 and 7 need fixing, and when, remains a later decision.
+- **Fix implementation and test go-aheads** Building the approved fixes needs its own authorization, and running the planned real-device checks needs its own go-ahead.
