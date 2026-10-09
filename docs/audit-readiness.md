@@ -1,6 +1,6 @@
 # Audit readiness
 
-The written Phase A audit and its independent review are complete. Its current scope, source snapshot, local results and limits are in [audit-report.md](audit-report.md). Owner acceptance, fix scope and real-device checks remain pending. This checklist records the audit inputs and limits; it creates no freeze rule or new authorization. The audit report owns tested findings; this checklist is not a second result record.
+The written Phase A audit and its independent review are complete. Its current scope, source snapshot, local results and limits are in [audit-report.md](audit-report.md). The owner accepted the audit on October 9, 2026 (decision log P20) and approved the fix plan and the real-device test plan as plans (P21, P22). Building the fixes and running the checks each need their own authorization. This checklist records the audit inputs and limits; it creates no freeze rule or new authorization. The audit report owns tested findings; this checklist is not a second result record.
 
 ## Audit inputs
 
@@ -29,4 +29,4 @@ Real-device checks remain pending: Camera off, Mute, End, closing the tab, navig
 - The audit is read-only on the repo and the live site.
 - It costs $0: no accounts are created and nothing is spent.
 - It changes no code, tests, workflows or settings.
-- Pinto fixes, including the microphone bug, wait for owner acceptance and a separate decision on their scope and order.
+- Pinto fixes, including the microphone bug, follow the approved fix plan (P21); implementation needs its own authorization.

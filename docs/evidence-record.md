@@ -33,7 +33,7 @@ The rows below identify planned service checks and remain Pending until their ow
 
 ## 3. Existing app audit
 
-The written existing-app audit is in docs/audit-report.md. It records its scope, source snapshot, local results and limits. Owner acceptance is pending; real-device behavior remains unproven. The audit records the commit, the live deploy, pinned packages, setting names (never values), a test baseline, a device and browser list, and the camera teardown cases.
+The written existing-app audit is in docs/audit-report.md. It records its scope, source snapshot, local results and limits. The owner accepted the audit and its stated limits on October 9, 2026 (decision log P20); acceptance authorizes no app changes, no service features and no live-site testing. Real-device behavior remains unproven. The audit records the commit, the live deploy, pinned packages, setting names (never values), a test baseline, a device and browser list, and the camera teardown cases.
 
 
 ## 4. Reviews
