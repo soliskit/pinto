@@ -37,7 +37,7 @@
     "typescript-eslint": "^8.70.1"
   },
   "author": "David Solis",
-  "repository": "https://github.com/pinto-pinto/pinto",
+  "repository": "https://github.com/soliskit/pinto",
   "description": "Pinto Pinto: video calls in the browser, with the WebRTC signal server and the client in one app.",
   "keywords": [
     "WebRTC",
