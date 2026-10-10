@@ -21,10 +21,16 @@ const selfLabel = element('self-label', HTMLLabelElement)
 const selfVideo = element('self', HTMLVideoElement)
 const photoInput = element('photo', HTMLInputElement)
 
+const PHOTO_CANVAS_WIDTH = 400
+const PHOTO_CANVAS_HEIGHT = 300
+const PHOTO_MAX_SIDE = 288
+const PHOTO_REDRAW_INTERVAL_MS = 1000
+const PEER_RECONNECT_DELAY_MS = 5000
+
 // While the camera is off, peers see a photo drawn on a canvas
 const canvas = document.createElement('canvas')
-canvas.width = 400
-canvas.height = 300
+canvas.width = PHOTO_CANVAS_WIDTH
+canvas.height = PHOTO_CANVAS_HEIGHT
 const context = /** @type {CanvasRenderingContext2D} */ (
   canvas.getContext('2d')
 )
@@ -59,7 +65,11 @@ const socket = io()
 /** Draws the photo centered, at most 288px on its longest side */
 function drawPhoto() {
   if (!photo.complete || !photo.naturalWidth) return
-  const scale = Math.min(1, 288 / photo.width, 288 / photo.height)
+  const scale = Math.min(
+    1,
+    PHOTO_MAX_SIDE / photo.width,
+    PHOTO_MAX_SIDE / photo.height
+  )
   const width = photo.width * scale
   const height = photo.height * scale
   context.clearRect(0, 0, canvas.width, canvas.height)
@@ -154,7 +164,7 @@ function render() {
 photo.addEventListener('load', drawPhoto)
 // A canvas only produces frames when painted, so keep painting for peers
 // who join later
-setInterval(drawPhoto, 1000)
+setInterval(drawPhoto, PHOTO_REDRAW_INTERVAL_MS)
 selfVideo.srcObject = new MediaStream([photoTrack])
 
 muteButton.addEventListener('click', () => {
@@ -202,7 +212,7 @@ peer.on('call', (call) => {
 peer.on('disconnected', () => {
   setTimeout(() => {
     if (peer.disconnected && !peer.destroyed) peer.reconnect()
-  }, 5000)
+  }, PEER_RECONNECT_DELAY_MS)
 })
 peer.on('error', (error) =>
   showError('Peer', `${error.type}: ${error.message}`)
