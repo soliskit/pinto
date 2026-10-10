@@ -2,7 +2,7 @@
 
 Video calls in the browser. One small Node server does everything:
 
-- serves the web client, plain HTML, CSS and JavaScript with no build step
+- serves the web client, plain HTML, CSS, and JavaScript with no build step
 - runs a [PeerJS](https://peerjs.com/) server so browsers can connect to each other directly over WebRTC
 - runs a [Socket.IO](https://socket.io/) server that tracks who is in each room
 - hands browsers STUN and TURN servers, from Twilio when configured
@@ -40,11 +40,11 @@ While the camera is off, peers see a placeholder image. Click your own preview t
 
 | Path                        | What it is                                                 |
 | --------------------------- | ---------------------------------------------------------- |
-| `src/index.ts`              | The server: static files, `/config`, PeerJS and Socket.IO  |
+| `src/index.ts`              | The server: static files, `/config`, PeerJS, and Socket.IO  |
 | `src/ice-servers.ts`        | Fetches STUN and TURN servers from Twilio, with a fallback |
 | `public/`                   | The web client, served as is                               |
 | `public/home.js`            | Home page: clock and room name form                        |
-| `public/room.js`            | Room page: camera, microphone, calls and controls          |
+| `public/room.js`            | Room page: camera, microphone, calls, and controls          |
 | `public/element.js`         | Finds an element by id and checks its type                 |
 | `public/ordinal.js`         | 1st, 2nd, 3rd for the room page's count of people          |
 | `types/client-globals.d.ts` | Types for the `Peer` and `io` globals the room page loads  |
@@ -74,13 +74,13 @@ Without Twilio credentials, browsers get a public STUN server only. That works f
 | `/config`                     | `{ key, iceServers }` for the client                                  |
 | `/<KEY>/id`                   | New PeerJS client id                                                  |
 | `/peerjs`                     | PeerJS WebSocket                                                      |
-| `/socket.io`                  | Socket.IO, with `join-room`, `user-connected` and `user-disconnected` |
+| `/socket.io`                  | Socket.IO, with `join-room`, `user-connected`, and `user-disconnected` |
 | `/vendor/peerjs.min.js`       | PeerJS browser client, served from `node_modules`                     |
 | `/socket.io/socket.io.min.js` | Socket.IO browser client, served by Socket.IO                         |
 
 ## Writing TypeScript and JavaScript
 
-The server is TypeScript that Node runs by stripping the types at startup, so only syntax that can be erased works: import types with `import type`, and avoid `enum`, `namespace` and parameter properties. `tsconfig.json` enforces this with `verbatimModuleSyntax` and `erasableSyntaxOnly`.
+The server is TypeScript that Node runs by stripping the types at startup, so only syntax that can be erased works: import types with `import type`, and avoid `enum`, `namespace`, and parameter properties. `tsconfig.json` enforces this with `verbatimModuleSyntax` and `erasableSyntaxOnly`.
 
 The client is plain JavaScript with types in JSDoc comments, checked by `tsconfig.client.json`. Start each file with `// @ts-check` and describe types in comments, for example `/** @param {string} peerId */`.
 
@@ -96,12 +96,12 @@ Node's built in test runner runs every `test/*.test.ts` file. Like the server, t
 
 | File                       | What it tests                                                                  |
 | -------------------------- | ------------------------------------------------------------------------------ |
-| `test/server.test.ts`      | The server in its own process: pages, `/config`, PeerJS and Socket.IO rooms    |
-| `test/ice-servers.test.ts` | Getting servers from Twilio, caching them and falling back, with `fetch` faked |
+| `test/server.test.ts`      | The server in its own process: pages, `/config`, PeerJS, and Socket.IO rooms    |
+| `test/ice-servers.test.ts` | Getting servers from Twilio, caching them, and falling back, with `fetch` faked |
 | `test/ordinal.test.ts`     | `ordinal()`                                                                    |
 | `test/element.test.ts`     | `element()`, in the browser                                                    |
 | `test/home.test.ts`        | The home page clock and room name form                                         |
-| `test/room.test.ts`        | The room page: controls, photos, calls between pages and reconnecting          |
+| `test/room.test.ts`        | The room page: controls, photos, calls between pages, and reconnecting          |
 | `test/helpers.ts`          | Starts the server and Chromium for the tests                                   |
 
 The browser tests drive Chromium through [Playwright](https://playwright.dev), with a fake camera and microphone, and make real calls between pages. Install Chromium for Playwright once:
@@ -112,7 +112,7 @@ npx playwright install chromium
 
 To use a Chromium that is already installed instead, set `CHROMIUM_PATH` to its executable.
 
-GitHub Actions runs the type check, lint and tests on every push, and on pull requests from forks, with `.github/workflows/test.yml`.
+GitHub Actions runs the type check, lint, and tests on every push, and on pull requests from forks, with `.github/workflows/test.yml`.
 
 ## Scripts
 

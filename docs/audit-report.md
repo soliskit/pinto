@@ -1,8 +1,8 @@
 # Audit report: Phase A, existing app
 
-This is the written report for Phase A of the Pinto audit: an audit of the app's repository at the commit named below, tested on a local copy. The live deployment's server behavior was not verified. It follows the held-still list and limits in [audit-readiness.md](audit-readiness.md). It is read-only. It fixes nothing, changes no code, tests, workflows or settings, and costs nothing. The owner accepted this report and its stated limits on October 9, 2026 (decision log P20). Acceptance covers the findings and their limits only; it authorizes no app changes, no service features and no live-site testing. The fix plan and the real-device test plan are approved as plans (P21, P22); building the fixes and running the checks each need their own authorization.
+This is the written report for Phase A of the Pinto audit: an audit of the app's repository at the commit named below, tested on a local copy. The live deployment's server behavior was not verified. It follows the held-still list and limits in [audit-readiness.md](audit-readiness.md). It is read-only. It fixes nothing, changes no code, tests, workflows, or settings, and costs nothing. The owner accepted this report and its stated limits on October 9, 2026 (decision log P20). Acceptance covers the findings and their limits only; it authorizes no app changes, no service features, and no live-site testing. The fix plan and the real-device test plan are approved as plans (P21, P22); building the fixes and running the checks each need their own authorization.
 
-Every numbered finding below is labeled **Tested**, **Code reading only** or **Not established**, except finding 5, which is a summary table of evidence labeled in other findings. The "What was recorded" table lists plain facts read from the repository, the live site or a run. They are records, not findings. "Tested" means a check run on a local copy of this commit, in one of two ways: (a) the page in headless Chromium with a fake camera and microphone on Linux, which shows what the page's code does with the camera and microphone tracks; or (b) the server alone, driven by plain Socket.IO test clients, which shows what the server does with room and id messages and nothing about the page. Some checks combine both and say so. It does not show what a phone or browser indicator light does, and it does not measure whether sound is audible. All physical-indicator checks and all real-device checks are **Not established**.
+Every numbered finding below is labeled **Tested**, **Code reading only**, or **Not established**, except finding 5, which is a summary table of evidence labeled in other findings. The "What was recorded" table lists plain facts read from the repository, the live site, or a run. They are records, not findings. "Tested" means a check run on a local copy of this commit, in one of two ways: (a) the page in headless Chromium with a fake camera and microphone on Linux, which shows what the page's code does with the camera and microphone tracks; or (b) the server alone, driven by plain Socket.IO test clients, which shows what the server does with room and id messages and nothing about the page. Some checks combine both and say so. It does not show what a phone or browser indicator light does, and it does not measure whether sound is audible. All physical-indicator checks and all real-device checks are **Not established**.
 
 ## What was recorded
 
@@ -13,7 +13,7 @@ Every numbered finding below is labeled **Tested**, **Code reading only** or **N
 | Packages | From `package-lock.json`: express 5.2.1, peer 1.0.2, peerjs 1.5.5, socket.io 4.8.4, ws 8.22.0, playwright 1.63.0 (dev). |
 | Settings (names only) | `PORT`, `KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`. Whether the Twilio names are set on Render is **Not established**. |
 | Test baseline | **Tested**, on Node 22.23.3 with Chromium headless shell 153, from a clean clone of the commit above: `npm run typecheck` exit 0; `npm run lint` exit 0; `PORT=0 npm test` exit 0 with 47 tests, 8 suites, 47 pass, 0 fail, 0 cancelled, 0 skipped. |
-| Test devices | Headless Chromium 153 on Linux only. No phone, tablet or other browser has been tested. |
+| Test devices | Headless Chromium 153 on Linux only. No phone, tablet, or other browser has been tested. |
 
 ## Method for the checks below
 
@@ -21,17 +21,17 @@ Every numbered finding below is labeled **Tested**, **Code reading only** or **N
 - Camera and microphone state was read from the page's own tracks (`readyState` and `enabled`) after each action.
 - Waits between actions were fixed sleeps (0.3 to 12 seconds). A result such as "the other side saw the leave" means it was observed after the stated wait, not that it was timed.
 - A second script drove only the Socket.IO server with plain test clients, to check room membership and id handling. It does not run the page's code, so what it shows about the page is limited as stated below.
-- A third script combined pages and plain test clients for the video-delivery, spoofed-leave and repeated-join checks.
+- A third script combined pages and plain test clients for the video-delivery, spoofed-leave, and repeated-join checks.
 - The results were saved as raw output from the run.
 
 ## Findings
 
-### 1. Camera and microphone tracks stay live after Stop Video, Mute and End
+### 1. Camera and microphone tracks stay live after Stop Video, Mute, and End
 
 - **Tested** (track state in the test browser, headless with fake devices): the page requests camera and microphone as it loads, before anyone chooses Join Now. After load, both tracks were live. After Start Video then Stop Video, the camera track was still live. After Mute, the microphone track was live with `enabled` set to false. After End, both tracks were still live.
-- **Code reading only**: a search of `public/` and `src/` for `stop`, `getTracks`, `removeTrack` and `close()` found no call that ends a camera or microphone track. The only matches are `removeTrack` on the outgoing stream (it takes a track out of the stream without ending it) and `call.close()`. This is about the app's own files, not the vendored libraries, and it reflects those searches and the handlers read, not a proof about every possible path. Mute sets `enabled` on the audio tracks. End calls `removeCall` for each call, which closes the call, and reconnects the signal socket.
+- **Code reading only**: a search of `public/` and `src/` for `stop`, `getTracks`, `removeTrack`, and `close()` found no call that ends a camera or microphone track. The only matches are `removeTrack` on the outgoing stream (it takes a track out of the stream without ending it) and `call.close()`. This is about the app's own files, not the vendored libraries, and it reflects those searches and the handlers read, not a proof about every possible path. Mute sets `enabled` on the audio tracks. End calls `removeCall` for each call, which closes the call, and reconnects the signal socket.
 - **Not established**: what the browser does with the tracks when a tab closes; whether a camera or microphone indicator is on, on any device; whether the page behaves the same on phones.
-- The owner's product rule, stated in the owner's project decisions and not in this repo, is that Stop Video stops camera capture and Mute stops microphone capture. Against that rule, the local test shows the tracks were not ended by those actions. Decisions about Stop Video, Mute and End are separate, and so is the decision about starting capture at page load; see the end of this report.
+- The owner's product rule, stated in the owner's project decisions and not in this repo, is that Stop Video stops camera capture and Mute stops microphone capture. Against that rule, the local test shows the tracks were not ended by those actions. Decisions about Stop Video, Mute, and End are separate, and so is the decision about starting capture at page load; see the end of this report.
 
 ### 2. Start Video and Stop Video change what the other side receives. Tested in one case
 
@@ -70,9 +70,9 @@ The roadmap records open links as a product choice. The exposure in the table is
 ### 6. Room lifecycle on the server
 
 - **Tested** (server only): one client joined the same room twice; when it disconnected, the room's other client received two leave events for that id. One client joined two rooms; when it disconnected, each room received one leave event.
-- **Tested** (server only): one client sent 5,000 `join-room` messages for one room in a loop, and the server accepted all of them. When that client disconnected, the room's other client received 5,000 leave events. Memory use, processing time and crash behavior were not measured.
+- **Tested** (server only): one client sent 5,000 `join-room` messages for one room in a loop, and the server accepted all of them. When that client disconnected, the room's other client received 5,000 leave events. Memory use, processing time, and crash behavior were not measured.
 - **Code reading only**: the `disconnect` handler is registered inside `join-room`, so each join adds one, and each join also broadcasts `user-connected`. A socket stays in every room it has joined. The page's own flow joins once per connection, because End reconnects the socket; whether the page can reach a repeated join is **Not established**.
-- **Not established**: the effect of repeated joins on server memory, speed or stability, and any denial-of-service impact.
+- **Not established**: the effect of repeated joins on server memory, speed, or stability, and any denial-of-service impact.
 
 ### 7. Reconnection and room membership
 
@@ -81,7 +81,7 @@ The roadmap records open links as a product choice. The exposure in the table is
 - **Not established**: whether this happens in the page on real networks, and what a person would see.
 - **Code reading only**: the page sets `joined` immediately after emitting `join-room`, with no acknowledgement from the server. If the join fails, the page can show a joined state that the server does not share. The tests exercised only successful joins.
 
-### 8. Joining, leaving and rejoining. Tested, narrow
+### 8. Joining, leaving, and rejoining. Tested, narrow
 
 - What was checked: the count of remote video tiles on the page (a tile is added when the page receives a stream) and the state of the browser's WebRTC connection objects. Audio delivery and picture content were not checked.
 - Two test pages joining at the same time each showed one remote tile. Each side had two connection objects, one `connected` and one `closed`.
@@ -94,7 +94,7 @@ The roadmap records open links as a product choice. The exposure in the table is
 
 - **Tested**: the check replaced `getUserMedia` with an injected rejection of the combined camera-and-microphone request. It was not a real browser permission decision. The page then showed "Camera and microphone are unavailable: Permission denied", and the Join Now button was enabled.
 - **Code reading only**: the page asks for camera and microphone in one request. If it fails, the page still enables Join Now (it marks capture finished either way), so someone can join without captured camera or microphone tracks; the outgoing stream still contains the canvas photo video track. There is no fallback to camera only or microphone only. While capture is pending, Join Now stays disabled (**Tested**, with capture delayed 4 seconds) and a call arriving before joining is closed (code reading only).
-- **Not established**: that someone can then join, deliver a photo or hold a call. Join Now was not clicked.
+- **Not established**: that someone can then join, deliver a photo, or hold a call. Join Now was not clicked.
 - **Not established**: a real permission prompt, a camera-only refusal, a microphone-only refusal, and a missing individual device.
 
 ### 10. Recovery after a network cut. Not established
@@ -111,7 +111,7 @@ The roadmap records open links as a product choice. The exposure in the table is
 - Wake-up time after the free host sleeps.
 - Behavior in Safari, Firefox, and on phones.
 - Whether the deployed server code matches this commit.
-- Server memory, speed and stability under repeated joins.
+- Server memory, speed, and stability under repeated joins.
 - Stale tiles after a replaced call, and PeerJS behavior after a call error.
 
 ### 12. Metadata. Code reading only
@@ -125,7 +125,7 @@ Findings 1 to 7 are the work to decide on after this report is accepted. None is
 ## Decisions for the owner
 
 1. Read and accept this report, or send it back.
-2. Decide separately whether Stop Video, Mute and End should each end their track. Each is its own decision.
+2. Decide separately whether Stop Video, Mute, and End should each end their track. Each is its own decision.
 3. Decide whether camera and microphone capture should start only after Join Now. It starts at page load today (finding 1). Nothing is inferred here about indicator lights.
 4. Decide whether the exposure in finding 5 is acceptable for open links, including that the tested false-join-then-false-leave sequence can end a call.
 5. Decide whether the reconnection and room-lifecycle risks in findings 6 and 7 need fixing before real-device checks.
