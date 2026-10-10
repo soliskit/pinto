@@ -116,7 +116,7 @@ The roadmap records open links as a product choice. The exposure in the table is
 
 ### 12. Metadata. Code reading only
 
-- `package.json` still names `pinto-pinto/pinto` in its `repository` field. The source repo is `soliskit/pinto`. This is recorded, not changed.
+- `package.json` still names `pinto-pinto/pinto` in its `repository` field. The source repo is `soliskit/pinto`. This is recorded, not changed. (Resolved October 10, 2026: the `repository` field now names `soliskit/pinto`.)
 
 ## What this means
 
