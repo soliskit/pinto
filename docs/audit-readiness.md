@@ -10,7 +10,7 @@ The written Phase A audit and its independent review are complete. Its current s
 4. **Settings.** The names of the environment variables in use (`PORT`, `KEY`, and whether the Twilio variables are set), never their values.
 5. **Test baseline.** The result of the type check, lint, and tests, run the way CI runs them.
 6. **Test devices.** The devices and browsers used, with exact versions, kept the same throughout.
-7. **Repo name.** The source repo is `soliskit/pinto`. `package.json` still has `pinto-pinto/pinto` in its `repository` field. That is stale metadata to reconcile later, not a change this page makes. The audit records the stale `repository` field and does not change it.
+7. **Repo name.** The source repo is `soliskit/pinto`. The audit recorded a stale `pinto-pinto/pinto` value in the `package.json` `repository` field and did not change it. The field was reconciled to `soliskit/pinto` on October 10, 2026.
 
 ## Call, connection, and capture checks
 
