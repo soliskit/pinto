@@ -96,8 +96,8 @@ describe('room name form', () => {
     const page = await openHome()
     const path = await open(page, 'Team #1/Ü', 'click')
     assert.equal(path, '/room/team%20%231%2F%C3%BC')
-    await page.locator('#title', { hasText: 'Join room' }).waitFor()
-    assert.equal(await page.textContent('#title'), 'Join room: team #1/ü')
+    await page.locator('#title', { hasText: 'Join team' }).waitFor()
+    assert.equal(await page.textContent('#title'), 'Join team #1/ü')
   })
 
   test('makes up a room name when none is typed', async () => {
