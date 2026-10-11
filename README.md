@@ -33,8 +33,8 @@ Open [http://localhost:4000](http://localhost:4000). Type a room name, or press 
 
 1. The room page fetches `/config` for the PeerJS key and the STUN and TURN servers.
 2. It connects to the PeerJS server, which gives it a random peer id, and to Socket.IO.
-3. **Join Now** emits `join-room` with the room name and peer id. The server tells everyone already in the room with `user-connected`, and they call the new peer.
-4. Video and audio then usually flow directly between browsers, or through a TURN server when a direct link is blocked. **End** or closing the tab sends `user-disconnected` to the room.
+3. **Join** emits `join-room` with the room name and peer id. The server tells everyone already in the room with `user-connected`, and they call the new peer.
+4. Video and audio then usually flow directly between browsers, or through a TURN server when a direct link is blocked. **Leave** or closing the tab sends `user-disconnected` to the room.
 
 With your camera off, others see a placeholder. Click your own preview to show a photo instead.
 
