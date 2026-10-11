@@ -1,6 +1,6 @@
 # Audit report: Phase A, existing app
 
-This is the written report for Phase A of the Pinto audit: an audit of the app's repository at the commit named below, tested on a local copy. The live deployment's server behavior was not verified. It follows the held-still list and limits in [audit-readiness.md](audit-readiness.md). It is read-only. It fixes nothing, changes no code, tests, workflows, or settings, and costs nothing. The owner accepted this report and its stated limits on October 9, 2026 (decision log P20). Acceptance covers the findings and their limits only; it authorizes no app changes, no service features, and no live-site testing. The fix plan and the real-device test plan are approved as plans (P21, P22); building the fixes and running the checks each need their own authorization.
+This is the written report for Phase A of the Pinto audit: an audit of the app's repository at the commit named below, tested on a local copy. The live deployment's server behavior was not verified. It follows the held-still list and limits in [audit-readiness.md](audit-readiness.md). It is read-only. It fixes nothing, changes no code, tests, workflows, or settings, and costs nothing. The owner accepted this report and its stated limits on October 9, 2026 (decision log P20). Acceptance covers the findings and their limits only.
 
 Every numbered finding below is labeled **Tested**, **Code reading only**, or **Not established**, except finding 5, which is a summary table of evidence labeled in other findings. The "What was recorded" table lists plain facts read from the repository, the live site, or a run. They are records, not findings. "Tested" means a check run on a local copy of this commit, in one of two ways: (a) the page in headless Chromium with a fake camera and microphone on Linux, which shows what the page's code does with the camera and microphone tracks; or (b) the server alone, driven by plain Socket.IO test clients, which shows what the server does with room and id messages and nothing about the page. Some checks combine both and say so. It does not show what a phone or browser indicator light does, and it does not measure whether sound is audible. All physical-indicator checks and all real-device checks are **Not established**.
 
@@ -9,6 +9,7 @@ Every numbered finding below is labeled **Tested**, **Code reading only**, or **
 | Item | Record |
 | --- | --- |
 | Code version | `main` at `7255398b7c3ae50c7955acd969f02021e5787d1e`, October 8, 2026, 00:37 PDT. |
+| Recheck | On October 11, 2026, findings 1 to 11 were rechecked against `main` at `a1cb306`: unchanged. |
 | Live site | `https://pinto-zd0c.onrender.com` answered HTTP 200. Its `room.js` and `home.js` have the same SHA-256 as `public/room.js` and `public/home.js` on `main` (`f5f1e09a...2d882e9e` and `0dde875c...098323d0`). Whether the deployed server code matches this commit is **Not established**; the server side is not visible. Render's documentation says a free web service spins down after 15 minutes without inbound traffic and takes about a minute to spin back up ([source](https://render.com/docs/free), read October 8, 2026); the wake-up time of this site was not measured. |
 | Packages | From `package-lock.json`: express 5.2.1, peer 1.0.2, peerjs 1.5.5, socket.io 4.8.4, ws 8.22.0, playwright 1.63.0 (dev). |
 | Settings (names only) | `PORT`, `KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`. Whether the Twilio names are set on Render is **Not established**. |
@@ -116,18 +117,12 @@ The roadmap records open links as a product choice. The exposure in the table is
 
 ### 12. Metadata. Code reading only
 
-- `package.json` still names `pinto-pinto/pinto` in its `repository` field. The source repo is `soliskit/pinto`. This is recorded, not changed. (This change resolves it: the `repository` field names `soliskit/pinto`.)
+- `package.json` named `pinto-pinto/pinto` in its `repository` field. The source repo is `soliskit/pinto`. Fixed in PR #54.
 
 ## What this means
 
-Findings 1 to 7 are the work to decide on after this report is accepted. None is fixed here. The real-device checks in finding 11 need a list of devices and browsers from the owner. Until they run, the audit cannot claim "works every time".
+Findings 1 to 7 are tracked in the decision log (P20 to P22). None is fixed here. The real-device checks in finding 11 follow the approved test plan (P22). Until they run, the audit cannot claim "works every time".
 
-## Decisions for the owner
+## Open decision
 
-1. Read and accept this report, or send it back.
-2. Decide separately whether Stop Video, Mute, and End should each end their track. Each is its own decision.
-3. Decide whether camera and microphone capture should start only after Join Now. It starts at page load today (finding 1). Nothing is inferred here about indicator lights.
-4. Decide whether the exposure in finding 5 is acceptable for open links, including that the tested false-join-then-false-leave sequence can end a call.
-5. Decide whether the reconnection and room-lifecycle risks in findings 6 and 7 need fixing before real-device checks.
-6. Provide the devices and browsers for the real-device checks.
-7. The independent review of this audit, which the roadmap calls for, comes before any implementation.
+Whether findings 6 and 7 (room lifecycle and reconnection) need fixing before the real-device checks is still open. See the [decision log](decision-log.md).
