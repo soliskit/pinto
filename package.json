@@ -38,7 +38,7 @@
   },
   "author": "David Solis",
   "repository": "https://github.com/soliskit/pinto",
-  "description": "Pinto Pinto makes video calls simple. One app holds the WebRTC signal server and the browser client.",
+  "description": "Pinto is a browser-based video calling app built with WebRTC. Share a room link, talk with friends, and switch between camera video and a photo.",
   "keywords": [
     "WebRTC",
     "PeerJS",
