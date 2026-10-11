@@ -1,40 +1,42 @@
-# Pinto Pinto
+# Pinto
 
-Video calls in the browser. One small Node server does everything:
+Pinto is a browser-based video calling app built with WebRTC. Share a room link, talk with friends, and switch between camera video and a photo.
 
-- serves the web client, plain HTML, CSS, and JavaScript with no build step
-- runs a [PeerJS](https://peerjs.com/) server so browsers can connect to each other directly over WebRTC
-- runs a [Socket.IO](https://socket.io/) server that tracks who is in each room
-- hands browsers STUN and TURN servers, from Twilio when configured
+WebRTC lets browsers send video straight to each other. A STUN server tells a browser its public address. A TURN server relays the call when a direct link is blocked. One small Node server does all the work:
+
+- serves the web client: plain HTML, CSS, and JavaScript, with no build step
+- runs a [PeerJS](https://peerjs.com/) server, which helps browsers set up WebRTC connections with each other
+- runs a [Socket.IO](https://socket.io/) server, which sends live updates and tracks who is in each room
+- gives browsers STUN and TURN servers, from Twilio when you set it up
 
 ## Requirements
 
-- [Node.js](https://nodejs.org) `22.18` or newer in the 22 line (npm comes with it). Node runs the TypeScript source directly, so there is no build step
+- [Node.js](https://nodejs.org) `22.18` or newer in the 22 line (npm comes with it). Node runs the TypeScript source directly, so nothing needs building
 
 ## Getting started
 
-Install dependencies:
+Install the dependencies:
 
 ```bash
 npm install
 ```
 
-Start the development server. Node restarts it whenever a server file changes; refresh the browser after editing files in `public/`:
+Start the development server. It restarts on every server change. After you edit a file in `public/`, refresh the browser:
 
 ```bash
 PORT=4000 npm run dev
 ```
 
-Open [http://localhost:4000](http://localhost:4000). Type a room name, or press **Open** to get a random one, and share the room link. Without `PORT` the server listens on 443.
+Open [http://localhost:4000](http://localhost:4000). Type a room name, or press **Open** for a random one, then share the room link. Without `PORT`, the server listens on 443.
 
 ## How a call works
 
 1. The room page fetches `/config` for the PeerJS key and the STUN and TURN servers.
 2. It connects to the PeerJS server, which gives it a random peer id, and to Socket.IO.
-3. **Join Now** emits `join-room` with the room name and peer id. The server tells everyone already in the room with `user-connected`, and they call the new peer.
-4. Video and audio then flow directly between browsers. **End** or closing the tab sends `user-disconnected` to the room.
+3. **Join** emits `join-room` with the room name and peer id. The server tells everyone already in the room with `user-connected`, and they call the new peer.
+4. Video and audio then usually flow directly between browsers, or through a TURN server when a direct link is blocked. **Leave** or closing the tab sends `user-disconnected` to the room.
 
-While the camera is off, peers see a placeholder image. Click your own preview to show a photo instead.
+With your camera off, others see a placeholder. Click your own preview to show a photo instead.
 
 ## Project layout
 
@@ -63,7 +65,7 @@ While the camera is off, peers see a placeholder image. Click your own preview t
 | `TWILIO_ACCOUNT_SID` |         | With `TWILIO_AUTH_TOKEN`, enables Twilio's STUN and TURN servers |
 | `TWILIO_AUTH_TOKEN`  |         | Twilio auth token                                                |
 
-Without Twilio credentials, browsers get a public STUN server only. That works for most home networks, but calls between people behind strict corporate or mobile networks need a TURN relay to connect.
+Without Twilio credentials, browsers get a public STUN server only. That works for most home networks. Calls between people on strict corporate or mobile networks need a TURN relay.
 
 ## Endpoints
 
@@ -80,7 +82,7 @@ Without Twilio credentials, browsers get a public STUN server only. That works f
 
 ## Writing TypeScript and JavaScript
 
-The server is TypeScript that Node runs by stripping the types at startup, so only syntax that can be erased works: import types with `import type`, and avoid `enum`, `namespace`, and parameter properties. `tsconfig.json` enforces this with `verbatimModuleSyntax` and `erasableSyntaxOnly`.
+The server is TypeScript, and Node strips the types at startup. Only syntax that can be erased works, so import types with `import type` and avoid `enum`, `namespace`, and parameter properties. `tsconfig.json` enforces this with `verbatimModuleSyntax` and `erasableSyntaxOnly`.
 
 The client is plain JavaScript with types in JSDoc comments, checked by `tsconfig.client.json`. Start each file with `// @ts-check` and describe types in comments, for example `/** @param {string} peerId */`.
 
@@ -92,7 +94,7 @@ The client is plain JavaScript with types in JSDoc comments, checked by `tsconfi
 npm test
 ```
 
-Node's built in test runner runs every `test/*.test.ts` file. Like the server, the tests are TypeScript that Node runs directly. To run one file, use `node --test test/room.test.ts`.
+Node's built-in test runner runs every `test/*.test.ts` file. Like the server, the tests are TypeScript that Node runs directly. To run one file, use `node --test test/room.test.ts`.
 
 | File                       | What it tests                                                                  |
 | -------------------------- | ------------------------------------------------------------------------------ |
@@ -110,9 +112,9 @@ The browser tests drive Chromium through [Playwright](https://playwright.dev), w
 npx playwright install chromium
 ```
 
-To use a Chromium that is already installed instead, set `CHROMIUM_PATH` to its executable.
+To use a Chromium you already have, set `CHROMIUM_PATH` to its executable.
 
-GitHub Actions runs the type check, lint, and tests on every push, and on pull requests from forks, with `.github/workflows/test.yml`.
+GitHub Actions runs the type check, lint, and tests on every push and on pull requests from forks. The workflow is `.github/workflows/test.yml`.
 
 ## Scripts
 
@@ -129,19 +131,19 @@ GitHub Actions runs the type check, lint, and tests on every push, and on pull r
 
 ### Render (free)
 
-`render.yaml` describes the app as a free Render web service.
+`render.yaml` sets the app up as a free Render web service.
 
 1. Sign in at [render.com](https://render.com) with GitHub.
 2. Choose **New**, then **Blueprint**, and pick this repo. Render reads `render.yaml`, installs production dependencies and runs `npm start`.
-3. Open the `onrender.com` address Render gives you. It is HTTPS, which browsers require for camera access.
+3. Open the `onrender.com` address Render gives you. It uses HTTPS, which browsers require for camera access.
 
-Every push to `main` deploys again. Free services sleep after 15 minutes without traffic, and the next visit takes about a minute to wake them. An active call keeps the service awake.
+Every push to `main` deploys again. A free service sleeps after 15 minutes without traffic, and the next visit takes about a minute to wake it. An active call keeps it awake.
 
-To add TURN relays later, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under the service's **Environment** tab. Twilio bills for TURN usage.
+To add TURN relays, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under the service's **Environment** tab. Twilio charges for TURN usage.
 
 ### Other hosts
 
-Any host that runs Node 22.18 or newer as a single long running process works.
+Any host that runs Node 22.18 or newer as one long-running process works.
 
 ## License
 
