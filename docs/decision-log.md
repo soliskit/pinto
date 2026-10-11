@@ -11,7 +11,7 @@ This log records each decision, what it means, and where it stands. The current 
 - **P5 Services first, replacements in parallel.** The audit-first decision below narrowed it. Superseded in scope by P8.
 - **P6 The public page lives on GitHub Pages.** If the app ever sells, advertises, or becomes paid, the Pages terms need rechecking. Settled.
 - **P7 The open questions wait.** Research continues, and the five open decisions wait for the owner. Settled.
-- **P8 Audit first.** No service-dependent feature ships before the audit. Planning only until then. Settled.
+- **P8 Audit first.** No service-dependent feature before the audit. Planning only meanwhile. Settled.
 - **P9 Review the audit before building.** Pinto's audit results get an independent review before any implementation starts. The rule lives once on Soliskit Principles, with no copy in any Roadmap. Settled.
 - **P10 A one-page readiness note.** It lists what to freeze before the audit. It lives in the repo and is not part of the Playbook. Done.
 - **P11 Documentation-only pull requests may merge.** They need an independent review and passing checks. This does not cover code, permanent tests, CI changes, or releases. A document that changes a goal, requirement, decision, or safeguard still needs the owner's approval. Settled.
@@ -24,7 +24,7 @@ This log records each decision, what it means, and where it stands. The current 
 
 - **P15 The hosting is split.** The public page stays on GitHub Pages. The app and its sign-in service are planned to run on Cloudflare. The existing app uses Render, and a move is not established. Settled.
 - **P16 Each part gets its own soliskit.com subdomain.** That covers the public page, the app, and the sign-in service. Cookies are host-only, so no cookie is shared across them. Settled.
-- **P17 The sign-in service runs on Cloudflare.** It sends codes through Resend from a soliskit.com mail subdomain. Only addresses on a private allowlist can sign in. The allowlist holds only the owner's email until the owner-only trial works. Settled. Opening sign-in to others is a separate decision.
+- **P17 The sign-in service is planned to run on Cloudflare.** It is planned to send codes through Resend from a soliskit.com mail subdomain. Only addresses on a private allowlist can sign in. The allowlist holds only the owner's email until the owner-only trial works. Settled. Opening sign-in to others is a separate decision.
 - **P18 LiveKit has a ceiling of 4,000 person-minutes per month.** The plan assumes it, and new call links stop at the ceiling. It is tested first. If the test fails, the fallback plan applies. Settled.
 - **P19 Privacy wording and retention.** The privacy wording is in How It Works, under Diagnostics (B9), and appears only after B8 and B9 pass. Its code-expiry wording must match the sign-in service contract, where the code lifetime is 30 minutes. Codes are single-use. Bug reports are kept 30 days and then deleted, and only the owner reads them. No video or audio is recorded or stored. Deleted data can stay in backups for up to 30 more days. Settled.
 
