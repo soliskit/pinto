@@ -99,7 +99,7 @@ interface Room {
   peerId: string
 }
 
-/** Opens a room page and waits until Join Now can be pressed */
+/** Opens a room page and waits until Join can be pressed */
 async function openRoom(name: string, init?: () => void): Promise<Room> {
   const page = await newPage(init)
   const idResponse = page.waitForResponse(
@@ -113,7 +113,7 @@ async function openRoom(name: string, init?: () => void): Promise<Room> {
   return { page, name, peerId }
 }
 
-/** Presses Join Now and waits until the server has put the page in the room */
+/** Presses Join and waits until the server has put the page in the room */
 async function join({ page, name, peerId }: Room) {
   const from = server.output().length
   await page.click('#call')
@@ -147,24 +147,24 @@ function controls(page: Page) {
 }
 
 const beforeJoining = (room: string) => ({
-  title: `Pinto Pinto | ${room}`,
-  heading: `Join room: ${room}`,
-  status: 'Choose Join Now to begin call',
+  title: `Pinto | ${room}`,
+  heading: `Join ${room}`,
+  status: 'Press Join to start the call',
   mute: 'Mute',
-  camera: 'Start Video',
-  call: 'Join Now',
+  camera: 'Turn On Camera',
+  call: 'Join',
   callEnds: false,
   removePhoto: false,
   photoInput: true,
-  hint: 'Choose a photo to show instead of video',
+  hint: 'Choose a photo to show instead of your video',
   error: null
 })
 
 const inCall = (room: string, status: string) => ({
   ...beforeJoining(room),
-  heading: `Joined | ${room}`,
+  heading: `You are in ${room}`,
   status,
-  call: 'End',
+  call: 'Leave',
   callEnds: true
 })
 
@@ -296,13 +296,13 @@ describe('before joining', () => {
     assert.deepEqual(await microphone(), [true])
   })
 
-  test('Start Video shows the camera, and Stop Video the photo again', async () => {
+  test('Turn On Camera shows the camera, and Turn Off Camera the photo again', async () => {
     const { page } = await openRoom('camera')
 
     await page.click('#camera')
     assert.deepEqual(await controls(page), {
       ...beforeJoining('camera'),
-      camera: 'Stop Video',
+      camera: 'Turn Off Camera',
       photoInput: false,
       hint: ''
     })
@@ -317,15 +317,16 @@ describe('before joining', () => {
     const room = await openRoom('no camera', withoutCamera)
     const unavailable = {
       ...beforeJoining('no camera'),
-      camera: 'Start Video (disabled)',
-      error: 'Camera: Camera and microphone are unavailable: Permission denied'
+      camera: 'Turn On Camera (disabled)',
+      error:
+        "Camera and microphone: Pinto can't reach your camera or microphone: Permission denied"
     }
     assert.deepEqual(await controls(room.page), unavailable)
 
     await join(room)
     assert.deepEqual(await controls(room.page), {
       ...inCall('no camera', '1st in the room'),
-      camera: 'Start Video (disabled)',
+      camera: 'Turn On Camera (disabled)',
       error: unavailable.error
     })
   })
@@ -395,7 +396,7 @@ describe('before joining', () => {
 })
 
 describe('in a call', () => {
-  test('Join Now joins the room, and End leaves it', async () => {
+  test('Join joins the room, and Leave leaves it', async () => {
     const room = await openRoom('solo')
     await join(room)
     assert.deepEqual(
@@ -430,7 +431,7 @@ describe('in a call', () => {
     assert.equal(await status(elsewhere.page)(), '1st in the room')
   })
 
-  test('End leaves the call for everyone, and Join Now joins again', async () => {
+  test('Leave leaves the call for everyone, and Join joins again', async () => {
     const a = await openRoom('again')
     const b = await openRoom('again')
     await join(a)
@@ -460,7 +461,7 @@ describe('in a call', () => {
     assert.deepEqual(await attendees(a.page)(), [])
   })
 
-  test('Start Video and Stop Video change what the call sends', async () => {
+  test('Turn On Camera and Turn Off Camera change what the call sends', async () => {
     const a = await openRoom('switch')
     const b = await openRoom('switch')
     await join(a)
@@ -529,7 +530,7 @@ test('after losing the PeerJS server, says so and reconnects with the same id', 
   await a.page.evaluate(() => window.recorded.peerSockets[0].close())
   await eventually(
     async () => (await controls(a.page)).error,
-    'Peer: network: Lost connection to server.'
+    'Connection problem: network: Lost connection to server.'
   )
 
   // room.js waits 5 seconds before reconnecting
