@@ -1,10 +1,12 @@
-# Pinto Pinto
+# Pinto
 
-Pinto makes video calls simple. Open a link in any browser and you are in the call. One small Node server does all the work:
+Pinto is a browser-based video calling app built with WebRTC. Share a room link, talk with friends, and switch between camera video and a photo.
+
+WebRTC lets browsers send video straight to each other. STUN and TURN servers help them find each other through firewalls. One small Node server does all the work:
 
 - serves the web client: plain HTML, CSS, and JavaScript, with no build step
-- runs a [PeerJS](https://peerjs.com/) server so browsers can connect to each other directly over WebRTC
-- runs a [Socket.IO](https://socket.io/) server that tracks who is in each room
+- runs a [PeerJS](https://peerjs.com/) server, which helps browsers set up WebRTC connections with each other
+- runs a [Socket.IO](https://socket.io/) server, which sends live updates and tracks who is in each room
 - gives browsers STUN and TURN servers, from Twilio when you set it up
 
 ## Requirements
