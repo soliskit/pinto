@@ -145,18 +145,20 @@ function showError(heading, message) {
 }
 
 function render() {
-  document.title = `Pinto Pinto | ${roomName}`
-  title.textContent = joined ? `Joined | ${roomName}` : `Join room: ${roomName}`
+  document.title = `Pinto | ${roomName}`
+  title.textContent = joined ? `You are in ${roomName}` : `Join ${roomName}`
   status.textContent = joined
     ? `${ordinal(attendees.childElementCount + 1)} in the room`
-    : 'Choose Join Now to begin call'
+    : 'Press Join to start the call'
   muteButton.textContent = muted ? 'Unmute' : 'Mute'
-  cameraButton.textContent = cameraOn ? 'Stop Video' : 'Start Video'
+  cameraButton.textContent = cameraOn ? 'Turn Off Camera' : 'Turn On Camera'
   cameraButton.disabled = !cameraTrack
   photoInput.disabled = cameraOn
-  selfLabel.title = cameraOn ? '' : 'Choose a photo to show instead of video'
+  selfLabel.title = cameraOn
+    ? ''
+    : 'Choose a photo to show instead of your video'
   removePhotoButton.hidden = cameraOn || !photo.src.startsWith('blob:')
-  callButton.textContent = joined ? 'End' : 'Join Now'
+  callButton.textContent = joined ? 'Leave' : 'Join'
   callButton.classList.toggle('end', joined)
   callButton.disabled = !peer.open || !mediaReady
 }
@@ -215,7 +217,7 @@ peer.on('disconnected', () => {
   }, PEER_RECONNECT_DELAY_MS)
 })
 peer.on('error', (error) =>
-  showError('Peer', `${error.type}: ${error.message}`)
+  showError('Connection problem', `${error.type}: ${error.message}`)
 )
 
 socket.on('user-connected', (peerId) => addCall(peer.call(peerId, outgoing)))
@@ -235,7 +237,10 @@ try {
   }
 } catch (error) {
   const reason = error instanceof Error ? error.message : String(error)
-  showError('Camera', `Camera and microphone are unavailable: ${reason}`)
+  showError(
+    'Camera and microphone',
+    `Pinto can't reach your camera or microphone: ${reason}`
+  )
 } finally {
   mediaReady = true
   render()
