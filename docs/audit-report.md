@@ -1,6 +1,6 @@
 # Audit report: Phase A, existing app
 
-This is the written report for Phase A of the Pinto audit. It covers the app's repository at the commit named below, tested on a local copy. The live deployment's server behavior was not verified. It follows the checklist and limits in [audit-readiness.md](audit-readiness.md). It only reads: it fixes nothing, changes no code, tests, workflows, or settings, and costs nothing. The owner accepted this report and its stated limits on October 9, 2026 (decision log P20). Acceptance covers the findings and their limits only.
+This is the written report for Phase A of the Pinto audit. It covers the app's repository at the commit named below, tested on a local copy. The live deployment's server behavior was not verified. It follows the checklist and limits in [audit-readiness.md](audit-readiness.md). It only reads: it fixes nothing, changes no code, tests, workflows, or settings, and costs nothing. This report and its stated limits are accepted as the basis for choosing fixes (decision log P20, October 9, 2026). Acceptance covers the findings and their limits only.
 
 The button names and messages quoted here are the ones at the audited commit.
 
@@ -41,7 +41,7 @@ Some checks combine both and say so. Tested results do not show what a phone or 
 - **Tested** (track state in the test browser, headless with fake devices): the page asks for the camera and microphone as it loads, before anyone chooses Join Now. After load, both tracks were live. After Start Video then Stop Video, the camera track was still live. After Mute, the microphone track was live with `enabled` set to false. After End, both tracks were still live.
 - **Code reading only**: a search of `public/` and `src/` for `stop`, `getTracks`, `removeTrack`, and `close()` found no call that ends a camera or microphone track. The only matches are `removeTrack` on the outgoing stream, which takes a track out of the stream without ending it, and `call.close()`. The search covers the app's own files, not the vendored libraries. It reflects those searches and the handlers read, not a proof about every possible path. Mute sets `enabled` on the audio tracks. End calls `removeCall` for each call, which closes the call, and reconnects the signal socket.
 - **Not established**: what the browser does with the tracks when a tab closes, whether a camera or microphone indicator is on (on any device), and whether the page behaves the same on phones.
-- The owner's product rule lives in the owner's project decisions, not in this repo. It says Stop Video stops camera capture and Mute stops microphone capture. Against that rule, the local test shows those actions did not end the tracks. Decisions about Stop Video, Mute, and End are separate, and so is the decision about starting capture at page load. See the end of this report.
+- The product rule lives in the project decisions, not in this repo. It says Stop Video stops camera capture and Mute stops microphone capture. Against that rule, the local test shows those actions did not end the tracks. Decisions about Stop Video, Mute, and End are separate, and so is the decision about starting capture at page load. See the end of this report.
 
 ### 2. Start Video and Stop Video change what the other side receives. Tested in one case
 
@@ -63,7 +63,7 @@ Some checks combine both and say so. Tested results do not show what a phone or 
 - **Tested** (pages plus a plain test client, one step at a time): a test client in a room learned the ids of two people who then joined and connected (one remote tile each). The client then sent one false `join-room` using one person's id. One page then showed a second remote tile, because the page placed a second call to that id. The other page still showed one. The client then disconnected, which sent one false leave notice. Both pages then showed zero remote tiles, and all their connection objects were `closed`. This check separates the observations after the false join and after the later false leave. It does not test a false leave without that earlier false join. One run, after fixed waits.
 - **Tested**: the PeerJS peer list addresses `/pinto/peers` and `/peerjs/peers` answered 401. That covers those two requests only. It does not show that no other way to learn ids exists, and the room notice above is such a way.
 - **Tested** (page plus a plain test client): a joined page told to call an id that is not a real peer showed no error and no tile, and its button stayed "End". One run.
-- **Code reading only**: `GET /config` returns the PeerJS key and ICE server list to any requester. This is a code fact. Whether it matters is the owner's decision.
+- **Code reading only**: `GET /config` returns the PeerJS key and ICE server list to any requester. This is a code fact. Whether it matters is an open decision.
 
 ### 5. Who can do what, kept separate (summary of evidence from other findings)
 
@@ -76,7 +76,7 @@ Some checks combine both and say so. Tested results do not show what a phone or 
 | Ending someone else's call       | A client claiming another person's id and disconnecting ended that call on both sides. (Tested)                                                                                                                                                                                                                                                                 |
 | Audible audio or picture content | Not established.                                                                                                                                                                                                                                                                                                                                                |
 
-The roadmap records open links as a product choice. The exposure in the table is a security fact. Whether to accept it is the owner's policy decision, and neither depends on the other.
+The roadmap records open links as a product choice. The exposure in the table is a security fact. Whether to accept it is a policy decision, and neither depends on the other.
 
 ### 6. Room lifecycle on the server
 
@@ -131,7 +131,7 @@ The roadmap records open links as a product choice. The exposure in the table is
 
 ## What this means
 
-Findings 1 to 7 are tracked in the decision log (P20 to P22), and none is fixed here. The real-device checks in finding 11 follow the approved test plan (P22). Until they run, the audit cannot claim "works every time".
+Findings 1 to 7 are tracked in the decision log (P20 to P22), and none is fixed here. The real-device checks in finding 11 follow the test plan (P22). Until they run, the audit cannot claim "works every time".
 
 ## Open decision
 
