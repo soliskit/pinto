@@ -11,10 +11,8 @@ assignees: ''
 
 Describe **one** problem, and include the code if it helps.
 
-```javascript
-const verifySpecificty = (description: string): string => {
-    return true
- }
+```
+Paste the code here.
 ```
 
 ### Steps to Reproduce
