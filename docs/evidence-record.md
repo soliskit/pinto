@@ -1,6 +1,6 @@
 # Pinto Evidence Record
 
-**Status.** This record tracks the planned service checks. The current Playbook has Charter, Roadmap, and How It Works tabs. The existing-app audit is recorded separately in docs/audit-report.md. These service-check rows are not its results.
+**Status.** This record tracks the planned service checks. The existing-app audit lives in docs/audit-report.md, and these rows are not its results. The Playbook has three tabs: Charter, Roadmap, and How It Works.
 
 ## 1. Requirements and checks
 
@@ -37,7 +37,7 @@ The existing-app audit is recorded in [audit-report.md](audit-report.md), and it
 
 ## 4. Reviews
 
-Playbook parts have received review comments and revisions. This record does not give a review verdict for its own exact current bytes. The audit-report review does not certify these planned service checks.
+Reviewers have commented on the Playbook, and it has been revised. This record gives no review verdict for its exact current version, and the audit-report review does not certify these planned service checks.
 
 ## 5. Later phases
 
@@ -45,7 +45,7 @@ Each phase after the audit needs its own authorization and its own evidence. Loc
 
 ## Platform facts the behavior relies on
 
-The research coordinator verified these on 7 October 2026 from public pages. They were not independently re-read for this document.
+The research coordinator verified these on 7 October 2026 from public pages. No one independently re-read them for this document.
 
 - **E1 Pages limits and terms.** Pages is free, and a public repo is required on GitHub Free. The limits are a 1 GB site, a soft 100 GB a month, and a soft 10 builds an hour. The terms say Pages must not be used for a business, e-commerce, or commercial software as a service, and should not be used for sensitive transactions such as sending passwords or credit card numbers. https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits . No legal judgment is made.
 - **E2 Pages headers observed.** Unproven in this record. No exact source, date, or response is recorded for the earlier sample of missing frame, content security, and HSTS headers, so it cannot be reproduced. It is not a platform claim.

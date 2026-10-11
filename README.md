@@ -1,8 +1,8 @@
 # Pinto
 
-Pinto is a browser-based video calling app built with WebRTC. Share a room link, talk with friends, and switch between camera video and a photo.
+Pinto is a video calling app that runs in your browser. Share a room link, talk with friends, and switch between camera video and a photo. It uses WebRTC, which lets browsers send video straight to each other.
 
-WebRTC lets browsers send video straight to each other. A STUN server tells a browser its public address. A TURN server relays the call when a direct link is blocked. One small Node server does all the work:
+A STUN server tells a browser its public address. A TURN server relays the call when a direct link is blocked. One small Node server does all the work:
 
 - serves the web client: plain HTML, CSS, and JavaScript, with no build step
 - runs a [PeerJS](https://peerjs.com/) server, which helps browsers set up WebRTC connections with each other
