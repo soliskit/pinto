@@ -33,7 +33,7 @@ Every row below is a planned service check, and each stays Pending until its own
 
 ## 3. Existing app audit
 
-The existing-app audit is recorded in [audit-report.md](audit-report.md), and decision log P20 accepts it. Real-device behavior remains unproven.
+The existing-app audit is recorded in [audit-report.md](audit-report.md), and its status is in decision log P20. Real-device behavior remains unproven.
 
 ## 4. Reviews
 
@@ -41,7 +41,7 @@ Playbook parts have received review comments and revisions. This record does not
 
 ## 5. Later phases
 
-Each phase after the audit needs its own authorization from the owner and its own evidence. Local results never count as proof of provider or platform behavior.
+Each phase after the audit needs its own authorization and its own evidence. Local results never count as proof of provider or platform behavior.
 
 ## Platform facts the behavior relies on
 
