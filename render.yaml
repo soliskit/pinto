@@ -1,5 +1,5 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
-# Node comes from "engines" in package.json and Render sets PORT.
+# Node comes from "engines" in package.json. Render sets PORT.
 services:
   - type: web
     name: pinto
