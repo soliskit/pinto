@@ -1,7 +1,7 @@
 ---
 name: "Bug \U0001F41E"
-about: Improve Express WebSocket server
-title: "[ Description of action and resulting error ]"
+about: Report a problem with the Pinto server or client
+title: "Describe the action and the error it caused"
 labels: bug
 assignees: ''
 
@@ -9,26 +9,24 @@ assignees: ''
 
 ### What is the problem?
 
-[ *Description of **one** problem `with code`*  ]
+Describe **one** problem, and include the code if it helps.
 
-```javascript
-const verifySpecificty = (description: string): string => {
-    return true
- }
+```
+Paste the code here.
 ```
 
 ### Steps to Reproduce
 
-- [ Action ]
-> [ Result ]
+1. Describe what you did.
+2. Describe what happened.
 
 **Expected**
-> [ Description of behavior ]
+> Describe what you expected to happen.
 
 ### Versions:
 ```
-commit:  [ Git commit of pinto ]
-host:    [ Render, localhost, ... ]
+commit:  the Git commit of Pinto
+host:    Render, localhost, or another host
 Node.js: 22.x
-browser: [ Name and version ]
+browser: name and version
 ```
