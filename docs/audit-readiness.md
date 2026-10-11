@@ -29,4 +29,4 @@ Real-device checks are still pending. The cases are Camera off, Mute, End, closi
 - The audit only reads the repo and the live site.
 - It costs $0. No accounts are created and nothing is spent.
 - It changes no code, tests, workflows, or settings.
-- Pinto fixes, including the microphone bug, follow the approved fix plan (P21). Implementation needs its own authorization.
+- Pinto fixes, including the microphone bug, follow the fix plan (P21). Implementation needs its own authorization.
