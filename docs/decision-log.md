@@ -1,6 +1,6 @@
 # Pinto Decision Log
 
-This log records each decision, what it means, and where it stands. The current Pinto Playbook has three tabs: Charter, Roadmap, and How It Works. This log and the Evidence Record live with the code.
+This log records each decision, what it means, and where it stands. It lives in the repo with the Evidence Record. The Pinto Playbook has three tabs: Charter, Roadmap, and How It Works.
 
 ## Settled decisions
 
@@ -8,7 +8,7 @@ This log records each decision, what it means, and where it stands. The current 
 - **P2 Two-person calls come first, and groups stay possible.** The design must not block groups. About 20 people is a future target. Settled.
 - **P3 Free, with a single solution.** Free is required, and one hosting solution is preferred. Settled.
 - **P4 Hosting order.** GitHub first, then Cloudflare, then Vercel, for every project. Settled.
-- **P5 Services first, replacements in parallel.** The audit-first decision below narrowed it. Superseded in scope by P8.
+- **P5 Services first, replacements in parallel.** P8 (audit first) narrowed its scope.
 - **P6 The public page lives on GitHub Pages.** If the app ever sells, advertises, or becomes paid, the Pages terms need rechecking. Settled.
 - **P7 The open questions wait.** Research continues, and the five open decisions stay on hold. Settled.
 - **P8 Audit first.** No service-dependent feature before the audit. Planning only meanwhile. Settled.
@@ -30,7 +30,7 @@ This log records each decision, what it means, and where it stands. The current 
 
 - **P20 The Phase A audit is accepted.** The written report (`docs/audit-report.md`) and its stated limits are the basis for choosing fixes. Acceptance covers the findings and their limits only. It authorizes no app changes, no service features, and no live-site testing. Settled, October 9, 2026.
 - **P21 Privacy and call-access fixes come before real-device checks.** The settled plan: Stop Video, Mute, and End each stop their camera or microphone capture. Capture starts only when joining. Callers who are not in the room are blocked. Pretending to be another person can no longer end a call. This settles the plan, not code changes. Implementation needs its own authorization. Reconnection and room-lifecycle fixes (audit findings 6 and 7) remain a later decision. Settled, October 9, 2026.
-- **P22 The real-device test plan.** Checks wait until the planned fixes are built and pass local checks. They then run on the chosen iPhone and iPad (exact models kept in the private record), in Safari, with a throwaway call. They cover camera and microphone shutoff, sound, picture, and recovery after a network change. This settles the plan only. It is not a go-ahead to run the checks. Settled, October 9, 2026.
+- **P22 The real-device test plan.** Checks wait until the planned fixes are built and pass local checks. They then run on the chosen iPhone and iPad (exact models kept in the private record), in Safari, with a throwaway call. They cover camera and microphone shutoff, sound, picture, and recovery after a network change. This settles the plan only, not a go-ahead to run the checks. Settled, October 9, 2026.
 
 - **P23 A sign-in email safeguard.** Sign-in emails go only to approved hosts. Repeated requests are limited. New sign-ins stop before the free daily email allowance runs out. Existing sessions keep working. A warning shows before the limit. The rule is settled, and the exact limits are not set. Settled, October 9, 2026.
 - **P24 The host list stays owner-only.** Host sign-in stays limited to the owner until the owner-only test works. Other hosts are added only when the owner chooses who. Guests join calls without an account. No invitation or host addition is authorized. Settled, October 9, 2026.
