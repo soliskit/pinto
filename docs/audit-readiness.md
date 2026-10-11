@@ -1,6 +1,6 @@
 # Audit readiness
 
-The written Phase A audit and its independent review are complete. Its current scope, source snapshot, local results, and limits are in [audit-report.md](audit-report.md). The owner accepted the audit on October 9, 2026 (decision log P20) and approved the fix plan and the real-device test plan as plans (P21, P22). Building the fixes and running the checks each need their own authorization. This checklist records the audit inputs and limits; it creates no freeze rule or new authorization. The audit report owns tested findings; this checklist is not a second result record.
+The audit is complete and its decisions are in the [decision log](decision-log.md) (P20 to P22). Results are in [audit-report.md](audit-report.md). This checklist records the audit inputs and limits and creates no freeze rule or authorization.
 
 ## Audit inputs
 
@@ -10,7 +10,7 @@ The written Phase A audit and its independent review are complete. Its current s
 4. **Settings.** The names of the environment variables in use (`PORT`, `KEY`, and whether the Twilio variables are set), never their values.
 5. **Test baseline.** The result of the type check, lint, and tests, run the way CI runs them.
 6. **Test devices.** The devices and browsers used, with exact versions, kept the same throughout.
-7. **Repo name.** The source repo is `soliskit/pinto`. The audit recorded a stale `pinto-pinto/pinto` value in the `package.json` `repository` field and did not change it. This change reconciles the field to `soliskit/pinto`.
+7. **Repo name.** The source repo is `soliskit/pinto`.
 
 ## Call, connection, and capture checks
 
