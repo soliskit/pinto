@@ -1,6 +1,6 @@
 # Audit report: Phase A, existing app
 
-This is the written report for Phase A of the Pinto audit. It covers the app's repository at the commit named below, tested on a local copy. The live deployment's server behavior was not verified. It follows the checklist and limits in [audit-readiness.md](audit-readiness.md). It only reads: it fixes nothing, changes no code, tests, workflows, or settings, and costs nothing. This report and its stated limits are accepted as the basis for choosing fixes (decision log P20, October 9, 2026). Acceptance covers the findings and their limits only.
+This report records Phase A of the Pinto audit. It covers the app's repository at the commit named below, tested on a local copy. It did not verify the live deployment's server behavior. It follows the checklist and limits in [audit-readiness.md](audit-readiness.md), and it only reads: it fixes nothing, changes no code, tests, workflows, or settings, and costs nothing. Decision log P20 (October 9, 2026) accepts the findings and their stated limits, and nothing more, as the basis for choosing fixes.
 
 The button names and messages quoted here are the ones at the audited commit.
 
@@ -37,6 +37,8 @@ Some checks combine both and say so. Tested results do not show what a phone or 
 ## Findings
 
 ### 1. Camera and microphone tracks stay live after Stop Video, Mute, and End
+
+A track is one stream of audio or video, such as the camera's or the microphone's. A track is live until it is ended.
 
 - **Tested** (track state in the test browser, headless with fake devices): the page asks for the camera and microphone as it loads, before anyone chooses Join Now. After load, both tracks were live. After Start Video then Stop Video, the camera track was still live. After Mute, the microphone track was live with `enabled` set to false. After End, both tracks were still live.
 - **Code reading only**: a search of `public/` and `src/` for `stop`, `getTracks`, `removeTrack`, and `close()` found no call that ends a camera or microphone track. The only matches are `removeTrack` on the outgoing stream, which takes a track out of the stream without ending it, and `call.close()`. The search covers the app's own files, not the vendored libraries. It reflects those searches and the handlers read, not a proof about every possible path. Mute sets `enabled` on the audio tracks. End calls `removeCall` for each call, which closes the call, and reconnects the signal socket.
