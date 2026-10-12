@@ -22,7 +22,7 @@ Later entries preserve each decision's original scope and record changes. The [E
 ## Service and audit decisions
 
 - **P13 Host sign-in uses emailed codes, and passkeys wait.** P17 sets the sign-in service and sender. Settled.
-- **P14 Diagnostics reports.** The app shows exactly what it would send, and sends only when the user taps Send. Reports hold error information only, and only the owner can read them. They are kept 30 days and then deleted. Deleted data can stay in backups for up to 30 more days (P19). Settled.
+- **P14 Diagnostics reports.** The app shows exactly what it would send, and sends only when the user taps Send. Reports hold error information only, and only the owner can read them. Retention is set in P19. Settled.
 
 - **P15 The hosting is split.** The public page stays on GitHub Pages. The app and its sign-in service are planned to run on Cloudflare. The existing app uses Render, and a move is not established. Settled.
 - **P16 Each part gets its own soliskit.com subdomain.** That covers the public page, the app, and the sign-in service. Cookies are host-only, so no cookie is shared across them. Settled.
