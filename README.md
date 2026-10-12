@@ -1,19 +1,21 @@
 # Pinto
 
-Pinto is a video calling app that runs in your browser. Share a room link, talk with friends, and switch between camera video and a photo. It uses WebRTC, which lets browsers send video straight to each other.
+Browser video calls, with camera and photo controls.
 
-A STUN server tells a browser its public address. A TURN server relays the call when a direct link is blocked. One small Node server does all the work:
+Share a room link and talk with friends. Pinto uses WebRTC to send audio and video between browsers.
 
-- serves the web client: plain HTML, CSS, and JavaScript, with no build step
-- runs a [PeerJS](https://peerjs.com/) server, which helps browsers set up WebRTC connections with each other
-- runs a [Socket.IO](https://socket.io/) server, which sends live updates and tracks who is in each room
-- gives browsers STUN and TURN servers, from Twilio when you set it up
+The Node server serves the app and helps browsers connect. A STUN server finds a browser's public address. A TURN server relays a call when browsers cannot connect directly. The server:
 
-## Requirements
+- serves plain HTML, CSS, and JavaScript, with no build step
+- uses [PeerJS](https://peerjs.com/) to help browsers set up calls
+- uses [Socket.IO](https://socket.io/) for room updates
+- gives browsers connection settings, including Twilio relays when configured
+
+## Run locally
 
 - [Node.js](https://nodejs.org) `22.18` or newer in the 22 line (npm comes with it). Node runs the TypeScript source directly, so nothing needs building
 
-## Getting started
+### Start the server
 
 Install the dependencies:
 
@@ -65,7 +67,7 @@ With your camera off, others see a placeholder. Click your own preview to show a
 | `TWILIO_ACCOUNT_SID` |         | With `TWILIO_AUTH_TOKEN`, enables Twilio's STUN and TURN servers |
 | `TWILIO_AUTH_TOKEN`  |         | Twilio auth token                                                |
 
-Without Twilio credentials, browsers get a public STUN server only. That works for most home networks. Calls between people on strict corporate or mobile networks need a TURN relay.
+Without Twilio credentials, browsers get a public STUN server only. A direct connection may work without a relay. Networks that block it need a TURN relay.
 
 ## Endpoints
 
@@ -143,7 +145,7 @@ To add TURN relays, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under the s
 
 ### Other hosts
 
-Any host that runs Node 22.18 or newer as one long-running process works.
+Other hosts need to run Node 22.18 or newer in the 22 line as one long-running process.
 
 ## License
 

@@ -1,5 +1,5 @@
 ---
-name: "Bug \U0001F41E"
+name: "Report a bug"
 about: Report a problem with the Pinto server or client
 title: "Describe the action and the error it caused"
 labels: bug
@@ -15,7 +15,7 @@ Describe **one** problem, and include the code if it helps.
 Paste the code here.
 ```
 
-### Steps to Reproduce
+### Steps to reproduce
 
 1. Describe what you did.
 2. Describe what happened.
@@ -23,7 +23,7 @@ Paste the code here.
 **Expected**
 > Describe what you expected to happen.
 
-### Versions:
+### Versions
 ```
 commit:  the Git commit of Pinto
 host:    Render, localhost, or another host
