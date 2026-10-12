@@ -1,6 +1,8 @@
 # Pinto Evidence Record
 
-**Status.** This record tracks the planned service checks. The existing-app audit lives in docs/audit-report.md, and these rows are not its results. The Playbook has three tabs: Charter, Roadmap, and How It Works.
+The planned service checks and the evidence still needed.
+
+Every service check below is Pending. The [existing-app audit](audit-report.md) is a separate result and does not close these checks. The private Playbook holds the current plan.
 
 ## 1. Requirements and checks
 
@@ -45,9 +47,9 @@ Each phase after the audit needs its own authorization and its own evidence. Loc
 
 ## Platform facts the behavior relies on
 
-The research coordinator verified these on 7 October 2026 from public pages. No one independently re-read them for this document.
+These platform notes were reported from public pages checked on October 7, 2026. They have not been independently rechecked for this record. Keep their dates and limits when using them.
 
 - **E1 Pages limits and terms.** Pages is free, and a public repo is required on GitHub Free. The limits are a 1 GB site, a soft 100 GB a month, and a soft 10 builds an hour. The terms say Pages must not be used for a business, e-commerce, or commercial software as a service, and should not be used for sensitive transactions such as sending passwords or credit card numbers. https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits . No legal judgment is made.
 - **E2 Pages headers observed.** Unproven in this record. No exact source, date, or response is recorded for the earlier sample of missing frame, content security, and HSTS headers, so it cannot be reproduced. It is not a platform claim.
 - **E3 Worker static-file headers.** The _headers file applies to static asset responses only, not Worker-generated responses. https://developers.cloudflare.com/workers/static-assets/headers/
-- **E8 Existing app.** Reported, unverified in this record. Public repo soliskit/pinto, read 7 October 2026 by the research coordinator. No pinned commit or path is recorded, so these observations cannot be reproduced from this record. Camera and microphone are requested on page load. Camera off swaps the sent video. Mute disables the track. End reconnects the socket. No step that stops the tracks was found. The server accepts any non-empty room name and id. Read, not tested.
+- **E8 Earlier source observations.** Reported, unverified in this record. These are not the later audit results. Public repo soliskit/pinto, read 7 October 2026 by the research coordinator. No pinned commit or path is recorded, so these observations cannot be reproduced from this record. Camera and microphone are requested on page load. Camera off swaps the sent video. Mute disables the track. End reconnects the socket. No step that stops the tracks was found. The server accepts any non-empty room name and id. Read, not tested.
