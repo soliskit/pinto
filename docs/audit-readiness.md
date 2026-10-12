@@ -6,13 +6,13 @@ The accepted audit findings and limits are in the [audit report](audit-report.md
 
 ## Audit inputs
 
-1. **Code version.** Record the commit and date, including any feature changes during the audit.
-2. **Live site.** Which deploy is live on Render. The repository's Render configuration uses the free plan, which sleeps after 15 idle minutes and can take about a minute to wake ([Render free plan](https://render.com/docs/free)).
-3. **Packages.** The versions pinned by `package-lock.json`, and whether any updates landed during the audit.
-4. **Settings.** The names of the environment variables in use (`PORT`, `KEY`, and whether the Twilio variables are set). Never their values.
-5. **Test baseline.** The result of the type check, lint, and tests, run the way CI runs them.
-6. **Test devices.** The devices and browsers used, with exact versions, kept the same throughout.
-7. **Repository.** Use `soliskit/pinto`.
+1. **Code version.** Record the commit and date, and any feature changes during the audit.
+2. **Live site.** Record which deploy is live on Render. The repository's Render configuration uses the free plan, which sleeps when idle (see [Evidence Record E4](evidence-record.md)).
+3. **Packages.** Record the versions pinned by `package-lock.json`, and any updates during the audit.
+4. **Settings.** Record the names of the environment variables in use (`PORT`, `KEY`, and whether the Twilio variables are set). Never record their values.
+5. **Test baseline.** Record the results of the type check, lint, and tests, run the way CI runs them.
+6. **Test devices.** Record the devices and browsers used, with exact versions. Keep them the same throughout.
+7. **Repository.** Audit `soliskit/pinto`.
 
 ## Call, connection, and capture checks
 
