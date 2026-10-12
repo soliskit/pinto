@@ -1,6 +1,8 @@
 # Pinto Decision Log
 
-This log records each decision, what it means, and where it stands. It lives in the repo with the Evidence Record. The Pinto Playbook has three tabs: Charter, Roadmap, and How It Works.
+The project choices, their limits, and the decisions still open.
+
+Later entries preserve each decision's original scope and record changes. The [Evidence Record](evidence-record.md) tracks the checks. The private Playbook holds the current plan.
 
 ## Settled decisions
 
@@ -8,16 +10,16 @@ This log records each decision, what it means, and where it stands. It lives in 
 - **P2 Two-person calls come first, and groups stay possible.** The design must not block groups. About 20 people is a future target. Settled.
 - **P3 Free, with a single solution.** Free is required, and one hosting solution is preferred. Settled.
 - **P4 Hosting order.** GitHub first, then Cloudflare, then Vercel, for every project. Settled.
-- **P5 Services first, replacements in parallel.** P8 (audit first) narrowed its scope.
+- **P5 Original service plan.** Use services first and research replacements alongside them. P8 later required the audit before any service-dependent feature.
 - **P6 The public page lives on GitHub Pages.** If the app ever sells, advertises, or becomes paid, the Pages terms need rechecking. Settled.
 - **P7 The open questions wait.** Research continues, and the five open decisions stay on hold. Settled.
 - **P8 Audit first.** No service-dependent feature before the audit. Planning only meanwhile. Settled.
 - **P9 Review the audit before building.** Pinto's audit results get an independent review before any implementation starts. The rule lives once on Soliskit Principles, with no copy in any Roadmap. Settled.
-- **P10 A one-page readiness note.** It lists what to freeze before the audit. It lives in the repo and is not part of the Playbook. Done.
+- **P10 A one-page readiness note.** It lists the audit inputs to record. It lives in the repo and is not part of the Playbook. Done.
 - **P11 Documentation-only pull requests may merge.** They need an independent review and passing checks. This does not cover code, permanent tests, CI changes, or releases. A document that changes a goal, requirement, decision, or safeguard still needs explicit approval. Settled.
 - **P12 The Playbook has three tabs.** They are Charter, Roadmap, and How It Works. Old documents are deleted once their content is committed to git. Settled.
 
-## More settled decisions
+## Service and audit decisions
 
 - **P13 Host sign-in uses emailed codes, and passkeys wait.** P17 sets the sign-in service and sender. Settled.
 - **P14 Diagnostics reports.** The app shows exactly what it would send, and sends only when the user taps Send. Reports hold error information only, and only the owner can read them. They are kept 30 days and then deleted. Deleted data can stay in backups for up to 30 more days (P19). Settled.
