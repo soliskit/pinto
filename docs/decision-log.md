@@ -17,7 +17,7 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P9 Review the audit before building.** Pinto's audit results get an independent review before any implementation starts. The rule lives once on Soliskit Principles, with no copy in any Roadmap. Settled.
 - **P10 A one-page readiness note.** It lists the audit inputs to record. It lives in the repo and is not part of the Playbook. Done.
 - **P11 Documentation-only pull requests may merge.** They need an independent review and passing checks. This does not cover code, permanent tests, CI changes, or releases. A document that changes a goal, requirement, decision, or safeguard still needs explicit approval. Settled.
-- **P12 The Playbook has three tabs.** They are Charter, Roadmap, and How It Works. Old documents are deleted once their content is committed to git. Settled.
+- **P12 Original Playbook structure.** The original tabs were Charter, Roadmap, and How It Works. The private Playbook holds the current structure. Old documents are deleted once their content is committed to git. Settled.
 
 ## Service and audit decisions
 
