@@ -2,7 +2,7 @@
 
 Status of the planned service checks and the platform facts they rely on.
 
-Every service check below is Pending. The [existing-app audit](audit-report.md) is a separate result and does not close them, and real-device behavior is still unproven. No review verdict covers this exact version of the planned checks, and the audit report's review does not certify them. The private Playbook holds the Check and Fail text for B1 to B16 under How It Works, and the pass rule for each unproven check under Roadmap.
+Every service check below is Pending. The [existing-app audit](audit-report.md) is a separate result and does not close them, and real-device behavior is still unproven. No review verdict covers this exact version of the planned checks, and the audit report's review does not certify them. The private Playbook holds the Check and Fail text for B1 to B16 under How It Works, and the pass rule for each unproven check under What's next in the Charter.
 
 ## Service checks
 
@@ -27,7 +27,7 @@ Every service check below is Pending. The [existing-app audit](audit-report.md) 
 
 ## Unproven checks
 
-Each is Pending. Items 1 to 8 are the Playbook Roadmap's unproven checks and gates.
+Each is Pending. Items 1 to 8 are the unproven checks and gates under What's next in the Playbook Charter.
 
 1. TURN accounting
 2. WebSocket request counting
