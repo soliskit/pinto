@@ -149,4 +149,4 @@ Other hosts need to run Node 22.18 or newer in the 22 line as one long-running p
 
 ## License
 
-[GPL 3.0](LICENSE.md)
+[MIT](LICENSE.md)
