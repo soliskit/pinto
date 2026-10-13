@@ -14,7 +14,7 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P6 The public page lives on GitHub Pages.** If the app ever sells, advertises, or becomes paid, the Pages terms need rechecking. Settled.
 - **P7 The open questions wait.** Research continues, and the five open decisions stay on hold. Settled.
 - **P8 Audit first.** No service-dependent feature before the audit. Planning only meanwhile. Settled.
-- **P9 Review the audit before building.** Pinto's audit results get an independent review before any implementation starts. The rule lives once on Soliskit Principles, with no copy in any Roadmap. Settled.
+- **P9 Review the audit before building.** Pinto's audit results get an independent review before any implementation starts. The rule lives once on Principles, with no copy in any Roadmap. Settled.
 - **P10 A one-page readiness note.** It lists the audit inputs to record. It lives in the repo and is not part of the Playbook. Done.
 - **P11 Documentation-only pull requests may merge.** They need an independent review and passing checks. This does not cover code, permanent tests, CI changes, or releases. A document that changes a goal, requirement, decision, or safeguard still needs explicit approval. Settled.
 - **P12 Original Playbook structure.** The original tabs were Charter, Roadmap, and How It Works. The private Playbook holds the current structure. Old documents are deleted once their content is committed to git. Settled.
