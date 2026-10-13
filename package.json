@@ -45,5 +45,6 @@
     "Socket.io",
     "Video Conferencing"
   ],
+  "license": "MIT",
   "private": true
 }
