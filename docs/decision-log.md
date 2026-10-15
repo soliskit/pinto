@@ -37,6 +37,20 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P23 A sign-in email safeguard.** Sign-in emails go only to approved hosts. Repeated requests are limited. New sign-ins stop before the free daily email allowance runs out. Existing sessions keep working. A warning shows before the limit. The rule is settled, and the exact limits are not set. Settled, October 9, 2026.
 - **P24 The host list stays owner-only.** Host sign-in stays limited to the owner until the owner-only test works. Other hosts are added only when the owner chooses who. Guests join calls without an account. No invitation or host addition is authorized. Settled, October 9, 2026.
 
+## Derivation decisions
+
+These entries record the derivations behind numbers the owner had picked without one. The earlier entries keep their original wording; these rows carry the reasoning. Each was settled by the owner on October 15, 2026, over iMessage.
+
+- **G1 A Pinto call is two people, one real conversation.** This derives P2's two-person pick: mesh connection math (2 people need 1 connection, 4 need 6, 20 need 190), the LiveKit 4,000 person-minute monthly ceiling (P18), and conversation dynamics past about 4 people. Settled, October 15, 2026 (owner's iMessage, phonemsg-01M50MRY99TBECAY3P4P9HWRRX).
+- **G2 Two people is the starting point, not a permanent rule.** The product today is the two-person call, and the door to groups stays open. Settled, October 15, 2026 (phonemsg-01M50MSMMZ9PEWMVQQN4JBJ4XH).
+- **G3 About 20 people is a design target, not a promise.** It is where the owner wants the product to go, explicitly not tested or committed. P2's future-target wording keeps this meaning. Settled, October 15, 2026 (phonemsg-01M50MT89JSD7YCTN5V9PDBABC).
+- **R1 One shared retention number covers logs, bug reports, and deleted-data backup residue.** The number must be derived, not a bare pick. Settled, October 15, 2026 (phonemsg-01M50MW5CRDCGBQX3M5NM0E8S9).
+- **R2 Retention is one month for all three data classes.** Long enough to catch and fix real problems, short enough to honor the delete-date creed, and talkable - one word the owner can say without thinking, his stated reason for one shared number (phonemsg-01M50MWXD8R07ZX8TWR9APBBK5). P19's 30-day retention and backup wording carries this meaning. Settled, October 15, 2026 (phonemsg-01M50MYAET8BPEWSWJTZRKRCDB).
+- **R3 Logs and diagnostics never share a store.** Bug reports carry their own diagnostics (screenshots, device info, user descriptions), never raw logs. The owner chose the stronger privacy story: he would rather be wrong on debug memory than on the privacy story. Settled, October 15, 2026 (phonemsg-01M50N3T41YG44EC72FJW42Q7A).
+- **T1 The sign-in code lifetime is 30 minutes, derived.** Email delivery delay and mid-sign-in device switching need breathing room, rate limiting is the real anti-guessing defense, and 30 minutes sits in the normal band and is talkable. P19's code-expiry wording keeps this meaning. Settled, October 15, 2026 (phonemsg-01M50N52BCPBZKHZ1PTW2EV0Q8).
+- **T2 The test matrix covers up to 4 people.** Two is the product, so cover the pair; groups are a maybe-later, so poke past the pair to catch "assumes exactly 2" bugs; about 20 is unpromised, so no big testing; 4 is pair plus 2 and cheap to run. Settled, October 15, 2026 (phonemsg-01M50N68K7WW9H9YGX3PD057V5).
+- **T3 Key collisions get 3 total generation tries.** At 128 bits a healthy random generator essentially never collides, so the fail-loudly rule stands, but one collision can have a boring cause (a database hiccup or a duplicate request); 3 tries rules out a fluke and still fails fast on a broken generator. Settled, October 15, 2026 (phonemsg-01M50N7CET3HMNGDYFAYTFCW7C).
+
 ## Open decisions
 
 - **Mail-quota limits.** The safeguard rule is settled (P23). The exact limits are not set.
