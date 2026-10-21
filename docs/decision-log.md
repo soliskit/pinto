@@ -17,7 +17,7 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P5 Original service plan.** Use services first and research replacements alongside them. P8 later required the audit before any service-dependent feature. Status: Settled.
 - **P6 The public page lives on GitHub Pages.** If the app ever sells, advertises, or becomes paid, the Pages terms need rechecking.
   Status: Settled.
-- **P7 The open questions wait.** Research continues, and the five open decisions stay on hold.
+- **P7 The open questions wait.** Research continues, and the open decisions stay on hold.
   Status: Settled.
 - **P8 Audit first.** No service-dependent feature before the audit. Planning only meanwhile.
   Status: Settled.
