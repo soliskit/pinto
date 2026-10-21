@@ -10,7 +10,7 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P2 Two-person calls come first, and groups stay possible.** The design must not block groups. About 20 people is a future target. Settled.
 - **P3 Free, with a single solution.** Free is required, and one hosting solution is preferred. Settled.
 - **P4 Hosting order.** GitHub first, then Cloudflare, then Vercel, for every project. Settled.
-- **P5 Original service plan.** Use services first and research replacements alongside them. P8 later required the audit before any service-dependent feature.
+- **P5 Original service plan.** Use services first and research replacements alongside them. P8 later required the audit before any service-dependent feature. Status: Settled.
 - **P6 The public page lives on GitHub Pages.** If the app ever sells, advertises, or becomes paid, the Pages terms need rechecking. Settled.
 - **P7 The open questions wait.** Research continues, and the five open decisions stay on hold. Settled.
 - **P8 Audit first.** No service-dependent feature before the audit. Planning only meanwhile. Settled.
