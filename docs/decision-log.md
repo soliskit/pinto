@@ -55,7 +55,7 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P22 The real-device test plan.** Checks wait until the planned fixes are built and pass local checks. They then run on the chosen iPhone and iPad (exact models kept in the private record), in Safari, with a throwaway call. They cover camera and microphone shutoff, sound, picture, and recovery after a network change. This records the plan only, not a go-ahead to run the checks. Decided October 9, 2026.
   Status: Pending work.
 
-- **P23 A sign-in email safeguard.** Sign-in emails go only to approved hosts. Repeated requests are limited. New sign-ins stop before the free daily email allowance runs out. Existing sessions keep working. A warning shows before the limit. The rule is decided; its exact limits are set in the sign-in service's decision log (S30 to S40), and those values govern. For example, at most 3 sign-in emails per address per 30 minutes (S34). Decided October 9, 2026.
+- **P23 A sign-in email safeguard.** Sign-in emails go only to approved hosts. Repeated requests are limited. New sign-ins stop before the free daily email allowance runs out. Existing sessions keep working. A warning shows before the limit. The rule is decided; its mail-quota and rate limits are set in the decision log of the sign-in service (Salutant), entries S34 to S36. Decided October 9, 2026.
   Status: Settled.
 
 - **P24 The host list stays owner-only.** Host sign-in stays limited to the owner until the owner-only test works. Other hosts are added only when the owner chooses who. Guests join calls without an account. No invitation or host addition is authorized. Decided October 9, 2026.
@@ -91,6 +91,8 @@ These entries record the derivations behind numbers the owner had picked without
 
 ## Open decisions
 
+- **Mail-quota alert thresholds.** The mail-quota and rate limits are set (P23, Salutant S34 to S36). The plan proposes owner alerts at half and 80 percent of the daily budget; no decision sets them.
+  Status: Open.
 - **Reconnection and room-lifecycle fixes.** Whether audit findings 6 and 7 need fixing, and when, is a later decision.
   Status: Open.
 - **Fix implementation and test go-aheads.** Building the planned fixes needs its own authorization. Running the planned real-device checks needs its own go-ahead.
