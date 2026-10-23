@@ -113,3 +113,36 @@ export async function eventually<T>(
   }
   assert.deepEqual(actual, expected)
 }
+
+/** Runs in each page before its scripts, to record what room.js creates */
+export function record() {
+  const recorded: Window['recorded'] = {
+    peerConnections: [],
+    peerSockets: [],
+    peerMessages: []
+  }
+  window.recorded = recorded
+
+  const { mediaDevices } = navigator
+  const getUserMedia = mediaDevices.getUserMedia.bind(mediaDevices)
+  mediaDevices.getUserMedia = async (constraints) =>
+    (recorded.media = await getUserMedia(constraints))
+
+  window.RTCPeerConnection = class extends RTCPeerConnection {
+    constructor(configuration?: RTCConfiguration) {
+      super(configuration)
+      recorded.peerConnections.push(this)
+    }
+  }
+
+  window.WebSocket = class extends WebSocket {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols)
+      if (!String(url).includes('/peerjs')) return
+      recorded.peerSockets.push(this)
+      this.addEventListener('message', (event) =>
+        recorded.peerMessages.push(event.data)
+      )
+    }
+  }
+}
