@@ -5,63 +5,10 @@ import type { Browser, BrowserContext, Page } from 'playwright'
 import {
   eventually,
   launchBrowser,
+  record,
   startServer,
   type Server
 } from './helpers.ts'
-
-declare const Peer: typeof import('peerjs').Peer
-
-declare global {
-  interface Window {
-    recorded: {
-      /** The camera and microphone stream room.js got */
-      media?: MediaStream
-      peerConnections: RTCPeerConnection[]
-      /** WebSockets to the PeerJS server, and the messages they received */
-      peerSockets: WebSocket[]
-      peerMessages: string[]
-    }
-    caller: {
-      peer: InstanceType<typeof Peer>
-      stream: MediaStream
-      /** Ids of the calls answered with a stream */
-      answered: Set<string>
-    }
-  }
-}
-
-/** Runs in each page before its scripts, to record what room.js creates */
-function record() {
-  const recorded: Window['recorded'] = {
-    peerConnections: [],
-    peerSockets: [],
-    peerMessages: []
-  }
-  window.recorded = recorded
-
-  const { mediaDevices } = navigator
-  const getUserMedia = mediaDevices.getUserMedia.bind(mediaDevices)
-  mediaDevices.getUserMedia = async (constraints) =>
-    (recorded.media = await getUserMedia(constraints))
-
-  window.RTCPeerConnection = class extends RTCPeerConnection {
-    constructor(configuration?: RTCConfiguration) {
-      super(configuration)
-      recorded.peerConnections.push(this)
-    }
-  }
-
-  window.WebSocket = class extends WebSocket {
-    constructor(url: string | URL, protocols?: string | string[]) {
-      super(url, protocols)
-      if (!String(url).includes('/peerjs')) return
-      recorded.peerSockets.push(this)
-      this.addEventListener('message', (event) =>
-        recorded.peerMessages.push(event.data)
-      )
-    }
-  }
-}
 
 function withoutCamera() {
   navigator.mediaDevices.getUserMedia = () =>
