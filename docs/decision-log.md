@@ -65,6 +65,10 @@ Later entries preserve each decision's original scope and record changes. The [E
   Status: Settled.
 - **P26 The peer-list refusal is the expected behavior.** The two peer-list addresses (/pinto/peers and /peerjs/peers) answer 401 to requests without the key. Scope: those two addresses only; the /config question stays open. This records the expected behavior; the asserting test lands with the test plan's go. Decided October 22, 2026.
   Status: Settled.
+- **P27 A host link does not expire, and the host can disable it at any time.** Building host links needs its own authorization, with a test that an exposed link can be disabled. Decided October 23, 2026.
+  Status: Settled.
+- **P28 A host session lasts 30 days from sign-in.** Activity does not extend it. The host can sign out with a sign-out button. Building host sign-in needs its own authorization, with tests that sign-out works, that the session ends at 30 days from sign-in, and that activity does not extend it. Decided October 23, 2026.
+  Status: Settled.
 
 ## Derivation decisions
 
