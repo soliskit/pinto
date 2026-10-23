@@ -61,6 +61,11 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P24 The host list stays owner-only.** Host sign-in stays limited to the owner until the owner-only test works. Other hosts are added only when the owner chooses who. Guests join calls without an account. No invitation or host addition is authorized. Decided October 9, 2026.
   Status: Settled.
 
+- **P25 Known-defect checks run as non-gating diagnostics, with a slow-test split.** Three checks (camera or microphone still live after the capture controls; a caller who never joined was answered; a false join or leave under someone else's id) run marked TODO on covered CI runs and report current behavior without gating. The slow group runs when app or test code changes; the existing fast job is unchanged; closing a phase still runs every test. Each diagnostic becomes the gating regression test in its fix's pull request. This records the shape only, not approval to build. Decided October 22, 2026.
+  Status: Settled.
+- **P26 The peer-list refusal is the expected behavior.** The two peer-list addresses (/pinto/peers and /peerjs/peers) answer 401 to requests without the key. Scope: those two addresses only; the /config question stays open. This records the expected behavior; the asserting test lands with the test plan's go. Decided October 22, 2026.
+  Status: Settled.
+
 ## Derivation decisions
 
 These entries record the derivations behind numbers the owner had picked without one. The earlier entries keep their original wording; these rows carry the reasoning. Each was settled by the owner on October 15, 2026.
