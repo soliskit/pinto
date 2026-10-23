@@ -118,6 +118,40 @@ const inCall = (room: string, status: string) => ({
 const status = (page: Page) => () => page.textContent('#status')
 
 /**
+ * What a page's calls have received and sent so far, from the connection
+ * statistics: packets and bytes for each kind, and video frames decoded.
+ */
+function mediaFlow(page: Page) {
+  return () =>
+    page.evaluate(async () => {
+      const flow = {
+        audioReceived: 0,
+        videoReceived: 0,
+        framesDecoded: 0,
+        audioSent: 0,
+        videoSent: 0
+      }
+      for (const connection of window.recorded.peerConnections) {
+        for (const stat of (await connection.getStats()).values()) {
+          if (stat.type === 'inbound-rtp') {
+            if (stat.kind === 'audio')
+              flow.audioReceived += stat.packetsReceived
+            if (stat.kind === 'video') {
+              flow.videoReceived += stat.packetsReceived
+              flow.framesDecoded += stat.framesDecoded
+            }
+          }
+          if (stat.type === 'outbound-rtp') {
+            if (stat.kind === 'audio') flow.audioSent += stat.packetsSent
+            if (stat.kind === 'video') flow.videoSent += stat.packetsSent
+          }
+        }
+      }
+      return flow
+    })
+}
+
+/**
  * The other people's videos: the kinds of track each one gets, and whether
  * frames have arrived.
  */
@@ -376,6 +410,37 @@ describe('in a call', () => {
     }
     assert.deepEqual(await attendees(elsewhere.page)(), [])
     assert.equal(await status(elsewhere.page)(), '1st in the room')
+  })
+
+  test('audio and video packets keep flowing both ways', async () => {
+    const a = await openRoom('flow')
+    const b = await openRoom('flow')
+    await join(a)
+    await join(b)
+    await eventually(attendees(a.page), ['audio+video playing'])
+    await eventually(attendees(b.page), ['audio+video playing'])
+
+    const pages = [a.page, b.page]
+    const before = await Promise.all(pages.map((page) => mediaFlow(page)()))
+    await sleep(2000)
+    const after = await Promise.all(pages.map((page) => mediaFlow(page)()))
+
+    // Each side takes in, and sends out, more audio and video than it did
+    // two seconds earlier, so media goes both ways and has not stalled
+    for (const [i, flow] of after.entries()) {
+      for (const key of [
+        'audioReceived',
+        'videoReceived',
+        'framesDecoded',
+        'audioSent',
+        'videoSent'
+      ] as const) {
+        assert.ok(
+          flow[key] > before[i][key],
+          `page ${i + 1}: ${key} stayed at ${before[i][key]}`
+        )
+      }
+    }
   })
 
   test('Leave leaves the call for everyone, and Join joins again', async () => {
