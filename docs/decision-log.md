@@ -89,7 +89,8 @@ These entries record the derivations behind numbers the owner had picked without
 - **T3 Key collisions get 3 total generation tries.** At 128 bits a healthy random generator essentially never collides, so the fail-loudly rule stands, but one collision can have a boring cause (a database hiccup or a duplicate request); 3 tries rules out a fluke and still fails fast on a broken generator. Decided October 15, 2026.
   Status: Settled.
 
-## Open decision
+## Open decisions
+
 - **Reconnection and room-lifecycle fixes.** Whether audit findings 6 and 7 need fixing, and when, is a later decision.
   Status: Open.
 - **Fix implementation and test go-aheads.** Building the planned fixes needs its own authorization. Running the planned real-device checks needs its own go-ahead.
