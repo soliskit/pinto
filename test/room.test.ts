@@ -119,7 +119,7 @@ const status = (page: Page) => () => page.textContent('#status')
 
 /**
  * What a page's calls have received and sent so far, from the connection
- * statistics: packets and bytes for each kind, and video frames decoded.
+ * statistics: packets for each kind, and video frames decoded.
  */
 function mediaFlow(page: Page) {
   return () =>
@@ -426,7 +426,7 @@ describe('in a call', () => {
     const after = await Promise.all(pages.map((page) => mediaFlow(page)()))
 
     // Each side takes in, and sends out, more audio and video than it did
-    // two seconds earlier, so media goes both ways and has not stalled
+    // two seconds earlier, so media went both ways between the two readings
     for (const [i, flow] of after.entries()) {
       for (const key of [
         'audioReceived',
@@ -437,7 +437,7 @@ describe('in a call', () => {
       ] as const) {
         assert.ok(
           flow[key] > before[i][key],
-          `page ${i + 1}: ${key} stayed at ${before[i][key]}`
+          `page ${i + 1}: ${key} did not increase from ${before[i][key]}`
         )
       }
     }
