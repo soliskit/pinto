@@ -93,6 +93,12 @@ describe('with the default settings', () => {
       assert.notEqual(first, second)
     })
 
+    test('the peer-list addresses answer 401 without the key', async () => {
+      for (const path of ['/pinto/peers', '/peerjs/peers']) {
+        assert.equal((await get(path)).status, 401, path)
+      }
+    })
+
     test('accepts WebSocket clients with the key and logs them', async () => {
       const id = await (await get('/pinto/id')).text()
       const peer = openPeerSocket(`key=pinto&id=${id}&token=t`)
