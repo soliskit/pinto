@@ -4,7 +4,7 @@ Local results for camera capture, call access, and connection handling.
 
 Local checks found a live camera track after Stop Video, a live microphone track after Mute, and both live after End. The app also answers calls without checking room membership. The accepted findings guide the fix plan in [decisions P20 to P22](decision-log.md). They do not establish real-device behavior or the live server's behavior.
 
-This report records Phase A at the source version below. It follows the [audit checklist](audit-readiness.md), including its limits.
+This report records Phase A at the source version below.
 
 The button names and messages quoted here are the ones at the audited commit.
 
