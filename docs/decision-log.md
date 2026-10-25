@@ -69,6 +69,8 @@ Later entries preserve each decision's original scope and record changes. The [E
   Status: Settled.
 - **P28 A host session lasts 30 days from sign-in.** Activity does not extend it. The host can sign out with a sign-out button. Building host sign-in needs its own authorization, with tests that sign-out works, that the session ends at 30 days from sign-in, and that activity does not extend it. Decided October 23, 2026.
   Status: Settled.
+- **P29 The readiness note is cut.** The audit report holds the record of the audit. The one-page readiness note (P10) is deleted, so P10's note no longer lives in the repo, and the audit's real-device steps and limits are no longer written there. Decided October 24, 2026.
+  Status: Settled.
 
 ## Derivation decisions
 
