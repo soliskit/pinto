@@ -117,6 +117,17 @@ describe('with the default settings', () => {
       })
       peer.close()
     })
+
+    test('survives a message that is not JSON and logs only its type', async () => {
+      const id = await (await get('/pinto/id')).text()
+      const peer = openPeerSocket(`key=pinto&id=${id}&token=t`)
+      assert.deepEqual(await nextMessage(peer), { type: 'OPEN' })
+      peer.send('visitor text, not JSON')
+      await server.waitForOutput('PeerServer error: SyntaxError')
+      assert.ok(!server.output().includes('visitor text'))
+      assert.equal((await get('/config')).status, 200)
+      peer.close()
+    })
   })
 
   describe('Socket.IO', () => {
