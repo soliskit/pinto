@@ -2,7 +2,7 @@
 
 Local results for camera capture, call access, and connection handling.
 
-Local checks found a live camera track after Stop Video, a live microphone track after Mute, and both live after End. The app also answers calls without checking room membership. The accepted findings guide the fix plan in [decisions P20 to P22](decision-log.md). They do not establish real-device behavior or the live server's behavior.
+Local checks found a live camera track after Stop Video, a live microphone track after Mute, and both live after End. The app also answers calls without checking room membership. The accepted findings guide the fix plan in [decisions P20 to P22](../decision-log.md). They do not establish real-device behavior or the live server's behavior.
 
 This report records Phase A at the source version below.
 
@@ -47,7 +47,7 @@ A track is one stream of audio or video, such as the camera's or the microphone'
 - **Tested** (track state in the test browser, headless with fake devices): the page asks for the camera and microphone as it loads, before anyone chooses Join Now. After load, both tracks were live. After Start Video then Stop Video, the camera track was still live. After Mute, the microphone track was live with `enabled` set to false. After End, both tracks were still live.
 - **Code Reading Only**: a search of `public/` and `src/` for `stop`, `getTracks`, `removeTrack`, and `close()` found no call that ends a camera or microphone track. The only matches are `removeTrack` on the outgoing stream, which takes a track out of the stream without ending it, and `call.close()`. The search covers the app's own files, not the vendored libraries. It reflects those searches and the handlers read, not a proof about every possible path. Mute sets `enabled` on the audio tracks. End calls `removeCall` for each call, which closes the call, and reconnects the signal socket.
 - **Not Established**: what the browser does with the tracks when a tab closes, whether a camera or microphone indicator is on (on any device), and whether the page behaves the same on phones.
-- The capture rule is recorded in [decision P21](decision-log.md). It says Stop Video stops camera capture and Mute stops microphone capture. Against that rule, the local test shows those actions did not end the tracks. Decisions about Stop Video, Mute, and End are separate, and so is the decision about starting capture at page load. See the end of this report.
+- The capture rule is recorded in [decision P21](../decision-log.md). It says Stop Video stops camera capture and Mute stops microphone capture. Against that rule, the local test shows those actions did not end the tracks. Decisions about Stop Video, Mute, and End are separate, and so is the decision about starting capture at page load. See the end of this report.
 
 ### 2. Video controls changed the received video size in one local call
 
@@ -139,4 +139,4 @@ The roadmap records open links as a product choice. The exposure in the table is
 
 Findings 1 to 7 are tracked in the decision log (P20 to P22), and none is fixed here. The real-device checks in finding 11 follow the test plan (P22). Until they run, the audit cannot claim "works every time".
 
-Whether findings 6 and 7 (room lifecycle and reconnection) need fixing before the real-device checks is an open decision in the [decision log](decision-log.md).
+Whether findings 6 and 7 (room lifecycle and reconnection) need fixing before the real-device checks is an open decision in the [decision log](../decision-log.md).
