@@ -48,7 +48,7 @@ Later entries preserve each decision's original scope and record changes. The [E
 - **P19 Privacy wording and retention.** The privacy wording is in How It Works, under Diagnostics (B9), and appears only after B8 and B9 pass. Its code-expiry wording must match the sign-in service contract, where the code lifetime is 30 minutes. Codes are single-use. Bug reports are kept 30 days and then deleted, and only the owner reads them. No video or audio is recorded or stored. Deleted data can stay in backups for up to 30 more days.
   Status: Settled.
 
-- **P20 The Phase A audit is accepted.** The written report (`docs/audit-report.md`) and its stated limits are the basis for choosing fixes. Acceptance covers the findings and their limits only. It authorizes no app changes, no service features, and no live-site testing. Decided October 9, 2026.
+- **P20 The Phase A audit is accepted.** The written report (`docs/audit/audit-report.md`) and its stated limits are the basis for choosing fixes. Acceptance covers the findings and their limits only. It authorizes no app changes, no service features, and no live-site testing. Decided October 9, 2026.
   Status: Settled.
 - **P21 Privacy and call-access fixes come before real-device checks.** The decided plan: Stop Video, Mute, and End each stop their camera or microphone capture. Capture starts only when joining. Callers who are not in the room are blocked. Pretending to be another person can no longer end a call. This records the plan, not approval for code changes. Implementation needs its own authorization. Reconnection and room-lifecycle fixes (audit findings 6 and 7) remain a later decision. Decided October 9, 2026.
   Status: Pending work.
