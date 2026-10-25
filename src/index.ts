@@ -76,6 +76,11 @@ peerServer.on('connection', (client: IClient) => {
   console.log(`PeerClient connected: ${client.getId()}`)
 })
 
+peerServer.on('error', (error: Error) => {
+  // Log only the type: the error text can repeat what a visitor sent
+  console.log(`PeerServer error: ${error.name}`)
+})
+
 peerServer.on('disconnect', (client: IClient) => {
   console.log(`PeerClient disconnected: ${client.getId()}`)
 })
