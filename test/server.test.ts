@@ -5,7 +5,7 @@ import { after, before, describe, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { io, type Socket } from 'socket.io-client'
 import WebSocket from 'ws'
-import { startServer, type Server } from './helpers.ts'
+import { eventually, startServer, type Server } from './helpers.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -251,6 +251,118 @@ describe('with the default settings', () => {
       )
       // And the server is still up
       assert.equal((await get('/config')).status, 200)
+    })
+
+    test('a second connection claiming an id already in the room is refused', async () => {
+      const [a, b, stranger] = await Promise.all(
+        Array.from({ length: 3 }, connect)
+      )
+      await join(a.socket, 'dup', 'peer-a')
+      await join(b.socket, 'dup', 'peer-b')
+
+      // The stranger is refused (answered with null) and never told to the room
+      const refused = await stranger.socket.emitWithAck(
+        'join-room',
+        'dup',
+        'peer-b'
+      )
+      assert.equal(refused, null)
+      await server.waitForOutput(
+        `${stranger.socket.id} - join-room refused: id already in room`
+      )
+      // Its disconnect ends nothing: b's membership belongs to b's socket.
+      // A fresh connection as a different id works normally
+      stranger.socket.disconnect()
+      const [other] = await Promise.all([connect()])
+      const strangerHeard = next(a.socket, 'user-connected')
+      await join(other.socket, 'dup', 'peer-stranger')
+      await strangerHeard
+      assert.deepEqual(a.events.connected, ['peer-b', 'peer-stranger'])
+      assert.deepEqual(a.events.disconnected, [])
+
+      // Once b really leaves, the id is free and can be claimed again
+      const bLeft = next(a.socket, 'user-disconnected')
+      b.socket.disconnect()
+      assert.equal(await bLeft, 'peer-b')
+      await server.waitForOutput(`user: peer-b - left: dup (`)
+      const [c] = await Promise.all([connect()])
+      await join(c.socket, 'dup', 'peer-b')
+      await eventually(async () => a.events.connected.length, 3)
+      assert.deepEqual(a.events.connected, [
+        'peer-b',
+        'peer-stranger',
+        'peer-b'
+      ])
+      assert.deepEqual(a.events.disconnected, ['peer-b'])
+    })
+
+    test('a repeat join on the same connection changes nothing', async () => {
+      const [a, b] = await Promise.all([connect(), connect()])
+      await join(a.socket, 'rejoin', 'peer-a')
+      await join(b.socket, 'rejoin', 'peer-b')
+
+      // Answered with the roster again, but not logged or broadcast again
+      const roster = await b.socket.emitWithAck('join-room', 'rejoin', 'peer-b')
+      assert.deepEqual(roster, ['peer-a'])
+      assert.deepEqual(a.events.connected, ['peer-b'])
+      assert.equal(
+        server.output().match(/user: peer-b - joined: rejoin/g)?.length,
+        1
+      )
+    })
+
+    test('a newcomer is told who is already in the room', async () => {
+      const [a, b, c] = await Promise.all(Array.from({ length: 3 }, connect))
+      await join(a.socket, 'roster', 'peer-a')
+      await join(b.socket, 'roster', 'peer-b')
+
+      const roster = await c.socket.emitWithAck('join-room', 'roster', 'peer-c')
+      assert.deepEqual([...roster].sort(), ['peer-a', 'peer-b'])
+      // And the room still hears about the newcomer itself
+      await eventually(async () => a.events.connected.length, 2)
+      assert.deepEqual(a.events.connected, ['peer-b', 'peer-c'])
+    })
+
+    test('only one of two connections racing for the same id is let in', async () => {
+      const [a, r1, r2, late] = await Promise.all(
+        Array.from({ length: 4 }, connect)
+      )
+      await join(a.socket, 'race', 'peer-a')
+
+      r1.socket.emit('join-room', 'race', 'peer-race', () => {})
+      r2.socket.emit('join-room', 'race', 'peer-race', () => {})
+      await server.waitForOutput('user: peer-race - joined: race')
+      await server.waitForOutput('join-room refused: id already in room')
+      assert.equal(
+        server.output().match(/user: peer-race - joined: race/g)?.length,
+        1
+      )
+
+      // The room heard about the winner exactly once: a trailing join, which
+      // a hears about after everything before it, proves the order
+      await join(late.socket, 'race', 'peer-late')
+      await eventually(async () => a.events.connected.length, 2)
+      assert.deepEqual(a.events.connected, ['peer-race', 'peer-late'])
+    })
+
+    test('disconnecting removes every id the connection claimed', async () => {
+      const [a, b, c] = await Promise.all(Array.from({ length: 3 }, connect))
+      await join(a.socket, 'multi', 'peer-a')
+      await join(b.socket, 'multi', 'peer-b')
+      await join(c.socket, 'multi', 'peer-c1')
+      await join(c.socket, 'multi', 'peer-c2')
+
+      c.socket.disconnect()
+      await eventually(async () => a.events.disconnected.length, 2)
+      assert.deepEqual([...a.events.disconnected].sort(), [
+        'peer-c1',
+        'peer-c2'
+      ])
+      assert.deepEqual([...b.events.disconnected].sort(), [
+        'peer-c1',
+        'peer-c2'
+      ])
+      assert.deepEqual(a.events.connected, ['peer-b', 'peer-c1', 'peer-c2'])
     })
   })
 

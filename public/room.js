@@ -48,6 +48,14 @@ let muted = false
 let joined = false
 /** @type {Map<string, { call: MediaConnection, video: HTMLVideoElement }>} */
 const calls = new Map()
+/** Peer ids the server says are in the room; only these are called or answered */
+const roomPeers = new Set()
+/** False until the server answers our join with the room roster */
+let rosterLoaded = false
+/** Increments on every Join and Leave, retiring older join attempts */
+let joinSerial = 0
+/** Calls that arrived while the roster answer was still on its way */
+const earlyCalls = /** @type {MediaConnection[]} */ ([])
 
 /** @type {{ key: string, iceServers: RTCIceServer[] }} */
 const config = await (await fetch('/config')).json()
@@ -192,24 +200,79 @@ removePhotoButton.addEventListener('click', () => setPhoto(DEFAULT_PHOTO))
 
 callButton.addEventListener('click', () => {
   if (joined) {
+    joinSerial++
     for (const peerId of calls.keys()) removeCall(peerId)
+    roomPeers.clear()
+    rosterLoaded = false
+    for (const call of earlyCalls.splice(0)) call.close()
     // A fresh connection leaves the room, and the server tells the others
     socket.disconnect().connect()
   } else {
-    socket.emit('join-room', roomName, peer.id)
+    const serial = ++joinSerial
+    let attempts = 0
+    const tryJoin = () => {
+      if (serial !== joinSerial) return
+      socket
+        .timeout(5_000)
+        .emit(
+          'join-room',
+          roomName,
+          peer.id,
+          (
+            /** @type {Error | null} */ error,
+            /** @type {string[] | null} */ members
+          ) => {
+            if (serial !== joinSerial) return
+            // A refusal or a lost answer usually means the room still has
+            // our id from a previous connection; try again until it clears
+            if (error || members === null) {
+              if (attempts++ < 4) {
+                // 5 attempts in all, about 2 seconds apart
+                setTimeout(tryJoin, 2_000)
+                return
+              }
+              // Still refused: back to not joined, with Join available
+              joined = false
+              for (const call of earlyCalls.splice(0)) call.close()
+              render()
+              return
+            }
+            for (const peerId of members) roomPeers.add(peerId)
+            rosterLoaded = true
+            // Calls that beat the roster answer get decided now
+            for (const call of earlyCalls.splice(0)) answerIfMember(call)
+          }
+        )
+    }
+    tryJoin()
   }
   joined = !joined
   render()
 })
 
 peer.on('open', render)
-peer.on('call', (call) => {
-  if (!joined) {
+/** Answers a call from a room member and closes any other */
+function answerIfMember(/** @type {MediaConnection} */ call) {
+  if (!roomPeers.has(call.peer)) {
     call.close()
     return
   }
   call.answer(outgoing)
   addCall(call)
+}
+
+peer.on('call', (call) => {
+  if (!joined) {
+    call.close()
+    return
+  }
+  // Members can hear about us and call before our roster answer arrives;
+  // those calls wait for it instead of being refused by mistake
+  if (!rosterLoaded) {
+    earlyCalls.push(call)
+    return
+  }
+  answerIfMember(call)
 })
 peer.on('disconnected', () => {
   setTimeout(() => {
@@ -220,8 +283,14 @@ peer.on('error', (error) =>
   showError('Connection problem', `${error.type}: ${error.message}`)
 )
 
-socket.on('user-connected', (peerId) => addCall(peer.call(peerId, outgoing)))
-socket.on('user-disconnected', removeCall)
+socket.on('user-connected', (peerId) => {
+  roomPeers.add(peerId)
+  addCall(peer.call(peerId, outgoing))
+})
+socket.on('user-disconnected', (peerId) => {
+  roomPeers.delete(peerId)
+  removeCall(peerId)
+})
 
 render()
 
