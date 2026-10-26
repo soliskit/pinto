@@ -4,7 +4,7 @@ import net from 'node:net'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
-import { chromium, type Browser } from 'playwright'
+import { chromium, webkit, type Browser } from 'playwright'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
@@ -85,8 +85,11 @@ function freePort(): Promise<number> {
 /**
  * Chromium with a fake camera and microphone that it may use without asking.
  * Set CHROMIUM_PATH to use an installed Chromium instead of Playwright's.
+ * Set PINTO_BROWSER=webkit to use Playwright's WebKit, launched without the
+ * fake camera and microphone flags, so tests that need them are not run in it.
  */
 export function launchBrowser(): Promise<Browser> {
+  if (process.env.PINTO_BROWSER === 'webkit') return webkit.launch()
   return chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || undefined,
     args: [
