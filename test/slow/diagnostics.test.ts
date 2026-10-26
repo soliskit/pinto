@@ -83,7 +83,7 @@ async function openCaller() {
       path: '/',
       key: 'pinto'
     })
-    window.caller = { peer, stream, answered: new Set() }
+    window.caller = { peer, stream, answered: new Set(), closed: new Set() }
   })
   await page.waitForFunction(() => window.caller.peer.open)
   return {
@@ -140,50 +140,36 @@ test(
   }
 )
 
-test(
-  'a caller who never joined is not answered',
-  {
-    todo: 'Known defect (audit finding 3): a stranger who never joins is answered. The fix removes this mark.'
-  },
-  async () => {
-    const room = await openRoom('diag-stranger')
-    await join(room)
-    const caller = await openCaller()
+test('a caller who never joined is not answered', async () => {
+  const room = await openRoom('diag-stranger')
+  await join(room)
+  const caller = await openCaller()
 
-    await caller.call(room.peerId)
-    await stays(
-      async () => [await caller.answered(), await remoteVideos(room.page)],
-      [0, 0]
-    )
-  }
-)
+  await caller.call(room.peerId)
+  await stays(
+    async () => [await caller.answered(), await remoteVideos(room.page)],
+    [0, 0]
+  )
+})
 
-test(
-  'a stranger cannot end a call by joining and leaving as someone else',
-  {
-    todo: "Known defect (audit finding 4): a false join and leave with a real guest's id ends their call. The fix removes this mark."
-  },
-  async () => {
-    const a = await openRoom('diag-impersonation')
-    await join(a)
-    const b = await openRoom('diag-impersonation')
-    await join(b)
-    await eventually(() => remoteVideos(a.page), 1)
-    await eventually(() => remoteVideos(b.page), 1)
+test('a stranger cannot end a call by joining and leaving as someone else', async () => {
+  const a = await openRoom('diag-impersonation')
+  await join(a)
+  const b = await openRoom('diag-impersonation')
+  await join(b)
+  await eventually(() => remoteVideos(a.page), 1)
+  await eventually(() => remoteVideos(b.page), 1)
 
-    // A stranger joins the room over socket.io claiming b's peer id, then
-    // leaves by disconnecting
-    const stranger = io(server.url)
-    await new Promise<void>((resolve) =>
-      stranger.on('connect', () => resolve())
-    )
-    stranger.emit('join-room', a.name, b.peerId)
-    stranger.disconnect()
+  // A stranger joins the room over socket.io claiming b's peer id, then
+  // leaves by disconnecting
+  const stranger = io(server.url)
+  await new Promise<void>((resolve) => stranger.on('connect', () => resolve()))
+  stranger.emit('join-room', a.name, b.peerId)
+  stranger.disconnect()
 
-    await stays(
-      async () => [await remoteVideos(a.page), await remoteVideos(b.page)],
-      [1, 1],
-      6_000
-    )
-  }
-)
+  await stays(
+    async () => [await remoteVideos(a.page), await remoteVideos(b.page)],
+    [1, 1],
+    6_000
+  )
+})
