@@ -38,11 +38,19 @@ const photoTrack = canvas.captureStream().getVideoTracks()[0]
 const photo = new Image()
 photo.src = DEFAULT_PHOTO
 
-/** What peers receive: one video track (camera or photo) and the mic */
-const outgoing = new MediaStream([photoTrack])
+// Like the photo track, a silent track stands in until the mic is captured
+const silentTrack = new AudioContext()
+  .createMediaStreamDestination()
+  .stream.getAudioTracks()[0]
+/** What peers receive: one video track (camera or photo) and one audio track (microphone or silence) */
+const outgoing = new MediaStream([photoTrack, silentTrack])
 /** @type {MediaStreamTrack | undefined} */
 let cameraTrack
-let mediaReady = false
+/** @type {MediaStreamTrack | undefined} */
+let micTrack
+/** Per-device request versions retire grants after toggles or teardown */
+let cameraRequest = 0
+let micRequest = 0
 let cameraOn = false
 let muted = false
 let joined = false
@@ -114,6 +122,113 @@ function sendVideo(track) {
   }
 }
 
+/**
+ * Sends an audio track to every call: the microphone or silence.
+ *
+ * @param {MediaStreamTrack} track
+ */
+function sendAudio(track) {
+  for (const current of outgoing.getAudioTracks()) outgoing.removeTrack(current)
+  outgoing.addTrack(track)
+  for (const { call } of calls.values()) {
+    const sender = call.peerConnection
+      ?.getSenders()
+      .find((sender) => sender.track?.kind === 'audio')
+    sender?.replaceTrack(track)
+  }
+}
+
+/** The message from a failed camera or microphone request */
+/** @param {unknown} error */
+const errorReason = (error) =>
+  error instanceof Error ? error.message : String(error)
+
+/** Stops all capture and puts the placeholder tracks back */
+function stopCapture() {
+  cameraRequest++
+  micRequest++
+  if (cameraTrack) cameraTrack.stop()
+  if (micTrack) micTrack.stop()
+  sendVideo(photoTrack)
+  sendAudio(silentTrack)
+}
+
+/** Captures the camera when it is wanted, stops it when it is not */
+async function applyCamera() {
+  const request = ++cameraRequest
+  const serial = joinSerial
+  if (cameraOn) {
+    if (!cameraTrack || cameraTrack.readyState === 'ended') {
+      try {
+        const media = await navigator.mediaDevices.getUserMedia({
+          video: true
+        })
+        if (serial !== joinSerial || request !== cameraRequest) {
+          // Leave, a new Join or a toggle retired this request
+          media.getVideoTracks()[0].stop()
+          return
+        }
+        if (!cameraOn) {
+          // The choice changed while asking
+          media.getVideoTracks()[0].stop()
+          return
+        }
+        cameraTrack = media.getVideoTracks()[0]
+      } catch (error) {
+        if (serial !== joinSerial || request !== cameraRequest) return
+        cameraOn = false
+        showError(
+          'Camera and microphone',
+          `Pinto can't reach your camera or microphone: ${errorReason(error)}`
+        )
+        render()
+        return
+      }
+    }
+    sendVideo(cameraTrack)
+  } else {
+    sendVideo(photoTrack)
+    if (cameraTrack) cameraTrack.stop()
+  }
+}
+
+/** Captures the microphone when it is wanted, stops it when it is not */
+async function applyMic() {
+  const request = ++micRequest
+  const serial = joinSerial
+  if (muted) {
+    if (micTrack) micTrack.stop()
+    sendAudio(silentTrack)
+    return
+  }
+  if (!micTrack || micTrack.readyState === 'ended') {
+    try {
+      const media = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (serial !== joinSerial || request !== micRequest) {
+        // Leave, a new Join or a toggle retired this request
+        media.getAudioTracks()[0].stop()
+        return
+      }
+      if (muted) {
+        // The choice changed while asking
+        media.getAudioTracks()[0].stop()
+        return
+      }
+      micTrack = media.getAudioTracks()[0]
+    } catch (error) {
+      if (serial !== joinSerial || request !== micRequest) return
+      muted = true
+      showError(
+        'Camera and microphone',
+        `Pinto can't reach your camera or microphone: ${errorReason(error)}`
+      )
+      render()
+      return
+    }
+  }
+  sendAudio(micTrack)
+}
+
 /** @param {MediaConnection} call */
 function addCall(call) {
   removeCall(call.peer)
@@ -160,7 +275,7 @@ function render() {
     : 'Press Join to start the call'
   muteButton.textContent = muted ? 'Unmute' : 'Mute'
   cameraButton.textContent = cameraOn ? 'Turn Off Camera' : 'Turn On Camera'
-  cameraButton.disabled = !cameraTrack
+  cameraButton.disabled = false
   photoInput.disabled = cameraOn
   selfLabel.title = cameraOn
     ? ''
@@ -168,7 +283,7 @@ function render() {
   removePhotoButton.hidden = cameraOn || !photo.src.startsWith('blob:')
   callButton.textContent = joined ? 'Leave' : 'Join'
   callButton.classList.toggle('end', joined)
-  callButton.disabled = !peer.open || !mediaReady
+  callButton.disabled = !peer.open
 }
 
 photo.addEventListener('load', drawPhoto)
@@ -177,16 +292,15 @@ photo.addEventListener('load', drawPhoto)
 setInterval(drawPhoto, PHOTO_REDRAW_INTERVAL_MS)
 selfVideo.srcObject = new MediaStream([photoTrack])
 
-muteButton.addEventListener('click', () => {
+muteButton.addEventListener('click', async () => {
   muted = !muted
-  for (const track of outgoing.getAudioTracks()) track.enabled = !muted
+  if (joined) await applyMic()
   render()
 })
 
-cameraButton.addEventListener('click', () => {
-  if (!cameraTrack) return
+cameraButton.addEventListener('click', async () => {
   cameraOn = !cameraOn
-  sendVideo(cameraOn ? cameraTrack : photoTrack)
+  if (joined) await applyCamera()
   render()
 })
 
@@ -205,6 +319,8 @@ callButton.addEventListener('click', () => {
     roomPeers.clear()
     rosterLoaded = false
     for (const call of earlyCalls.splice(0)) call.close()
+    // Ending the call ends the camera and microphone capture too
+    stopCapture()
     // A fresh connection leaves the room, and the server tells the others
     socket.disconnect().connect()
   } else {
@@ -233,6 +349,10 @@ callButton.addEventListener('click', () => {
               }
               // Still refused: back to not joined, with Join available
               joined = false
+              // Retire requests this attempt still has waiting
+              joinSerial++
+              // A join that never happened must not leave capture running
+              stopCapture()
               for (const call of earlyCalls.splice(0)) call.close()
               render()
               return
@@ -245,6 +365,9 @@ callButton.addEventListener('click', () => {
         )
     }
     tryJoin()
+    // Capture starts here, only for what the buttons ask for
+    void applyMic()
+    void applyCamera()
   }
   joined = !joined
   render()
@@ -293,24 +416,3 @@ socket.on('user-disconnected', (peerId) => {
 })
 
 render()
-
-try {
-  const media = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true
-  })
-  cameraTrack = media.getVideoTracks()[0]
-  for (const track of media.getAudioTracks()) {
-    track.enabled = !muted
-    outgoing.addTrack(track)
-  }
-} catch (error) {
-  const reason = error instanceof Error ? error.message : String(error)
-  showError(
-    'Camera and microphone',
-    `Pinto can't reach your camera or microphone: ${reason}`
-  )
-} finally {
-  mediaReady = true
-  render()
-}

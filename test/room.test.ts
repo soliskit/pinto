@@ -16,6 +16,18 @@ function withoutCamera() {
     Promise.reject(new DOMException('Permission denied', 'NotAllowedError'))
 }
 
+/** Holds every capture request until the test releases it */
+function gatedCapture() {
+  window.realGetUserMedia = navigator.mediaDevices.getUserMedia.bind(
+    navigator.mediaDevices
+  )
+  window.captureGate = []
+  navigator.mediaDevices.getUserMedia = (constraints) =>
+    new Promise((resolve, reject) => {
+      window.captureGate.push({ constraints, resolve, reject })
+    })
+}
+
 /** Holds the page's processing of the join answer until the test releases it */
 function heldJoinAnswer() {
   let realIo: typeof import('socket.io-client').io
@@ -199,6 +211,26 @@ function attendees(page: Page) {
     )
 }
 
+/** The readyState of every track of every stream the page has captured */
+function allTrackStates(page: Page) {
+  return () =>
+    page.evaluate(() =>
+      window.recorded.mediaStreams
+        .flatMap((stream) => stream.getTracks())
+        .map((track) => track.readyState)
+    )
+}
+
+/** The readyState of every audio track the page has captured */
+function audioStates(page: Page) {
+  return () =>
+    page.evaluate(() =>
+      window.recorded.mediaStreams
+        .flatMap((stream) => stream.getAudioTracks())
+        .map((track) => track.readyState)
+    )
+}
+
 /** Whether the self view, and every open call, show the camera */
 function showsCamera(page: Page) {
   return page.evaluate(() => {
@@ -302,58 +334,86 @@ describe('before joining', () => {
   })
 
   test('Mute turns the microphone off, and Unmute on again', async () => {
-    const { page } = await openRoom('mute')
-    const microphone = () =>
-      page.evaluate(() =>
-        window.recorded.media?.getAudioTracks().map((track) => track.enabled)
-      )
-    assert.deepEqual(await microphone(), [true])
+    const room = await openRoom('mute')
 
-    await page.click('#mute')
-    assert.deepEqual(await controls(page), {
+    // Before joining, Mute chooses how you join; nothing is captured yet
+    await room.page.click('#mute')
+    assert.deepEqual(await controls(room.page), {
       ...beforeJoining('mute'),
       mute: 'Unmute'
     })
-    assert.deepEqual(await microphone(), [false])
+    assert.deepEqual(await audioStates(room.page)(), [])
 
-    await page.click('#mute')
-    assert.deepEqual(await controls(page), beforeJoining('mute'))
-    assert.deepEqual(await microphone(), [true])
+    // Joining muted captures no microphone
+    await join(room)
+    assert.deepEqual(await audioStates(room.page)(), [])
+
+    // Unmute captures it, Mute stops it
+    await room.page.click('#mute')
+    await eventually(audioStates(room.page), ['live'], 3_000)
+    await room.page.click('#mute')
+    await eventually(audioStates(room.page), ['ended'], 3_000)
   })
 
   test('Turn On Camera shows the camera, and Turn Off Camera the photo again', async () => {
-    const { page } = await openRoom('camera')
+    const room = await openRoom('camera')
 
-    await page.click('#camera')
-    assert.deepEqual(await controls(page), {
+    // Before joining, the button chooses whether you join with the camera
+    // on; the camera itself stays off until then
+    await room.page.click('#camera')
+    assert.deepEqual(await controls(room.page), {
       ...beforeJoining('camera'),
       camera: 'Turn Off Camera',
       photoInput: false,
       hint: ''
     })
-    assert.deepEqual(await showsCamera(page), { self: true, sent: [] })
+    assert.deepEqual(await showsCamera(room.page), { self: false, sent: [] })
 
-    await page.click('#camera')
-    assert.deepEqual(await controls(page), beforeJoining('camera'))
-    assert.deepEqual(await showsCamera(page), { self: false, sent: [] })
+    // Joining with the camera on captures it and shows it
+    await join(room)
+    await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+
+    await room.page.click('#camera')
+    assert.deepEqual(await showsCamera(room.page), { self: false, sent: [] })
   })
 
   test('without a camera, says why and still lets you join', async () => {
     const room = await openRoom('no camera', withoutCamera)
-    const unavailable = {
-      ...beforeJoining('no camera'),
-      camera: 'Turn On Camera (disabled)',
+
+    // Nothing is captured before Join, so there is no error yet
+    assert.deepEqual(await controls(room.page), beforeJoining('no camera'))
+
+    // The failure shows when joining tries to capture, and joining works
+    await join(room)
+    await eventually(() => controls(room.page), {
+      ...inCall('no camera', '1st in the room'),
+      mute: 'Unmute',
       error:
         "Camera and microphone: Pinto can't reach your camera or microphone: Permission denied"
-    }
-    assert.deepEqual(await controls(room.page), unavailable)
-
-    await join(room)
-    assert.deepEqual(await controls(room.page), {
-      ...inCall('no camera', '1st in the room'),
-      camera: 'Turn On Camera (disabled)',
-      error: unavailable.error
     })
+  })
+
+  test('camera denial when joining keeps the mic and shows camera off', async () => {
+    const room = await openRoom('camera-denied', () => {
+      const getUserMedia = navigator.mediaDevices.getUserMedia.bind(
+        navigator.mediaDevices
+      )
+      navigator.mediaDevices.getUserMedia = (constraints) =>
+        constraints?.video
+          ? Promise.reject(
+              new DOMException('Permission denied', 'NotAllowedError')
+            )
+          : getUserMedia(constraints)
+    })
+    await room.page.click('#camera')
+    await join(room)
+    await eventually(() => controls(room.page), {
+      ...inCall('camera-denied', '1st in the room'),
+      error:
+        "Camera and microphone: Pinto can't reach your camera or microphone: Permission denied"
+    })
+    await eventually(audioStates(room.page), ['live'], 3_000)
+    assert.deepEqual(await showsCamera(room.page), { self: false, sent: [] })
   })
 
   test('a chosen photo shows instead of the placeholder until removed', async () => {
@@ -601,6 +661,12 @@ describe('in a call', () => {
     // The page keeps trying for a while, then shows Join again
     await room.page.click('#call')
     await eventually(() => controls(room.page), beforeJoining('taken'), 20_000)
+    // The microphone the failed join captured is stopped again
+    await eventually(
+      async () => (await audioStates(room.page)()).every((s) => s === 'ended'),
+      true,
+      3_000
+    )
     // The page itself never got in: only the squatter's join is logged
     assert.equal(
       server
@@ -694,6 +760,212 @@ describe('in a call', () => {
     )
     await eventually(caller.answered, 1, 6_000)
   })
+
+  test('capture grants that arrive after Leave are stopped, not used', async () => {
+    const room = await openRoom('gated-leave', gatedCapture)
+
+    // Camera chosen before Join, so Join asks for the camera and microphone;
+    // Leave lands before either grant does
+    await room.page.click('#camera')
+    await room.page.click('#call')
+    await room.page.waitForFunction(() => window.captureGate.length >= 2)
+    await room.page.click('#call') // Leave
+    await room.page.evaluate(async () => {
+      for (const request of window.captureGate.splice(0))
+        request.resolve(await window.realGetUserMedia(request.constraints))
+    })
+
+    // The late grants are discarded: nothing they captured stays live
+    await eventually(
+      async () => (await allTrackStates(room.page)()).length,
+      2,
+      3_000
+    )
+    assert.deepEqual(await allTrackStates(room.page)(), ['ended', 'ended'])
+    assert.deepEqual(await showsCamera(room.page), { self: false, sent: [] })
+    assert.deepEqual(await controls(room.page), {
+      ...beforeJoining('gated-leave'),
+      camera: 'Turn Off Camera',
+      photoInput: false,
+      hint: ''
+    })
+  })
+
+  test('capture grants that arrive after a failed Join are stopped, not used', async () => {
+    const room = await openRoom('gated-failed', gatedCapture)
+    // Someone already in the room holds the page's id, so Join is refused
+    const squatter = io(server.url, {
+      transports: ['websocket'],
+      forceNew: true,
+      reconnection: false
+    })
+    await new Promise<void>((resolve, reject) => {
+      squatter.once('connect', () => resolve())
+      squatter.once('connect_error', reject)
+    })
+    squatter.emit('join-room', 'gated-failed', room.peerId)
+    await server.waitForOutput(`user: ${room.peerId} - joined: gated-failed`)
+
+    // Camera chosen before Join; the grants are still held when the join
+    // fails after all retries and the page returns to Join
+    await room.page.click('#camera')
+    await room.page.click('#call')
+    await room.page.waitForFunction(() => window.captureGate.length >= 2)
+    await eventually(
+      () => controls(room.page),
+      {
+        ...beforeJoining('gated-failed'),
+        camera: 'Turn Off Camera',
+        photoInput: false,
+        hint: ''
+      },
+      20_000
+    )
+    await room.page.evaluate(async () => {
+      for (const request of window.captureGate.splice(0))
+        request.resolve(await window.realGetUserMedia(request.constraints))
+    })
+
+    // The retired grants are discarded: nothing they captured stays live
+    await eventually(
+      async () => (await allTrackStates(room.page)()).length,
+      2,
+      3_000
+    )
+    assert.deepEqual(await allTrackStates(room.page)(), ['ended', 'ended'])
+    squatter.disconnect()
+  })
+
+  for (const kind of ['video', 'audio'] as const) {
+    for (const newerJoin of [false, true]) {
+      const boundary = newerJoin ? 'a newer Join' : 'Leave'
+      test(`${kind} rejection after ${boundary} is ignored`, async () => {
+        const name = `old-rejection-${kind}-${newerJoin}`
+        const room = await openRoom(name, gatedCapture)
+        if (kind === 'video') await room.page.click('#camera')
+        await join(room)
+        await room.page.waitForFunction(() => window.captureGate.length > 0)
+        await room.page.click('#call') // Leave retires the first requests
+        if (newerJoin) {
+          await join(room)
+          await room.page.waitForFunction(
+            (count) => window.captureGate.length >= count,
+            kind === 'video' ? 4 : 2
+          )
+        }
+        await room.page.evaluate(async (kind) => {
+          const count = kind === 'video' ? 2 : 1
+          const requests = window.captureGate.splice(0)
+          for (const request of requests.slice(count))
+            request.resolve(await window.realGetUserMedia(request.constraints))
+          for (const request of requests.slice(0, count)) {
+            if (request.constraints?.[kind])
+              request.reject(new DOMException('Old denial', 'NotAllowedError'))
+            else
+              request.resolve(
+                await window.realGetUserMedia(request.constraints)
+              )
+          }
+          // Allow async capture continuations to handle the old result.
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        }, kind)
+        const expected = newerJoin
+          ? inCall(name, '1st in the room')
+          : beforeJoining(name)
+        assert.deepEqual(await controls(room.page), {
+          ...expected,
+          ...(kind === 'video'
+            ? { camera: 'Turn Off Camera', photoInput: false, hint: '' }
+            : {})
+        })
+        if (newerJoin) {
+          await eventually(
+            async () =>
+              (await allTrackStates(room.page)()).filter(
+                (state) => state === 'live'
+              ).length,
+            kind === 'video' ? 2 : 1,
+            3_000
+          )
+          await room.page.click('#call')
+        }
+        await eventually(
+          async () =>
+            (await allTrackStates(room.page)()).every(
+              (state) => state === 'ended'
+            ),
+          true,
+          3_000
+        )
+      })
+    }
+  }
+
+  for (const kind of ['video', 'audio'] as const) {
+    test(`${kind} rapid toggles retire older capture in both orders`, async () => {
+      for (const latestFirst of [false, true]) {
+        const room = await openRoom(
+          `toggle-${kind}-${latestFirst}`,
+          gatedCapture
+        )
+        const button = kind === 'video' ? '#camera' : '#mute'
+        if (kind === 'video') await room.page.click(button)
+        else await room.page.click(button) // Join muted, with no pending mic
+        await join(room)
+        if (kind === 'video') {
+          await room.page.waitForFunction(() => window.captureGate.length === 2)
+          // Finish the unrelated microphone request first.
+          await room.page.evaluate(async () => {
+            const index = window.captureGate.findIndex(
+              (r) => r.constraints?.audio
+            )
+            const [request] = window.captureGate.splice(index, 1)
+            request.resolve(await window.realGetUserMedia(request.constraints))
+          })
+        } else await room.page.click(button) // First pending mic request
+        await room.page.waitForFunction(() => window.captureGate.length === 1)
+        await room.page.click(button) // Off while first request is pending
+        await room.page.click(button) // On creates the current request
+        await room.page.waitForFunction(() => window.captureGate.length === 2)
+        const states = await room.page.evaluate(async (latestFirst) => {
+          const requests = window.captureGate.splice(0)
+          const streams: MediaStream[] = []
+          for (const index of latestFirst ? [1, 0] : [0, 1]) {
+            streams[index] = await window.realGetUserMedia(
+              requests[index].constraints
+            )
+            requests[index].resolve(streams[index])
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          }
+          return streams.map((stream) => stream.getTracks()[0].readyState)
+        }, latestFirst)
+        assert.deepEqual(states, ['ended', 'live'])
+        await room.page.click(button) // Stop Video or Mute
+        await eventually(
+          async () =>
+            room.page.evaluate(
+              (kind) =>
+                window.recorded.mediaStreams
+                  .flatMap((stream) => stream.getTracks())
+                  .filter((track) => track.kind === kind)
+                  .every((track) => track.readyState === 'ended'),
+              kind
+            ),
+          true,
+          3_000
+        )
+        await room.page.click('#call') // Leave stops any other capture too
+        await eventually(
+          async () =>
+            (await allTrackStates(room.page)()).every(
+              (state) => state === 'ended'
+            ),
+          true,
+          3_000
+        )
+      }
+    })
+  }
 })
 
 test('after losing the PeerJS server, says so and reconnects with the same id', async () => {
