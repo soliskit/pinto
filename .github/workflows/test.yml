@@ -30,3 +30,18 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+
+  webkit:
+    # A trial, not a required check. Pushes only, like the test job
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps webkit
+      - run: PINTO_BROWSER=webkit node --test --test-timeout=120000 test/home.test.ts test/element.test.ts
