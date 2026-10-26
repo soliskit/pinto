@@ -2,15 +2,7 @@ name: Slow tests
 
 on:
   push:
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'test/**'
   pull_request:
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'test/**'
 
 permissions:
   contents: read
@@ -21,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  slow:
     # Pushes to this repo already run here and show on their pull requests,
     # so only pull requests from forks need a run of their own
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork
@@ -29,10 +21,38 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v7
+        with:
+          fetch-depth: 0
+      # Replaces the paths filter, so the workflow always starts and the
+      # "Slow tests result" job below always reports
+      - id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null \
+            && ! git diff --name-only "$BASE" "$GITHUB_SHA" | grep -qE '^(src|public|test)/'; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.run == 'true'
+        uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:slow
+      - if: steps.changed.outputs.run == 'true'
+        run: npm ci
+      - if: steps.changed.outputs.run == 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.changed.outputs.run == 'true'
+        run: npm run test:slow
+
+  # Passes when "slow" passed or was skipped, fails when it failed or was
+  # cancelled. Not a required check until the ruleset is changed to require it
+  result:
+    name: Slow tests result
+    needs: slow
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.slow.result }}" = success -o "${{ needs.slow.result }}" = skipped
