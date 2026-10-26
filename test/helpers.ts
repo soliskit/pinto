@@ -122,14 +122,19 @@ export function record() {
   const recorded: Window['recorded'] = {
     peerConnections: [],
     peerSockets: [],
-    peerMessages: []
+    peerMessages: [],
+    mediaStreams: []
   }
   window.recorded = recorded
 
   const { mediaDevices } = navigator
   const getUserMedia = mediaDevices.getUserMedia.bind(mediaDevices)
-  mediaDevices.getUserMedia = async (constraints) =>
-    (recorded.media = await getUserMedia(constraints))
+  mediaDevices.getUserMedia = async (constraints) => {
+    const stream = await getUserMedia(constraints)
+    recorded.media = stream
+    recorded.mediaStreams.push(stream)
+    return stream
+  }
 
   window.RTCPeerConnection = class extends RTCPeerConnection {
     constructor(configuration?: RTCConfiguration) {
