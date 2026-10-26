@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { after, afterEach, before, describe, test } from 'node:test'
 import type { Browser, BrowserContext, Page } from 'playwright'
+import { io } from 'socket.io-client'
 import {
   eventually,
   launchBrowser,
@@ -13,6 +14,36 @@ import {
 function withoutCamera() {
   navigator.mediaDevices.getUserMedia = () =>
     Promise.reject(new DOMException('Permission denied', 'NotAllowedError'))
+}
+
+/** Holds the page's processing of the join answer until the test releases it */
+function heldJoinAnswer() {
+  let realIo: typeof import('socket.io-client').io
+  Object.defineProperty(window, 'io', {
+    configurable: true,
+    get() {
+      return (...args: Parameters<typeof import('socket.io-client').io>) => {
+        const socket = realIo(...args)
+        const realEmit = socket.emit.bind(socket)
+        socket.emit = (event: string, ...rest: unknown[]) => {
+          const callback = rest.at(-1)
+          if (event === 'join-room' && typeof callback === 'function') {
+            rest.pop()
+            // The answer itself arrived in time: socket.io clears its ack
+            // timeout on arrival. Only the page's processing is held.
+            return realEmit(event, ...rest, (...answer: unknown[]) => {
+              window.releaseJoinAnswer = () => callback(...answer)
+            })
+          }
+          return realEmit(event, ...rest)
+        }
+        return socket
+      }
+    },
+    set(value) {
+      realIo = value
+    }
+  })
 }
 
 let server: Server
@@ -235,16 +266,29 @@ async function openCaller() {
       path: '/',
       key: 'pinto'
     })
-    window.caller = { peer, stream, answered: new Set() }
+    window.caller = { peer, stream, answered: new Set(), closed: new Set() }
   })
   await page.waitForFunction(() => window.caller.peer.open)
   return {
+    page,
     call: (peerId: string) =>
       page.evaluate((peerId) => {
         const call = window.caller.peer.call(peerId, window.caller.stream)
         // Fires once for each track
         call.on('stream', () => window.caller.answered.add(call.connectionId))
       }, peerId),
+    /** Joins a room, so it counts as a member when it calls */
+    join: async (roomName: string) => {
+      await page.addScriptTag({ url: '/socket.io/socket.io.min.js' })
+      await page.evaluate(async (roomName) => {
+        const socket = io()
+        window.caller.socket = socket
+        await new Promise<void>((resolve) =>
+          socket.on('connect', () => resolve())
+        )
+        await socket.emitWithAck('join-room', roomName, window.caller.peer.id)
+      }, roomName)
+    },
     /** How many of its calls have been answered with a stream */
     answered: () => page.evaluate(() => window.caller.answered.size)
   }
@@ -508,7 +552,9 @@ describe('in a call', () => {
     assert.equal(await connections(), 0)
     assert.deepEqual(await attendees(room.page)(), [])
 
+    // Once the caller joins too, its call is answered
     await join(room)
+    await caller.join('quiet')
     await caller.call(room.peerId)
     await eventually(caller.answered, 1)
     await eventually(status(room.page), '2nd in the room')
@@ -516,8 +562,9 @@ describe('in a call', () => {
 
   test('a new call from the same person replaces the old one', async () => {
     const room = await openRoom('twice')
-    await join(room)
     const caller = await openCaller()
+    await caller.join('twice')
+    await join(room)
     const connections = () =>
       room.page.evaluate(() =>
         window.recorded.peerConnections.map(
@@ -534,6 +581,118 @@ describe('in a call', () => {
     assert.deepEqual(await connections(), [true, false])
     await eventually(attendees(room.page), ['audio+video playing'])
     assert.equal(await status(room.page)(), '2nd in the room')
+  })
+
+  test('a refused Join goes back to Join after trying again', async () => {
+    const room = await openRoom('taken')
+    // Someone already in the room holds the page's id
+    const squatter = io(server.url, {
+      transports: ['websocket'],
+      forceNew: true,
+      reconnection: false
+    })
+    await new Promise<void>((resolve, reject) => {
+      squatter.once('connect', () => resolve())
+      squatter.once('connect_error', reject)
+    })
+    squatter.emit('join-room', 'taken', room.peerId)
+    await server.waitForOutput(`user: ${room.peerId} - joined: taken`)
+
+    // The page keeps trying for a while, then shows Join again
+    await room.page.click('#call')
+    await eventually(() => controls(room.page), beforeJoining('taken'), 20_000)
+    // The page itself never got in: only the squatter's join is logged
+    assert.equal(
+      server
+        .output()
+        .match(new RegExp(`user: ${room.peerId} - joined: taken`, 'g'))?.length,
+      1
+    )
+    squatter.disconnect()
+  })
+
+  test('Leave cancels a Join that is still being retried', async () => {
+    const room = await openRoom('taken-leave')
+    const squatter = io(server.url, {
+      transports: ['websocket'],
+      forceNew: true,
+      reconnection: false
+    })
+    await new Promise<void>((resolve, reject) => {
+      squatter.once('connect', () => resolve())
+      squatter.once('connect_error', reject)
+    })
+    squatter.emit('join-room', 'taken-leave', room.peerId)
+    await server.waitForOutput(`user: ${room.peerId} - joined: taken-leave`)
+
+    // Join is refused and retried every 2 seconds; Leave cancels that
+    const from = server.output().length
+    await room.page.click('#call')
+    await server.waitForOutput('join-room refused: id already in room', from)
+    await room.page.click('#call') // Leave
+    await sleep(4_500) // beyond the next retry
+    assert.equal(
+      server
+        .output()
+        .slice(from)
+        .match(/join-room refused: id already in room/g)?.length,
+      1
+    )
+    assert.equal(
+      server
+        .output()
+        .match(new RegExp(`user: ${room.peerId} - joined: taken-leave`, 'g'))
+        ?.length,
+      1
+    )
+    squatter.disconnect()
+  })
+
+  test('a call that beats the roster answer waits for it, then is answered', async () => {
+    const room = await openRoom('early-call', heldJoinAnswer)
+    const caller = await openCaller()
+    await caller.join('early-call')
+    // Call the moment the server says someone joined, and record closes
+    await caller.page.evaluate(() => {
+      window.caller.socket!.on('user-connected', (peerId: string) => {
+        const call = window.caller.peer.call(peerId, window.caller.stream)
+        // Fires once for each track
+        call.on('stream', () => window.caller.answered.add(call.connectionId))
+        call.on('close', () => window.caller.closed.add(call.connectionId))
+      })
+    })
+
+    await room.page.click('#call') // Join; the page's roster answer is held
+
+    // The offer arrives while the roster answer is held. An incoming call
+    // has no connection until it is answered (peerjs.js: answer() starts
+    // it), so no connection and no answer here. PeerJS close() on an
+    // unanswered incoming call emits nothing (its `if (!this.open) return`
+    // guard), so an empty close set is expected queued OR refused; only the
+    // answer after release proves the call was queued, not refused.
+    await eventually(
+      () =>
+        room.page.evaluate(() =>
+          window.recorded.peerMessages.some(
+            (message) => JSON.parse(message).type === 'OFFER'
+          )
+        ),
+      true
+    )
+    assert.equal(
+      await room.page.evaluate(() => window.recorded.peerConnections.length),
+      0
+    )
+    assert.equal(await caller.answered(), 0)
+    assert.equal(await caller.page.evaluate(() => window.caller.closed.size), 0)
+
+    // The roster answer lands: the queued call is decided and answered
+    await room.page.evaluate(() => window.releaseJoinAnswer())
+    await eventually(
+      () => room.page.evaluate(() => window.recorded.peerConnections.length),
+      1
+    )
+    await eventually(caller.answered, 1, 6_000)
   })
 })
 
