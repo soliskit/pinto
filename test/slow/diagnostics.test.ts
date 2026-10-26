@@ -12,10 +12,10 @@ import {
 } from '../helpers.ts'
 
 /**
- * Known-defect diagnostics (migration plan phase 2). Each one asserts the
- * intended behavior of a defect whose fix is not approved yet, so it runs
- * marked todo: it reports on every run without gating, and its fix's pull
- * request removes the mark to make it the gating regression test.
+ * Known-defect diagnostics (migration plan phase 2). Each one asserted the
+ * intended behavior of a defect while its fix was not approved yet, marked
+ * todo; each fix's pull request removed the mark, so these now run as the
+ * gating regression tests for the privacy and call-access fixes.
  */
 
 let server: Server
@@ -111,34 +111,48 @@ async function stays<T>(read: () => Promise<T>, expected: T, ms = 3_000) {
   }
 }
 
-test(
-  'Stop Video, Mute and Leave stop capture',
-  {
-    todo: 'Known defect (audit finding 1): the tracks stay live. The fix removes this mark.'
-  },
-  async () => {
-    const room = await openRoom('diag-capture')
-    const state = async (kind: 'audio' | 'video') =>
-      room.page.evaluate(
-        (kind) =>
-          window.recorded.media
-            ?.getTracks()
-            .find((track) => track.kind === kind)?.readyState,
-        kind
-      )
+test('Stop Video, Mute and Leave stop capture', async () => {
+  const room = await openRoom('diag-capture')
+  const states = async (kind: 'audio' | 'video') =>
+    room.page.evaluate(
+      (kind) =>
+        window.recorded.mediaStreams
+          .flatMap((stream) => stream.getTracks())
+          .filter((track) => track.kind === kind)
+          .map((track) => track.readyState),
+      kind
+    )
+  const lastState = async (kind: 'audio' | 'video') =>
+    (await states(kind)).at(-1)
 
-    await room.page.click('#camera')
-    await eventually(() => state('video'), 'ended', 3_000)
+  // Nothing is captured before joining
+  assert.deepEqual(await states('audio'), [])
+  assert.deepEqual(await states('video'), [])
 
-    await room.page.click('#mute')
-    await eventually(() => state('audio'), 'ended', 3_000)
+  await join(room)
+  await eventually(() => lastState('audio'), 'live', 3_000)
 
-    await join(room)
-    await room.page.click('#call') // Leave
-    await eventually(() => state('video'), 'ended', 3_000)
-    await eventually(() => state('audio'), 'ended', 3_000)
-  }
-)
+  await room.page.click('#camera') // Turn On Camera
+  await eventually(() => lastState('video'), 'live', 3_000)
+
+  await room.page.click('#camera') // Stop Video
+  await eventually(() => lastState('video'), 'ended', 3_000)
+
+  await room.page.click('#mute')
+  await eventually(() => lastState('audio'), 'ended', 3_000)
+
+  await room.page.click('#call') // Leave
+  await eventually(
+    async () => (await states('audio')).every((state) => state === 'ended'),
+    true,
+    3_000
+  )
+  await eventually(
+    async () => (await states('video')).every((state) => state === 'ended'),
+    true,
+    3_000
+  )
+})
 
 test('a caller who never joined is not answered', async () => {
   const room = await openRoom('diag-stranger')
