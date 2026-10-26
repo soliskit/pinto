@@ -26,6 +26,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
       - run: npx playwright install --with-deps chromium
       - run: npm run typecheck
       - run: npm run lint
@@ -43,5 +44,6 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
       - run: npx playwright install --with-deps webkit
       - run: PINTO_BROWSER=webkit node --test --test-timeout=120000 test/home.test.ts test/element.test.ts
