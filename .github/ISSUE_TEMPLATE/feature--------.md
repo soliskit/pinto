@@ -2,7 +2,7 @@
 name: "Suggest a feature"
 about: "Suggest a change to Pinto"
 title: "Describe how this helps people connect"
-labels: enhancement
+labels: Enhancement
 assignees: ''
 
 ---
