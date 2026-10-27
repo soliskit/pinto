@@ -1,0 +1,55 @@
+name: PR description completion
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+concurrency:
+  group: pr-description-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Load and run trusted base checker
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPO: soliskit/pinto
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != os.environ['EXPECTED_REPO']:
+              raise ValueError('Repository identity outside approved scope')
+          with open(os.environ['GITHUB_EVENT_PATH']) as event_file:
+              event = json.load(event_file)
+          if event['pull_request']['base']['ref'] != 'main':
+              raise ValueError('Only main-target PRs are supported')
+          request = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/git/ref/heads/main',
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                       'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              base = json.load(response)['object']['sha']
+          if len(base) != 40 or any(c not in '0123456789abcdef' for c in base):
+              raise ValueError('Invalid base SHA')
+          files = {
+              '.github/scripts/check_pr_description.py': 'check_pr_description.py',
+              '.github/scripts/run_check.py': 'run_check.py',
+              '.github/pull_request_template.md': 'pull_request_template.md',
+              '.github/description_config.json': 'description_config.json',
+          }
+          for source, destination in files.items():
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/contents/{source}?ref={base}',
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github.raw+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  pathlib.Path(destination).write_bytes(response.read())
+          PY
+          python3 run_check.py

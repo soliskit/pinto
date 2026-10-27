@@ -104,3 +104,8 @@ These entries record the derivations behind numbers the owner had picked without
   Status: Open.
 - **Further implementation and real-device checks.** The six P21 fixes have merged under their separate authorization. Changes outside that scope and the planned real-device checks still need their own go-ahead.
   Status: Open.
+
+## Template rollout
+
+- **P30 PR description completion. Use the Tetris-format PR description with this repository's code boundary and native P-number records. A structural helper checks completion on main-target PRs, rejects unsupported Markdown and shared-head PRs, and uses trusted main code. It does not establish truth or remove SHA-status races. Required-check activation waits for a real later PR result with verified GitHub Actions source; fresh live body, head, record, checks and shared-head review is required before merge. Existing review, test and cost gates remain.** Process choice recorded October 27, 2026; installation and activation remain pending.
+  Status: Pending work.
