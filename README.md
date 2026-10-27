@@ -151,3 +151,7 @@ Other hosts need to run Node 22.18 or newer in the 22 line as one long-running p
 ## License
 
 [MIT](LICENSE.md)
+
+## Contributing
+
+See [Writing commits and pull requests](docs/contributing.md) for the message standard, optional per-clone editor setup and required description review.

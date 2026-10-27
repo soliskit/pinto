@@ -1,0 +1,33 @@
+# Write a clean subject on the first line, without a label prefix.
+# Start with a capitalized action verb. Aim for 50 characters.
+# Leave a blank line before the body. Wrap body text at 72 characters.
+Subject
+
+Why:
+
+How:
+
+Tags:
+
+# Why, How and Tags are all required.
+# Why: say why this change is needed.
+# How: say how it addresses that need. Keep claims within the evidence.
+# Tags: Bug, Enhancement.
+# Choose any that apply, including both Bug and Enhancement when both apply.
+# Use None alone when none fits. All other labels stay out.
+# Tags belong in the body, not before the subject.
+# Never put private conversation references, secrets or personal details here.
+# Delete prompts and comments from the finished message.
+# These verbs are choices, not words every commit must contain:
+# Create = Introduce something new, like a feature, test or dependency.
+# Remove = Take out something that exists, like a feature, test or dependency.
+# Fix = Repair something broken, like a defect, typo or wrong statement.
+# Bump = Raise the version of a component, like a dependency.
+# Build = Change how the project gets built, its tooling or infrastructure.
+# Enable = Switch on an existing feature or setting.
+# Disable = Switch off an existing feature or setting while keeping it.
+# Optimize = Improve performance only, like faster code.
+# Document = Touch documentation only, like help files.
+# Refactor = Restructure code without changing what it does.
+# Reformat = Change layout only, like indentation or spacing.
+# Rephrase = Change wording only, like a comment or doc line.
