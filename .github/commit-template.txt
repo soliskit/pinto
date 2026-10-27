@@ -1,0 +1,38 @@
+# Write a clean subject on the first line, without a label prefix.
+# Start with a capitalized action verb. Aim for 50 characters.
+# Leave a blank line before the body. Wrap body text at 72 characters.
+Subject
+
+Why:
+
+How:
+
+Tags:
+
+# Why, How and Tags are all required.
+# Why: say why this change is needed.
+# How: say how it addresses that need. Keep claims within the evidence.
+# Tags: Bug, Enhancement.
+# Choose any that apply, including both Bug and Enhancement when both apply.
+# Use None alone when none fits. All other labels stay out.
+# Tags belong in the body, not before the subject.
+# Never put private conversation references, secrets or personal details here.
+# Delete prompts and comments from the finished message.
+# These verbs are choices, not words every commit must contain:
+# Create = Bring in something new, such as a feature, test or dependency.
+# Remove = Take something out, such as a feature, test or dependency.
+# Fix = Fix an issue e.g. bug, typo, accident, misstatement.
+# Bump = Increase the version of something e.g. a dependency.
+# Build = Change the build process, tools or infrastructure.
+# Enable = Turn on an existing feature or setting.
+# Disable = Turn off an existing feature or setting without removing it.
+# Optimize = A change that MUST be just about performance, e.g. speed up code.
+# Document = A change that MUST be only in the documentation, e.g. help files.
+# Refactor = A change that MUST be just refactoring.
+# Reformat = A change that MUST be just format, e.g. indent line, trim space, etc.
+# Rephrase = A change that MUST be just textual, e.g. edit a comment, doc, etc.
+#
+# Adapted from git-commit-template 7.2.0 by Joel Parker Henderson.
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Source and changes: docs/commit-guide-source.md
+# License text: docs/licenses/commit-guide-GPL-2.0.txt
