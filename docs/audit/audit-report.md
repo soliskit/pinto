@@ -2,11 +2,14 @@
 
 Local results for camera capture, call access, and connection handling.
 
-Local checks found a live camera track after Stop Video, a live microphone track after Mute, and both live after End. The app also answers calls without checking room membership. The accepted findings guide the fix plan in [decisions P20 to P22](../decisions.md). They do not establish real-device behavior or the live server's behavior.
+At the audited version, local checks found a live camera track after Stop Video, a live microphone track after Mute, and both live after End. That version also answered calls without checking room membership. The accepted findings guide the fix plan in [decisions P20 to P22](../decisions.md). They do not establish real-device behavior or the live server's behavior.
 
-This report records Phase A at the source version below.
+This report records Phase A at the source version below, not the current app.
 
-The button names and messages quoted here are the ones at the audited commit.
+Later repairs: [PR #82](https://github.com/soliskit/pinto/pull/82) added a PeerServer error listener for malformed messages; [PR #88](https://github.com/soliskit/pinto/pull/88) added call-membership checks and rejected reused room identities; [PR #89](https://github.com/soliskit/pinto/pull/89) changed capture to start on Join and stop when turned off or left. These repairs do not establish physical capture indicators, audible sound, real-device behavior, or every reconnection path.
+
+The button names, messages, and present-tense code descriptions below belong to the audited version. Recorded waits are observations at those waits, not timings or proof of what happens later.
+
 
 The findings distinguish **Tested**, **Code Reading Only**, and **Not Established**. Finding 5 summarizes the other findings. The source and run records below are evidence context, not additional findings.
 
@@ -137,6 +140,6 @@ The roadmap records open links as a product choice. The exposure in the table is
 
 ## What this means
 
-Findings 1 to 7 are tracked in the decision log (P20 to P22), and none is fixed here. The real-device checks in finding 11 follow the test plan (P22). Until they run, the audit cannot claim "works every time".
+Findings 1 to 7 are historical evidence for decisions P20 to P22. The later repairs linked above do not change what those local checks observed. The real-device checks in finding 11 follow the test plan (P22). Until they run, the audit cannot claim "works every time".
 
-Whether findings 6 and 7 (room lifecycle and reconnection) need fixing before the real-device checks is an open decision in the [decision log](../decisions.md).
+Further room-lifecycle and reconnection work remains an open decision in the [decision log](../decisions.md). PR #88 changed repeated-join cleanup, but neither that repair nor this report establishes every lifecycle or recovery path.

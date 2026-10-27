@@ -1,8 +1,8 @@
 # Pinto Evidence Record
 
-Status of the planned service checks and the platform facts they rely on.
+Status of planned service checks and the dated platform records they rely on. The platform entries below keep their original check dates; they were not rechecked for this rewrite.
 
-Every service check below is Pending. The [existing-app audit](audit/audit-report.md) is a separate result: no review verdict covers this exact version of the planned checks, and the audit does not close or certify them. Real-device behavior is still unproven. The private Playbook holds the Check and Fail text for B1 to B16 under How It Works, and the pass rule for each unproven check under What's next in the Charter.
+Every service check below is recorded as Pending. The later capture and call-access fixes in PRs #88 and #89 have local and CI results; those results do not close the planned service checks or establish physical capture indicators and real-device calls. The [existing-app audit](audit/audit-report.md) is a separate result: no review verdict covers this exact version of the planned checks, and the audit does not close or certify them. Real-device behavior is still unproven. The private Playbook holds the Check and Fail text for B1 to B16 under How It Works, and the pass rule for each unproven check under What's next in the Charter.
 
 ## Service checks
 

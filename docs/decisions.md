@@ -1,6 +1,6 @@
 # Pinto Decision Log
 
-The project choices, their limits, and the decisions still open.
+The project choices, their limits, and the decisions still open. A settled design choice is not a claim that its feature is built.
 
 Later entries preserve each decision's original scope and record changes. The [Evidence Record](evidence-record.md) tracks the checks. The private Playbook holds the current plan.
 
@@ -32,9 +32,9 @@ Later entries preserve each decision's original scope and record changes. The [E
 
 ## Service and audit decisions
 
-- **P13 Host sign-in uses emailed codes, and passkeys wait.** P17 sets the sign-in service and sender.
+- **P13 Planned host sign-in uses emailed codes, and passkeys wait.** P17 sets the sign-in service and sender.
   Status: Settled.
-- **P14 Diagnostics reports.** The app shows exactly what it would send, and sends only when the user taps Send. Reports hold error information only, and only the owner can read them. Retention is set in P19.
+- **P14 Planned diagnostics reports.** The planned app shows exactly what it would send, and sends only when the user taps Send. Reports hold error information only, and only the owner can read them. Retention is set in P19.
   Status: Settled.
 
 - **P15 The hosting is split.** The public page stays on GitHub Pages. The app and its sign-in service are planned to run on Cloudflare. The existing app uses Render, and a move is not established.
@@ -50,12 +50,13 @@ Later entries preserve each decision's original scope and record changes. The [E
 
 - **P20 The Phase A audit is accepted.** The written report (`docs/audit/audit-report.md`) and its stated limits are the basis for choosing fixes. Acceptance covers the findings and their limits only. It authorizes no app changes, no service features, and no live-site testing. Decided October 9, 2026.
   Status: Settled.
-- **P21 Privacy and call-access fixes come before real-device checks.** The decided plan: Stop Video, Mute, and End each stop their camera or microphone capture. Capture starts only when joining. Callers who are not in the room are blocked. Pretending to be another person can no longer end a call. This records the plan, not approval for code changes. Implementation needs its own authorization. Reconnection and room-lifecycle fixes (audit findings 6 and 7) remain a later decision. Decided October 9, 2026.
-  Status: Pending work.
+- **P21 Privacy and call-access fixes come before real-device checks.** The decided plan: Stop Video, Mute, and End each stop their camera or microphone capture. Capture starts only when joining. Callers who are not in the room are blocked. Pretending to be another person can no longer end a call. This records the plan, not approval for code changes. Implementation needs its own authorization. Further reconnection and room-lifecycle fixes remain a later decision. Decided October 9, 2026.
+  Later implementation: on October 25, 2026, the owner authorized merging these six capture and call-access fixes after their tests and independent reviews passed. That approval covered these six fixes, not other changes. [PR #88](https://github.com/soliskit/pinto/pull/88) added call-membership checks and rejected reused room identities. [PR #89](https://github.com/soliskit/pinto/pull/89) changed capture to start on Join and stop when turned off or left. Both merged October 26, 2026. Their local and CI checks do not establish real-device behavior or every production call path.
+  Status: Settled.
 - **P22 The real-device test plan.** Checks wait until the planned fixes are built and pass local checks. They then run on the chosen iPhone and iPad (exact models kept in the private record), in Safari, with a throwaway call. They cover camera and microphone shutoff, sound, picture, and recovery after a network change. This records the plan only, not a go-ahead to run the checks. Decided October 9, 2026.
   Status: Pending work.
 
-- **P23 A sign-in email safeguard.** Sign-in emails go only to approved hosts. Repeated requests are limited. New sign-ins stop before the free daily email allowance runs out. Existing sessions keep working. A warning shows before the limit. The rule is decided; its mail-quota and rate limits are set in the decision log of the sign-in service (Salutant), entries S34 to S36. Decided October 9, 2026.
+- **P23 A sign-in email safeguard.** Sign-in emails go only to approved hosts. Repeated requests are limited. New sign-ins stop before the free daily email allowance runs out. Existing sessions keep working. A warning shows before the limit. The rule is decided; its mail-quota and rate limits are set in the sign-in service's decision log, entries S34 to S36. Decided October 9, 2026.
   Status: Settled.
 
 - **P24 The host list stays owner-only.** Host sign-in stays limited to the owner until the owner-only test works. Other hosts are added only when the owner chooses who. Guests join calls without an account. No invitation or host addition is authorized. Decided October 9, 2026.
@@ -97,9 +98,9 @@ These entries record the derivations behind numbers the owner had picked without
 
 ## Open decisions
 
-- **Mail-quota alert thresholds.** The mail-quota and rate limits are set (P23, Salutant S34 to S36). The plan proposes owner alerts at half and 80 percent of the daily budget; no decision sets them.
+- **Mail-quota alert thresholds.** The mail-quota and rate limits are set (P23, sign-in service decision log S34 to S36). The plan proposes owner alerts at half and 80 percent of the daily budget; no decision sets them.
   Status: Open.
 - **Reconnection and room-lifecycle fixes.** Whether audit findings 6 and 7 need fixing, and when, is a later decision.
   Status: Open.
-- **Fix implementation and test go-aheads.** Building the planned fixes needs its own authorization. Running the planned real-device checks needs its own go-ahead.
+- **Further implementation and real-device checks.** The six P21 fixes have merged under their separate authorization. Changes outside that scope and the planned real-device checks still need their own go-ahead.
   Status: Open.

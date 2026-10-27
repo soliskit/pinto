@@ -35,10 +35,10 @@ Open [http://localhost:4000](http://localhost:4000). Type a room name, or press 
 
 1. The room page fetches `/config` for the PeerJS key and the STUN and TURN servers.
 2. It connects to the PeerJS server, which gives it a random peer id, and to Socket.IO.
-3. **Join** emits `join-room` with the room name and peer id. The server tells everyone already in the room with `user-connected`, and they call the new peer.
-4. Video and audio then usually flow directly between browsers, or through a TURN server when a direct link is blocked. **Leave** or closing the tab sends `user-disconnected` to the room.
+3. **Join** sends the room name and peer id. The server rejects an id already held by another connection in the same room, returns the room roster, and tells existing members about the newcomer. The page answers calls only from that roster.
+4. Media usually flows directly between browsers, or through a TURN relay when a direct link is blocked. **Leave** stops capture and reconnects the room socket; when the server sees a disconnect, it tells the room which ids that connection owned.
 
-With your camera off, others see a placeholder. Click your own preview to show a photo instead.
+Before joining, the camera and microphone buttons choose how you join; they do not start capture. Join requests the chosen devices. Camera off and Mute stop the affected track. With the camera off, others see a placeholder or the photo chosen through your preview. These source behaviors do not establish physical indicators or audible sound on real devices.
 
 ## Project layout
 
@@ -67,7 +67,7 @@ With your camera off, others see a placeholder. Click your own preview to show a
 | `TWILIO_ACCOUNT_SID` |         | With `TWILIO_AUTH_TOKEN`, enables Twilio's STUN and TURN servers |
 | `TWILIO_AUTH_TOKEN`  |         | Twilio auth token                                                |
 
-Without Twilio credentials, browsers get a public STUN server only. A direct connection may work without a relay. Networks that block it need a TURN relay.
+Without both Twilio settings, or if the request to Twilio fails, the server returns Google's public STUN server. A direct connection may work without a relay. Networks that block it need a TURN relay.
 
 ## Endpoints
 
@@ -116,7 +116,7 @@ npx playwright install chromium
 
 To use a Chromium you already have, set `CHROMIUM_PATH` to its executable.
 
-GitHub Actions runs the type check, lint, and tests on every push and on pull requests from forks. The workflow is `.github/workflows/test.yml`.
+GitHub Actions runs type checks, lint and the regular suite on pushes to `main` and on pull requests. `.github/workflows/test.yml` also runs a WebKit trial of the home and element tests on main pushes only; it does not test camera or microphone calls. The slow workflow runs the three capture and call-access checks when `src/`, `public/` or `test/` changes, and always reports a result job.
 
 ## Scripts
 
@@ -124,7 +124,8 @@ GitHub Actions runs the type check, lint, and tests on every push and on pull re
 | ------------------- | ------------------------------------------------------ |
 | `npm run dev`       | Run with `node --watch`                                |
 | `npm start`         | Run the server                                         |
-| `npm test`          | Run the tests                                          |
+| `npm test`          | Run the regular tests                                  |
+| `npm run test:slow` | Run the capture and call-access diagnostics             |
 | `npm run typecheck` | Type check the server and the client (no output files) |
 | `npm run lint`      | Lint with ESLint                                       |
 | `npm run format`    | Format files with Prettier                             |
@@ -139,7 +140,7 @@ GitHub Actions runs the type check, lint, and tests on every push and on pull re
 2. Choose **New**, then **Blueprint**, and pick this repo. Render reads `render.yaml`, installs production dependencies and runs `npm start`.
 3. Open the `onrender.com` address Render gives you. It uses HTTPS, which browsers require for camera access.
 
-Every push to `main` deploys again. A free service sleeps after 15 minutes without traffic, and the next visit takes about a minute to wake it. An active call keeps it awake.
+The Render service automatically deployed the October 26 capture-fix merge. That observation is not a guarantee for every future push. Render's October 21 documentation check in the [Evidence Record](docs/evidence-record.md) describes free-service sleep and wake-up behavior; neither wake-up time nor the effect on a live call was measured there.
 
 To add TURN relays, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under the service's **Environment** tab. Twilio charges for TURN usage.
 
