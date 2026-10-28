@@ -1,0 +1,74 @@
+name: PR title
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+concurrency:
+  group: pr-title-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Load and run trusted base checker
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPO: soliskit/pinto
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, runpy, sys, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != os.environ['EXPECTED_REPO']:
+              raise ValueError('Repository identity outside approved scope')
+          with open(os.environ['GITHUB_EVENT_PATH']) as event_file:
+              event = json.load(event_file)
+          if event['pull_request']['base']['ref'] != 'main':
+              raise ValueError('Only main-target PRs are supported')
+          event_sha = event['pull_request']['head']['sha']
+          if len(event_sha) != 40 or any(c not in '0123456789abcdef' for c in event_sha):
+              raise ValueError('Invalid event SHA')
+          def post_status(state, description):
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/statuses/{event_sha}',
+                  data=json.dumps({'state': state, 'context': 'PR title',
+                                   'description': description}).encode(),
+                  method='POST',
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  response.read()
+          post_status('pending', 'Checking the current title.')
+          try:
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/git/ref/heads/main',
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  base = json.load(response)['object']['sha']
+              if len(base) != 40 or any(c not in '0123456789abcdef' for c in base):
+                  raise ValueError('Invalid base SHA')
+              files = {
+                  '.github/scripts/check_pr_title.py': 'check_pr_title.py',
+                  '.github/scripts/run_title_check.py': 'run_title_check.py',
+                  '.github/title_config.json': 'title_config.json',
+              }
+              for source, destination in files.items():
+                  request = urllib.request.Request(
+                      f'https://api.github.com/repos/{repo}/contents/{source}?ref={base}',
+                      headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                               'Accept': 'application/vnd.github.raw+json'})
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      pathlib.Path(destination).write_bytes(response.read())
+              result = runpy.run_path('run_title_check.py')['main']()
+          except Exception:
+              post_status('error', 'Title could not be verified.')
+              raise
+          sys.exit(result)
+          PY
