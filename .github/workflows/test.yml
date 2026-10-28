@@ -16,6 +16,9 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --init --ipc=host
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -24,8 +27,8 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
-      - run: npx playwright install --with-deps chromium
+      - name: Check Playwright version matches the container image
+        run: node -e "process.exit(require('playwright/package.json').version==='1.63.0'?0:1)"
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
