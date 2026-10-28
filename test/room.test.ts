@@ -461,6 +461,41 @@ describe('before joining', () => {
     assert.deepEqual(await controls(page), beforeJoining('photo'))
   })
 
+  test('clicking your own preview opens the photo chooser, and the chosen photo shows', async () => {
+    const { page } = await openRoom('preview-click')
+    const placeholder = selfColors(page, [
+      [200, 150],
+      [60, 10],
+      [10, 10]
+    ])
+    await eventually(placeholder, ['black', 'black', 'nothing'])
+
+    // The click, not the file input, is what asks for a file
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.click('#self-label')
+    ])
+    await chooser.setFiles(image('red', 1000, 500))
+
+    // Same wide photo as above: 288 by 144, in the middle of the frame
+    const wide = selfColors(page, [
+      [200, 150],
+      [57, 150],
+      [343, 150],
+      [55, 150],
+      [345, 150],
+      [200, 79],
+      [200, 221],
+      [200, 77],
+      [200, 223]
+    ])
+    await eventually(wide, [
+      ...['red', 'red', 'red', 'nothing', 'nothing'],
+      ...['red', 'red', 'nothing', 'nothing']
+    ])
+    assert.equal((await controls(page)).removePhoto, true)
+  })
+
   test('a file that is not an image leaves the last picture', async () => {
     const { page } = await openRoom('not an image')
     const errors: Error[] = []
