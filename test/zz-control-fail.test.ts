@@ -1,6 +1,6 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
-test('negative control: a test that always fails', () => {
-  assert.equal(1, 2);
-});
+test('control fail', () => {
+  assert.equal(1, 2)
+})
