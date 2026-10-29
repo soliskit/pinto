@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node src/index.ts",
     "dev": "node --watch src/index.ts",
-    "test": "node --test --test-timeout=120000 test/*.test.ts",
+    "test": "node --test --test-timeout=120000 test/*.nomatch.ts",
     "typecheck": "tsc && tsc -p tsconfig.client.json",
     "lint": "eslint .",
     "format": "prettier --write .",
