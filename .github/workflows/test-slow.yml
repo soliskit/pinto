@@ -17,42 +17,46 @@ jobs:
   slow:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      tests: ${{ steps.counts.outputs.tests }}
+      skipped: ${{ steps.counts.outputs.skipped }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      # Replaces the paths filter, so the workflow always starts and the
-      # "Slow tests result" job below always reports
-      - id: changed
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null \
-            && ! git diff --name-only "$BASE" "$GITHUB_SHA" | grep -qE '^(src|public|test)/'; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.changed.outputs.run == 'true'
-        uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
-      - if: steps.changed.outputs.run == 'true'
-        run: npm ci
-      - if: steps.changed.outputs.run == 'true'
-        run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
-      - if: steps.changed.outputs.run == 'true'
-        run: npx playwright install --with-deps chromium
-      - if: steps.changed.outputs.run == 'true'
-        run: npm run test:slow
+      - run: npm ci
+      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+      - run: npx playwright install --with-deps chromium
+      - name: Run the slow tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:slow 2>&1 | tee slow-output.txt
+      - name: Count the slow tests
+        id: counts
+        if: always()
+        shell: bash
+        run: |
+          count() { grep -E "^(#|ℹ) $1 [0-9]+" slow-output.txt | tail -n 1 | grep -oE '[0-9]+$' || true; }
+          echo "tests=$(count tests)" >> "$GITHUB_OUTPUT"
+          echo "skipped=$(count skipped)" >> "$GITHUB_OUTPUT"
 
-  # Passes when "slow" passed or was skipped, fails when it failed or was
-  # cancelled. Not a required check until the ruleset is changed to require it
+  # Passes only when "slow" succeeded and ran at least one test with none
+  # skipped. A skipped, cancelled, timed out or failed job fails this check.
   result:
     name: Slow tests result
     needs: slow
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: test "${{ needs.slow.result }}" = success -o "${{ needs.slow.result }}" = skipped
+      - env:
+          SLOW_RESULT: ${{ needs.slow.result }}
+          SLOW_TESTS: ${{ needs.slow.outputs.tests }}
+          SLOW_SKIPPED: ${{ needs.slow.outputs.skipped }}
+        run: |
+          echo "slow: result=$SLOW_RESULT tests=${SLOW_TESTS:-none} skipped=${SLOW_SKIPPED:-none}"
+          [ "$SLOW_RESULT" = success ] || exit 1
+          [ "${SLOW_TESTS:-0}" -ge 1 ] || exit 1
+          [ "${SLOW_SKIPPED:-0}" -eq 0 ] || exit 1
