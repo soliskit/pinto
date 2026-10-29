@@ -1,3 +1,3 @@
-import { test } from 'node:test';
+import { test } from 'node:test'
 
-test('negative control: a test that always skips', { skip: 'negative control' }, () => {});
+test('control skip', { skip: true }, () => {})
