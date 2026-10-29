@@ -1,0 +1,36 @@
+name: Trial plain runner
+
+# One-week comparison, not a required check. Runs the same commands as the
+# "test" job in test.yml, on the plain runner with a browser install instead
+# of the pinned Playwright container image. The Playwright package version is
+# still checked; the container image cannot be, because this job has none.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-plain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+      - run: npx playwright install --with-deps chromium
+      - name: Check Playwright package version
+        run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
