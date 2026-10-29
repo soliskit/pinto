@@ -20,6 +20,9 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
       options: --init --ipc=host
     timeout-minutes: 10
+    outputs:
+      tests: ${{ steps.counts.outputs.tests }}
+      skipped: ${{ steps.counts.outputs.skipped }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -31,7 +34,37 @@ jobs:
         run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm test
+      - name: Run the tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+      - name: Count the tests
+        id: counts
+        if: always()
+        shell: bash
+        run: |
+          count() { grep -E "^(#|ℹ) $1 [0-9]+" test-output.txt | tail -n 1 | grep -oE '[0-9]+$' || true; }
+          echo "tests=$(count tests)" >> "$GITHUB_OUTPUT"
+          echo "skipped=$(count skipped)" >> "$GITHUB_OUTPUT"
+
+  # Final gate. Fails unless the test job succeeded, ran at least one test
+  # and skipped none. Skipped is not a pass.
+  suites-ran:
+    name: Suites ran
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TEST_RESULT: ${{ needs.test.result }}
+          TEST_TESTS: ${{ needs.test.outputs.tests }}
+          TEST_SKIPPED: ${{ needs.test.outputs.skipped }}
+        run: |
+          echo "test: result=$TEST_RESULT tests=${TEST_TESTS:-none} skipped=${TEST_SKIPPED:-none}"
+          [ "$TEST_RESULT" = success ] || exit 1
+          [ "${TEST_TESTS:-0}" -ge 1 ] || exit 1
+          [ "${TEST_SKIPPED:-0}" -eq 0 ] || exit 1
 
   webkit:
     # A trial, not a required check. Main pushes only.
