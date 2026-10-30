@@ -12,12 +12,15 @@ Tags:
 # Why, How and Tags are all required.
 # Why: say why this change is needed.
 # How: say how it addresses that need. Keep claims within the evidence.
+#
 # Tags: Bug, Enhancement.
 # Choose any that apply, including both Bug and Enhancement when both apply.
 # Use None alone when none fits. All other labels stay out.
 # Tags belong in the body, not before the subject.
+#
 # Never put private conversation references, secrets or personal details here.
 # Delete prompts and comments from the finished message.
+#
 # These verbs are choices, not words every commit must contain:
 # Create = Introduce something new, like a feature, test or dependency.
 # Remove = Take out something that exists, like a feature, test or dependency.
