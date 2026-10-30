@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1.0, user-scalable=no, width=device-width"
+    />
+    <title>Pinto</title>
+    <meta property="og:title" content="Video calls with nothing to install" />
+    <meta
+      property="og:description"
+      content="Name a room, share the link, and talk."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://pinto-zd0c.onrender.com/hero_thumbnail.png" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/home.js"></script>
+  </head>
+  <body>
+    <main class="home">
+      <time id="clock"></time>
+      <h2>Name your room, or press Open for a random one</h2>
+      <form id="join-form" class="join-form">
+        <input
+          id="room-name"
+          type="text"
+          placeholder="Room name"
+          autocomplete="off"
+        />
+        <button type="submit" class="open-room" autofocus>Open</button>
+      </form>
+    </main>
+  </body>
+</html>
