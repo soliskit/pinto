@@ -596,6 +596,69 @@ describe('in a call', () => {
     }
   })
 
+  test('a failed call connection logs the PeerJS error', async () => {
+    const a = await openRoom('call-error')
+    const b = await openRoom('call-error')
+    await join(a)
+    await join(b)
+    await eventually(attendees(a.page), ['audio+video playing'])
+    await eventually(attendees(b.page), ['audio+video playing'])
+
+    // Watch for the error room.js logs from its call error handler
+    const consoleErrors: { type?: string; message?: string }[] = []
+    a.page.on('console', (message) => {
+      if (message.type() !== 'error') return
+      const [first] = message.args()
+      first
+        ?.evaluate((error) => ({
+          type: (error as { type?: string } | null)?.type,
+          message: (error as { message?: string } | null)?.message
+        }))
+        .then((entry) => consoleErrors.push(entry))
+        .catch(() => {})
+    })
+
+    // Simulate the browser reporting the one live call's transport as
+    // failed, so the real PeerJS listener produces the error
+    const driven = await a.page.evaluate(() => {
+      const connections = window.recorded.peerConnections
+      if (connections.length !== 1)
+        return `expected one managed connection, found ${connections.length}`
+      const [pc] = connections
+      if (typeof pc.oniceconnectionstatechange !== 'function')
+        return 'the PeerJS ICE listener is not registered'
+      if (
+        pc.iceConnectionState !== 'connected' &&
+        pc.iceConnectionState !== 'completed'
+      )
+        return `connection not established: ${pc.iceConnectionState}`
+      Object.defineProperty(pc, 'iceConnectionState', {
+        configurable: true,
+        get: () => 'failed'
+      })
+      pc.dispatchEvent(new Event('iceconnectionstatechange'))
+      return 'ok'
+    })
+    assert.equal(driven, 'ok')
+
+    // PeerJS itself constructs the error, naming the peer it lost
+    const wanted = {
+      type: 'negotiation-failed',
+      message: `Negotiation of connection to ${b.peerId} failed.`
+    }
+    await eventually(
+      async () =>
+        consoleErrors.find(
+          (entry) =>
+            entry.type === wanted.type && entry.message === wanted.message
+        ) ?? null,
+      wanted
+    )
+
+    // PeerJS then closes the call, and the page drops the peer's video
+    await eventually(attendees(a.page), [])
+  })
+
   test('Leave leaves the call for everyone, and Join joins again', async () => {
     const a = await openRoom('again')
     const b = await openRoom('again')
