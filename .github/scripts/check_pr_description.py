@@ -1,7 +1,7 @@
 """Proposed structural checker. Pure data only; no network or repository effects."""
 import re
 
-QUESTIONS = ('Behavior', 'Protection', 'Gates', 'Description', 'Audit')
+QUESTIONS = ('Behavior', 'Protection', 'Gates', 'Description', 'Decision record')
 CLASSES = ('Refactor', 'Bug Fix', 'Intentional Change', 'Clarification', 'No Class Needed')
 
 
@@ -53,16 +53,16 @@ def check(body, changed_paths, template, decision_prefix):
                 errors.append('Keep exactly one ' + label + ' answer.')
             elif not found[0] or found[0] == original_answers.get(label, '').strip():
                 errors.append('Replace the ' + label + ' prompt with an answer.')
-        audit = [a.strip() for k, a in fields if k == 'Audit']
-        if len(audit) == 1:
-            answer = audit[0]
+        record = [a.strip() for k, a in fields if k == 'Decision record']
+        if len(record) == 1:
+            answer = record[0]
             if not re.match(r'^(Yes|No)\b', answer, re.I):
-                errors.append('Start Audit with Yes or No.')
+                errors.append('Start Decision record with Yes or No.')
             elif re.match(r'^No\s*[.,:;!?-]?\s*$', answer, re.I):
-                errors.append('Explain the No answer for Audit.')
+                errors.append('Explain the No answer for Decision record.')
             elif re.match(r'^Yes\b', answer, re.I):
                 if not re.search(r'\b' + re.escape(decision_prefix) + r'[1-9][0-9]*\b', answer):
-                    errors.append('Name a ' + decision_prefix + '-number in the Audit Yes answer.')
+                    errors.append('Name a ' + decision_prefix + '-number in the Decision record Yes answer.')
                 if 'docs/decisions.md' not in changed_paths:
-                    errors.append('Audit Yes needs docs/decisions.md in this PR.')
+                    errors.append('Decision record Yes needs docs/decisions.md in this PR.')
     return errors
