@@ -551,6 +551,20 @@ describe('in a call', () => {
     assert.equal(await status(elsewhere.page)(), '1st in the room')
   })
 
+  test('the fourth person in a room is told they are 4th', async () => {
+    const pages = [
+      await openRoom('quartet'),
+      await openRoom('quartet'),
+      await openRoom('quartet'),
+      await openRoom('quartet')
+    ]
+    for (const [index, room] of pages.entries()) {
+      await join(room)
+      const wanted = ['1st', '2nd', '3rd', '4th'][index]
+      await eventually(status(room.page), `${wanted} in the room`)
+    }
+  })
+
   test('audio and video packets keep flowing both ways', async () => {
     const a = await openRoom('flow')
     const b = await openRoom('flow')
