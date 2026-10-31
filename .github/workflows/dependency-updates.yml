@@ -46,7 +46,11 @@ jobs:
           if [ -f package-lock.json ]; then
             echo "has_lock=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No lockfile - no dependencies to inventory."
+            # Fail closed: declared dependencies without a lockfile would
+            # skip the inventory silently. A zero-dependency repo legitimately
+            # has nothing to inventory and skips green.
+            node -e "const p=require('./package.json'); const n=Object.keys(p.dependencies||{}).length+Object.keys(p.devDependencies||{}).length; process.exit(n?1:0)" || { echo "package.json declares dependencies but no package-lock.json exists - inventory blocked"; exit 1; }
+            echo "No lockfile and no declared dependencies - nothing to inventory."
             echo "has_lock=false" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.pre.outputs.has_lock == 'true'
