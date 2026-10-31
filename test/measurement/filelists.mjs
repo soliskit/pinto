@@ -18,9 +18,16 @@ export function serverFiles() {
 
 // Browser pipeline: the JavaScript the pages load under public/.
 export function browserFiles() {
-  return ['public/element.js', 'public/home.js', 'public/ordinal.js', 'public/room.js'].map(
-    (rel) => ({ rel, abs: join(root, rel), servedPath: '/' + rel.slice('public/'.length) })
-  )
+  return [
+    'public/element.js',
+    'public/home.js',
+    'public/ordinal.js',
+    'public/room.js'
+  ].map((rel) => ({
+    rel,
+    abs: join(root, rel),
+    servedPath: '/' + rel.slice('public/'.length)
+  }))
 }
 
 // Third-party scripts the pages load, served from the installed packages.
@@ -31,10 +38,24 @@ export function thirdPartyFiles() {
   const peerjs = fileURLToPath(import.meta.resolve('peerjs/dist/peerjs.min.js'))
   // socket.io does not export its client dist through its exports map; the
   // server package serves it from this fixed location at the locked version.
-  const socketio = join(root, 'node_modules', 'socket.io', 'client-dist', 'socket.io.min.js')
+  const socketio = join(
+    root,
+    'node_modules',
+    'socket.io',
+    'client-dist',
+    'socket.io.min.js'
+  )
   return [
-    { name: 'peerjs', servedPath: '/vendor/peerjs.min.js', packageFile: peerjs },
-    { name: 'socket.io', servedPath: '/socket.io/socket.io.min.js', packageFile: socketio }
+    {
+      name: 'peerjs',
+      servedPath: '/vendor/peerjs.min.js',
+      packageFile: peerjs
+    },
+    {
+      name: 'socket.io',
+      servedPath: '/socket.io/socket.io.min.js',
+      packageFile: socketio
+    }
   ]
 }
 
