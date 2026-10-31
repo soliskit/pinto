@@ -6,7 +6,7 @@ import urllib.request
 from check_pr_description import check
 
 
-def run(api, repo, number, template, decision_prefix):
+def run(api, repo, number, template):
     prefix = '/repos/' + repo
     def unique_open_pr(head):
         matches = []
@@ -51,7 +51,7 @@ def run(api, repo, number, template, decision_prefix):
     target = prefix + '/statuses/' + head
     api('POST', target, {'state': 'pending', 'context': 'PR description', 'description': 'Checking the current description.'})
     try:
-        errors = check(body, paths, template, decision_prefix)
+        errors = check(body, paths, template)
         if snapshot() != (head, body, paths):
             raise ValueError('PR changed before status publication.')
         api('POST', target, {'state': 'failure' if errors else 'success', 'context': 'PR description', 'description': 'Description needs changes.' if errors else 'Required description fields are complete.'})
@@ -78,7 +78,7 @@ def main():
         config = json.load(f)
     if config['repository'] != repo:
         raise ValueError('Configuration repository mismatch.')
-    errors = run(api, repo, number, template, config['decision_prefix'])
+    errors = run(api, repo, number, template)
     for error in errors:
         print(error)
     return bool(errors)

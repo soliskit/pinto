@@ -1,11 +1,11 @@
 """Proposed structural checker. Pure data only; no network or repository effects."""
 import re
 
-QUESTIONS = ('Behavior', 'Protection', 'Gates', 'Description', 'Decision record')
+QUESTIONS = ('Behavior', 'Protection', 'Gates', 'Description')
 CLASSES = ('Refactor', 'Bug Fix', 'Intentional Change', 'Clarification', 'No Class Needed')
 
 
-def check(body, changed_paths, template, decision_prefix):
+def check(body, changed_paths, template):
     errors = []
     # Proposed restricted grammar: do not certify Markdown whose presentation
     # can turn apparent fields into code or hidden HTML. Comments are ignored.
@@ -53,16 +53,4 @@ def check(body, changed_paths, template, decision_prefix):
                 errors.append('Keep exactly one ' + label + ' answer.')
             elif not found[0] or found[0] == original_answers.get(label, '').strip():
                 errors.append('Replace the ' + label + ' prompt with an answer.')
-        record = [a.strip() for k, a in fields if k == 'Decision record']
-        if len(record) == 1:
-            answer = record[0]
-            if not re.match(r'^(Yes|No)\b', answer, re.I):
-                errors.append('Start Decision record with Yes or No.')
-            elif re.match(r'^No\s*[.,:;!?-]?\s*$', answer, re.I):
-                errors.append('Explain the No answer for Decision record.')
-            elif re.match(r'^Yes\b', answer, re.I):
-                if not re.search(r'\b' + re.escape(decision_prefix) + r'[1-9][0-9]*\b', answer):
-                    errors.append('Name a ' + decision_prefix + '-number in the Decision record Yes answer.')
-                if 'docs/decisions.md' not in changed_paths:
-                    errors.append('Decision record Yes needs docs/decisions.md in this PR.')
     return errors

@@ -26,7 +26,7 @@ git config --local --unset commit.template
 
 ## Pull request descriptions
 
-Use the repository's Tetris-format description: explain the change, select all applicable classes, and answer Behavior, Protection, Gates, Description and Decision record. No Class Needed cannot be combined with another class. Start Decision record with Yes or No. A Yes needs the native decision number and a change to `docs/decisions.md` in the same PR. A No needs a reason. The description checker verifies this shape, not whether the answers are true or the decision exists.
+Use the repository's Tetris-format description: explain the change, select all applicable classes, and answer Behavior, Protection, Gates and Description. No Class Needed cannot be combined with another class. The description checker verifies this shape, not whether the answers are true.
 
 The checker accepts main-target PRs only. It rejects fenced code, indented code, HTML elements and nested headings in the description. Use plain paragraphs and the provided section/question labels. Multiple open PRs with the same head SHA are refused. It reads trusted main files and PR metadata, never runs code from a PR head, and writes the `PR description` commit status.
 
