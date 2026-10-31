@@ -16,3 +16,5 @@ results
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
+# Local measurement output (raw reports stay private)
+.measurement/
