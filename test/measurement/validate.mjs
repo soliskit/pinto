@@ -23,7 +23,9 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
     try {
       parsed = JSON.parse(readFileSync(path, 'utf8'))
     } catch {
-      throw new MeasurementFailure(`cut-off or unreadable coverage report rejected: ${f}`)
+      throw new MeasurementFailure(
+        `cut-off or unreadable coverage report rejected: ${f}`
+      )
     }
     if (!Array.isArray(parsed.result)) {
       throw new MeasurementFailure(`coverage report has no result array: ${f}`)
@@ -42,9 +44,13 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
 
 export function validateBrowserDir(dir) {
   const indexPath = join(dir, 'captures.index')
-  let indexed = []
+  let indexed
   try {
-    indexed = readFileSync(indexPath, 'utf8').trim().split('\n').filter(Boolean).map((l) => l.split('\t')[0])
+    indexed = readFileSync(indexPath, 'utf8')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => l.split('\t')[0])
   } catch {
     indexed = []
   }
@@ -57,7 +63,9 @@ export function validateBrowserDir(dir) {
   }
   for (const name of indexed) {
     if (!present.includes(name)) {
-      throw new MeasurementFailure(`a browser capture was dropped: ${name} is indexed but missing`)
+      throw new MeasurementFailure(
+        `a browser capture was dropped: ${name} is indexed but missing`
+      )
     }
   }
   for (const name of present) {
@@ -71,7 +79,9 @@ export function validateBrowserDir(dir) {
     try {
       parsed = JSON.parse(readFileSync(join(dir, name), 'utf8'))
     } catch {
-      throw new MeasurementFailure(`cut-off or unreadable browser capture rejected: ${name}`)
+      throw new MeasurementFailure(
+        `cut-off or unreadable browser capture rejected: ${name}`
+      )
     }
     if (!Array.isArray(parsed.entries)) {
       throw new MeasurementFailure(`browser capture has no entries: ${name}`)
