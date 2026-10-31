@@ -5,7 +5,7 @@ import { MeasurementFailure } from './validate.mjs'
 
 export async function stopWithTimeout(child, exited, timeoutMs = 10000) {
   child.kill()
-  const timeout = new Promise((_, reject) =>
+  const timeout = new Promise((_resolve, reject) =>
     setTimeout(() => reject(new Error('timeout')), timeoutMs)
   )
   try {
