@@ -10,7 +10,7 @@
 import libCoverage from 'istanbul-lib-coverage'
 import V8ToIstanbul from 'v8-to-istanbul'
 
-const { createCoverageMap, createFileCoverage } = libCoverage
+const { createFileCoverage } = libCoverage
 
 // merged: { url, source, coverageList: [functions, ...] } ; path for the report
 // V8 lists a function only once it is compiled, so a load where a function
@@ -20,7 +20,7 @@ const { createCoverageMap, createFileCoverage } = libCoverage
 // functions other loads of the same source observed removes only credit no
 // execution could have produced. This happens at the V8 level because the
 // converter's own function map drops anonymous functions entirely.
-export function completeFunctionLists(coverageList, sourceLength) {
+export function completeFunctionLists(coverageList) {
   const union = new Map()
   for (const functions of coverageList) {
     for (const fn of functions || []) {
@@ -35,7 +35,10 @@ export function completeFunctionLists(coverageList, sourceLength) {
     const present = new Set(
       (functions || [])
         .filter((fn) => fn.ranges && fn.ranges.length > 0)
-        .map((fn) => `${fn.functionName}@${Math.min(...fn.ranges.map((r) => r.startOffset))}-${Math.max(...fn.ranges.map((r) => r.endOffset))}`)
+        .map(
+          (fn) =>
+            `${fn.functionName}@${Math.min(...fn.ranges.map((r) => r.startOffset))}-${Math.max(...fn.ranges.map((r) => r.endOffset))}`
+        )
     )
     // Partial writes can list a function that ran while omitting its
     // ancestors; a zero span containing a present function's span would
@@ -43,11 +46,22 @@ export function completeFunctionLists(coverageList, sourceLength) {
     // statements are carried by complete takes.
     const presentSpans = (functions || [])
       .filter((f) => f.ranges && f.ranges.length > 0)
-      .map((f) => ({ start: Math.min(...f.ranges.map((r) => r.startOffset)), end: Math.max(...f.ranges.map((r) => r.endOffset)) }))
+      .map((f) => ({
+        start: Math.min(...f.ranges.map((r) => r.startOffset)),
+        end: Math.max(...f.ranges.map((r) => r.endOffset))
+      }))
     const added = []
     for (const [key, fn] of union) {
       if (present.has(key)) continue
-      if (presentSpans.some((p) => fn.start <= p.start && p.end <= fn.end && (fn.start < p.start || p.end < fn.end))) continue
+      if (
+        presentSpans.some(
+          (p) =>
+            fn.start <= p.start &&
+            p.end <= fn.end &&
+            (fn.start < p.start || p.end < fn.end)
+        )
+      )
+        continue
       added.push({
         functionName: fn.name,
         isBlockCoverage: true,
@@ -60,8 +74,12 @@ export function completeFunctionLists(coverageList, sourceLength) {
 
 export async function toFileCoverage(merged, path) {
   const coverages = []
-  for (const functions of completeFunctionLists(merged.coverageList || [merged.functions], (merged.source || '').length)) {
-    const converter = new V8ToIstanbul(path, 0, { sources: { '': merged.source } })
+  for (const functions of completeFunctionLists(
+    merged.coverageList || [merged.functions]
+  )) {
+    const converter = new V8ToIstanbul(path, 0, {
+      sources: { '': merged.source }
+    })
     await converter.load()
     converter.applyCoverage(functions)
     coverages.push(converter.toIstanbul()[path])
@@ -122,10 +140,19 @@ function sameLocation(a, b) {
 // fresh key. A path is covered when any load executed it, and cumulative
 // writes (a mid-run snapshot plus the exit write) never double-count.
 export function maxMergeFileCoverages(a, b) {
-  const out = { ...a, s: { ...a.s }, f: { ...a.f }, b: { ...a.b }, fnMap: { ...a.fnMap }, branchMap: { ...a.branchMap } }
-  for (const [k, v] of Object.entries(b.s)) out.s[k] = Math.max(out.s[k] ?? 0, v)
+  const out = {
+    ...a,
+    s: { ...a.s },
+    f: { ...a.f },
+    b: { ...a.b },
+    fnMap: { ...a.fnMap },
+    branchMap: { ...a.branchMap }
+  }
+  for (const [k, v] of Object.entries(b.s))
+    out.s[k] = Math.max(out.s[k] ?? 0, v)
 
-  let nextFn = Object.keys(out.fnMap).reduce((m, k) => Math.max(m, Number(k)), -1) + 1
+  let nextFn =
+    Object.keys(out.fnMap).reduce((m, k) => Math.max(m, Number(k)), -1) + 1
   for (const [bk, bfn] of Object.entries(b.fnMap)) {
     const match = Object.entries(out.fnMap).find(
       ([, f]) => f.name === bfn.name && sameLocation(f.decl, bfn.decl)
@@ -139,7 +166,8 @@ export function maxMergeFileCoverages(a, b) {
     }
   }
 
-  let nextBr = Object.keys(out.branchMap).reduce((m, k) => Math.max(m, Number(k)), -1) + 1
+  let nextBr =
+    Object.keys(out.branchMap).reduce((m, k) => Math.max(m, Number(k)), -1) + 1
   for (const [bk, bbr] of Object.entries(b.branchMap)) {
     const match = Object.entries(out.branchMap).find(
       ([, br]) => br.type === bbr.type && sameLocation(br.loc, bbr.loc)
@@ -182,7 +210,10 @@ export function summarize(files) {
     const functionsMeasurable = summary.functions.total > 0
     perFile[f.path] = {
       lines: { covered: summary.lines.covered, total: summary.lines.total },
-      branches: { covered: summary.branches.covered, total: summary.branches.total },
+      branches: {
+        covered: summary.branches.covered,
+        total: summary.branches.total
+      },
       functions: functionsMeasurable
         ? { covered: summary.functions.covered, total: summary.functions.total }
         : { covered: 0, total: 0, measurable: false }
