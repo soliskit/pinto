@@ -409,6 +409,9 @@ test('a refused Join turns down a call that was still waiting', async () => {
     () => incomingCalls(room.page).then((ids) => ids.includes(callerId)),
     true
   )
+  // The call is still waiting, not yet closed or answered
+  assert.deepEqual(await closedCalls(room.page), [])
+  assert.deepEqual(await answeredCalls(room.page), [])
 
   // When the retries give up, the waiting call is closed with them
   await eventually(
@@ -420,6 +423,8 @@ test('a refused Join turns down a call that was still waiting', async () => {
     await controls(room.page),
     beforeJoining('refused-waiting-call')
   )
+  // The room never answered it
+  assert.deepEqual(await answeredCalls(room.page), [])
   assert.equal(await caller.answered(), 0)
   squatter.disconnect()
 })
@@ -449,6 +454,8 @@ test('Leave closes a call that is still waiting for the roster answer', async ()
     () => closedCalls(room.page).then((ids) => ids.includes(callerId)),
     true
   )
+  // The room never answered it
+  assert.deepEqual(await answeredCalls(room.page), [])
   assert.equal(await caller.answered(), 0)
   assert.deepEqual(await attendees(room.page)(), [])
 })
