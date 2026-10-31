@@ -15,7 +15,11 @@ export function mergeV8Entries(entries) {
     if (!entry.url) continue
     const existing = byUrl.get(entry.url)
     if (!existing) {
-      byUrl.set(entry.url, { url: entry.url, source: entry.source, coverageList: [entry.functions] })
+      byUrl.set(entry.url, {
+        url: entry.url,
+        source: entry.source,
+        coverageList: [entry.functions]
+      })
       continue
     }
     // A take whose source could not be retrieved carries source undefined;
