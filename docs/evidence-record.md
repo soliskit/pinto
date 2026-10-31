@@ -4,6 +4,8 @@ Status of planned service checks and the dated platform records they rely on. Th
 
 Every service check below is recorded as Pending. The later capture and call-access fixes in PRs #88 and #89 have local and CI results; those results do not close the planned service checks or establish physical capture indicators and real-device calls. The [existing-app audit](audit/audit-report.md) is a separate result: no review verdict covers this exact version of the planned checks, and the audit does not close or certify them. Real-device behavior is still unproven. The private Playbook holds the Check and Fail text for B1 to B16 under How It Works, and the pass rule for each unproven check under What's next in the Charter.
 
+The earlier app audit (kept in git history) left these checks open: physical camera and microphone indicators on any device; what happens when replaceTrack fails; revoking camera permission in the middle of a call (the page has no handler for a track ending); locking a phone and returning, switching apps, and navigating away on a phone; direct versus relayed calls across separate networks, and whether Twilio relay is configured; wake-up time after the free host sleeps; behavior in Safari, Firefox, and on phones; whether the deployed server code matches the audited commit; server memory, speed, and stability under repeated joins; stale tiles after a replaced call, and PeerJS behavior after a call error. Until these run, no record claims the app works every time. Room-lifecycle and reconnection paths beyond the merged repairs also remain open.
+
 ## Service checks
 
 | Check                              | Result  |
