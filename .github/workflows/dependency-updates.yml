@@ -1,7 +1,7 @@
 name: Dependency updates
 
 # Daily dependency inventory over every resolved package, direct and
-# transitive. Builds chore/deps-* branches only; it never opens pull
+# transitive. Builds maintenance/deps-* branches only; it never opens pull
 # requests and never commits to the default branch.
 #
 # Branches from this workflow are picked up and opened as pull requests by
@@ -67,7 +67,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cp package-lock.json /tmp/lock-after.json   # placeholder; replaced if update changes anything
-          BRANCH="chore/deps-$(date +%Y%m%d)-tree"
+          BRANCH="maintenance/deps-$(date +%Y%m%d)-tree"
           git checkout -b "$BRANCH"
           npm update --save=false --no-audit --no-fund
           if git diff --quiet package.json package-lock.json; then
@@ -139,7 +139,7 @@ jobs:
           [ -s direct-same-major.txt ] || exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          BRANCH="chore/deps-$(date +%Y%m%d)-direct"
+          BRANCH="maintenance/deps-$(date +%Y%m%d)-direct"
           git checkout -b "$BRANCH" origin/main
           # Each package's existing declaration style is preserved: a bare
           # `npm install pkg@x.y.z` rewrites exact pins and tilde ranges as
@@ -207,7 +207,7 @@ jobs:
           while read -r spec; do
             [ -n "$spec" ] || continue
             pkg="${spec%@*}"; want="${spec##*@}"
-            BRANCH="chore/deps-$(date +%Y%m%d)-major-${pkg//[@\/]/-}"
+            BRANCH="maintenance/deps-$(date +%Y%m%d)-major-${pkg//[@\/]/-}"
             git checkout -b "$BRANCH" origin/main
             # Declaration style preserved exactly as in track B.
             old=$(node -p "const p=require('./package.json'); (p.dependencies||{})['$pkg'] || (p.devDependencies||{})['$pkg'] || ''")
