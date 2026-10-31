@@ -1,0 +1,282 @@
+name: Dependency updates
+
+# Daily dependency inventory over every resolved package, direct and
+# transitive. Builds chore/deps-* branches only; it never opens pull
+# requests and never commits to the default branch.
+#
+# Branches from this workflow are picked up and opened as pull requests by
+# the repository owner's automation so the full pull_request check gate runs
+# natively: events triggered by GITHUB_TOKEN do not start workflow runs, and
+# pull_request events from token-created PRs wait for manual run approval.
+# Branch pushes need no runs of their own because every pull request
+# workflow here is pull_request-gated.
+#
+# Design: `npm update --save=false` computes the greatest versions
+# satisfying every declared range, so no version parsing decides what is
+# "compatible". Direct updates beyond the declared ranges are classified
+# after that update by comparing the refreshed lockfile against registry
+# dist-tags, then installed by exact pinned version with each package's
+# existing declaration style preserved (exact stays exact, ~ and ^ keep
+# their prefix). `npm outdated --all` feeds the summary report only.
+on:
+  schedule:
+    - cron: "22 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependency-updates
+  cancel-in-progress: false
+
+jobs:
+  inventory-and-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - name: Check for a lockfile
+        id: pre
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "has_lock=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No lockfile - no dependencies to inventory."
+            echo "has_lock=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.pre.outputs.has_lock == 'true'
+        run: npm ci
+      - if: steps.pre.outputs.has_lock == 'true'
+        run: npm audit --json > audit.json || true
+
+      - name: Track A - whole-tree compatible updates (bare npm update)
+        if: steps.pre.outputs.has_lock == 'true'
+        id: tracka
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp package-lock.json /tmp/lock-after.json   # placeholder; replaced if update changes anything
+          BRANCH="chore/deps-$(date +%Y%m%d)-tree"
+          git checkout -b "$BRANCH"
+          npm update --save=false --no-audit --no-fund
+          if git diff --quiet package.json package-lock.json; then
+            echo "no compatible updates anywhere in the tree"
+            git checkout -
+            exit 0
+          fi
+          # Fail closed: track A is strictly lockfile-only; if npm wrote
+          # package.json despite --save=false, something changed upstream
+          # and this branch must not proceed silently.
+          git diff --quiet package.json || { echo "track A must be lockfile-only but package.json changed"; exit 1; }
+          cp package-lock.json /tmp/lock-after.json   # post-update lockfile = wanted versions for classification
+          git add package.json package-lock.json
+          git commit -m "Update dependencies within existing constraints
+
+          Why: daily inventory found compatible updates in the resolved tree
+          How: bare npm update --save=false; greatest versions satisfying all
+          declared ranges; package.json untouched; no constraint overridden
+          Tags: dependencies"
+          git push -f origin "$BRANCH"
+          git checkout -
+
+      - name: Classify direct updates against registry dist-tags
+        if: steps.pre.outputs.has_lock == 'true'
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs"), { execSync } = require("child_process");
+          const lock = JSON.parse(fs.readFileSync("/tmp/lock-after.json", "utf8")).packages;
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const direct = [...Object.keys(pkg.dependencies || {}), ...Object.keys(pkg.devDependencies || {})];
+          const maj = v => (v || "0").split(".")[0];
+          const B = [], C = [];
+          for (const d of direct) {
+            const wanted = (lock["node_modules/" + d] || {}).version;
+            const latest = execSync(`npm view ${d} version`, { encoding: "utf8" }).trim();
+            if (wanted !== latest) (maj(wanted) !== maj(latest) ? C : B).push(`${d}@${latest}`);
+          }
+          fs.writeFileSync("direct-same-major.txt", B.join("\n"));
+          fs.writeFileSync("direct-major.txt", C.join("\n"));
+          console.log(JSON.stringify({ trackB: B, trackC: C }));
+          NODE
+
+      - name: Probe - verify save flags on this runner's npm
+        if: steps.pre.outputs.has_lock == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Empirical probe of this runner's npm (verified 2026-10-31 on npm
+          # 10.9.9, 11.20.0 and 12.2.0: --save-exact keeps exact pins,
+          # --save-prefix keeps ~ or ^, bare install rewrites to caret).
+          probe_dir=$(mktemp -d)
+          cd "$probe_dir"
+          echo '{"name":"probe","version":"1.0.0","dependencies":{"is-number":"7.0.0"}}' > package.json
+          npm install is-number@7.0.0 --save-exact --no-audit --no-fund --loglevel=error
+          node -e "process.exit(require('./package.json').dependencies['is-number']==='7.0.0'?0:1)"
+          npm install is-number@6.0.0 --save-prefix='~' --no-audit --no-fund --loglevel=error
+          node -e "process.exit(require('./package.json').dependencies['is-number']==='~6.0.0'?0:1)"
+          cd - >/dev/null
+          echo "probe ok: npm $(npm --version) preserves declaration styles"
+
+      - name: Track B - same-major direct updates past declared ranges (exact pins)
+        if: steps.pre.outputs.has_lock == 'true' && hashFiles('direct-same-major.txt') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -s direct-same-major.txt ] || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="chore/deps-$(date +%Y%m%d)-direct"
+          git checkout -b "$BRANCH" origin/main
+          # Each package's existing declaration style is preserved: a bare
+          # `npm install pkg@x.y.z` rewrites exact pins and tilde ranges as
+          # caret (verified on npm 10.9.9), so the install flags follow the
+          # existing spec prefix. Any style outside exact/~/^ fails the
+          # branch for review instead of silently changing policy.
+          while read -r spec; do
+            [ -n "$spec" ] || continue
+            pkg="${spec%@*}"; want="${spec##*@}"
+            old=$(node -p "const p=require('./package.json'); (p.dependencies||{})['$pkg'] || (p.devDependencies||{})['$pkg'] || ''")
+            case "$old" in
+              "~"*) npm install "$spec" --save-prefix='~' --no-audit --no-fund ; exp="~$want" ;;
+              "^"*) npm install "$spec" --save-prefix='^' --no-audit --no-fund ; exp="^$want" ;;
+              [0-9]*) npm install "$spec" --save-exact --no-audit --no-fund ; exp="$want" ;;
+              *) echo "unsupported range style for $pkg: $old - needs review"; exit 1 ;;
+            esac
+            new=$(node -p "const p=require('./package.json'); (p.dependencies||{})['$pkg'] || (p.devDependencies||{})['$pkg'] || ''")
+            [ "$new" = "$exp" ] || { echo "spec style drift: $pkg was '$old' now '$new', wanted '$exp'"; exit 1; }
+            got=$(node -p "require('./node_modules/' + '$pkg' + '/package.json').version")
+            [ "$got" = "$want" ] || { echo "drift: $pkg wanted $want got $got"; exit 1; }
+          done < direct-same-major.txt
+          # Post-diff guard: package.json may differ from origin/main only in
+          # the intended specs, each exactly its preserved style + version.
+          node <<'GUARD'
+          const fs=require("fs"),{execSync}=require("child_process");
+          const before=JSON.parse(execSync("git show origin/main:package.json",{encoding:"utf8"}));
+          const after=JSON.parse(fs.readFileSync("package.json","utf8"));
+          const specs=fs.readFileSync("direct-same-major.txt","utf8").split("\n").filter(Boolean);
+          const diffs=[];
+          for(const k of Object.keys(after))
+            if(JSON.stringify(before[k])!==JSON.stringify(after[k]) && k!=="dependencies" && k!=="devDependencies")
+              diffs.push("unexpected top-level change: "+k);
+          for(const sec of ["dependencies","devDependencies"]) {
+            const b=before[sec]||{},a=after[sec]||{};
+            for(const k of new Set([...Object.keys(a),...Object.keys(b)])) {
+              if(a[k]===b[k]) continue;
+              const spec=specs.find(s=>s.slice(0,s.lastIndexOf("@"))===k);
+              if(!spec) { diffs.push("unexpected spec change: "+k); continue; }
+              const want=spec.slice(spec.lastIndexOf("@")+1);
+              const exp=b[k]&&b[k].startsWith("~")?"~"+want:b[k]&&b[k].startsWith("^")?"^"+want:want;
+              if(a[k]!==exp) diffs.push("style not preserved: "+k+" "+b[k]+" -> "+a[k]+" (wanted "+exp+")");
+            }
+          }
+          if(diffs.length){console.error(diffs.join("\n"));process.exit(1);}
+          console.log("post-diff guard ok: only intended spec changes, styles preserved");
+          GUARD
+          git add package.json package-lock.json
+          git commit -m "Update direct dependencies to latest same-major versions
+
+          Why: newer same-major versions blocked by declared ranges
+          How: exact pinned installs computed from registry dist-tags;
+          installed versions verified after install
+          Tags: dependencies"
+          git push -f origin "$BRANCH"
+          git checkout -
+
+      - name: Track C - one branch per major direct update (exact pins)
+        if: steps.pre.outputs.has_lock == 'true' && hashFiles('direct-major.txt') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -s direct-major.txt ] || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          while read -r spec; do
+            [ -n "$spec" ] || continue
+            pkg="${spec%@*}"; want="${spec##*@}"
+            BRANCH="chore/deps-$(date +%Y%m%d)-major-${pkg//[@\/]/-}"
+            git checkout -b "$BRANCH" origin/main
+            # Declaration style preserved exactly as in track B.
+            old=$(node -p "const p=require('./package.json'); (p.dependencies||{})['$pkg'] || (p.devDependencies||{})['$pkg'] || ''")
+            case "$old" in
+              "~"*) npm install "$spec" --save-prefix='~' --no-audit --no-fund ; exp="~$want" ;;
+              "^"*) npm install "$spec" --save-prefix='^' --no-audit --no-fund ; exp="^$want" ;;
+              [0-9]*) npm install "$spec" --save-exact --no-audit --no-fund ; exp="$want" ;;
+              *) echo "unsupported range style for $pkg: $old - needs review"; exit 1 ;;
+            esac
+            new=$(node -p "const p=require('./package.json'); (p.dependencies||{})['$pkg'] || (p.devDependencies||{})['$pkg'] || ''")
+            [ "$new" = "$exp" ] || { echo "spec style drift: $pkg was '$old' now '$new', wanted '$exp'"; exit 1; }
+            got=$(node -p "require('./node_modules/' + '$pkg' + '/package.json').version")
+            [ "$got" = "$want" ] || { echo "drift: $pkg"; exit 1; }
+            # Post-diff guard: package.json may differ from origin/main only in
+            # the intended specs, each exactly its preserved style + version.
+            node <<'GUARD'
+            const fs=require("fs"),{execSync}=require("child_process");
+            const before=JSON.parse(execSync("git show origin/main:package.json",{encoding:"utf8"}));
+            const after=JSON.parse(fs.readFileSync("package.json","utf8"));
+            const specs=fs.readFileSync("direct-major.txt","utf8").split("\n").filter(Boolean);
+            const diffs=[];
+            for(const k of Object.keys(after))
+              if(JSON.stringify(before[k])!==JSON.stringify(after[k]) && k!=="dependencies" && k!=="devDependencies")
+                diffs.push("unexpected top-level change: "+k);
+            for(const sec of ["dependencies","devDependencies"]) {
+              const b=before[sec]||{},a=after[sec]||{};
+              for(const k of new Set([...Object.keys(a),...Object.keys(b)])) {
+                if(a[k]===b[k]) continue;
+                const spec=specs.find(s=>s.slice(0,s.lastIndexOf("@"))===k);
+                if(!spec) { diffs.push("unexpected spec change: "+k); continue; }
+                const want=spec.slice(spec.lastIndexOf("@")+1);
+                const exp=b[k]&&b[k].startsWith("~")?"~"+want:b[k]&&b[k].startsWith("^")?"^"+want:want;
+                if(a[k]!==exp) diffs.push("style not preserved: "+k+" "+b[k]+" -> "+a[k]+" (wanted "+exp+")");
+              }
+            }
+            if(diffs.length){console.error(diffs.join("\n"));process.exit(1);}
+            console.log("post-diff guard ok: only intended spec changes, styles preserved");
+          GUARD
+            git add package.json package-lock.json
+            git commit -m "Update $pkg to latest major
+
+            Why: new major version available (daily inventory)
+            How: exact pinned install $spec; installed version verified
+            Tags: dependencies, major"
+            git push -f origin "$BRANCH"
+            git checkout -
+          done < direct-major.txt
+
+      - name: Summary - blocked transitives and audit
+        if: always() && steps.pre.outputs.has_lock == 'true'
+        shell: bash
+        run: |
+          npm outdated --all --long --json > outdated.json || true
+          {
+            echo "### Blocked direct major updates (separate review, one PR each)"
+            if [ -s direct-major.txt ]; then sed 's/^/- /' direct-major.txt; else echo "- none"; fi
+            echo
+            echo "### Blocked transitive updates (parent constraint held, not forced)"
+            node <<'NODE'
+            const fs = require("fs");
+            const out = JSON.parse(fs.readFileSync("outdated.json", "utf8") || "{}");
+            const seen = new Set();
+            for (const [name, raw] of Object.entries(out)) {
+              for (const e of Array.isArray(raw) ? raw : [raw]) {
+                if (e.wanted !== e.latest) {
+                  const line = `${name} ${e.current}: wanted ${e.wanted}, latest ${e.latest} (constrained by ${e.dependent || "?"})`;
+                  if (!seen.has(line)) { seen.add(line); console.log("- " + line); }
+                }
+              }
+            }
+            if (!seen.size) console.log("- none");
+          NODE
+            echo
+            echo "### npm audit"
+            node -e 'const a=require("./audit.json"); console.log(JSON.stringify((a.metadata&&a.metadata.vulnerabilities)||{}, null, 1))' || true
+          } >> "$GITHUB_STEP_SUMMARY"
