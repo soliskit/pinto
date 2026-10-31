@@ -30,7 +30,7 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 const args = process.argv.slice(2)
 const suite = args.includes('--slow') ? 'slow' : 'fast'
 const outDir =
-  args[args.indexOf('--out') + 1] ||
+  (args.includes('--out') && args[args.indexOf('--out') + 1]) ||
   mkdtempSync(join(tmpdir(), 'pinto-measure-'))
 const TIMEOUT_MS = 20 * 60 * 1000
 
