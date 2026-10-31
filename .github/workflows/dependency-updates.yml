@@ -146,7 +146,7 @@ jobs:
           # caret (verified on npm 10.9.9), so the install flags follow the
           # existing spec prefix. Any style outside exact/~/^ fails the
           # branch for review instead of silently changing policy.
-          while read -r spec; do
+          while read -r spec || [ -n "$spec" ]; do
             [ -n "$spec" ] || continue
             pkg="${spec%@*}"; want="${spec##*@}"
             old=$(node -p "const p=require('./package.json'); (p.dependencies||{})['$pkg'] || (p.devDependencies||{})['$pkg'] || ''")
@@ -204,7 +204,7 @@ jobs:
           [ -s direct-major.txt ] || exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          while read -r spec; do
+          while read -r spec || [ -n "$spec" ]; do
             [ -n "$spec" ] || continue
             pkg="${spec%@*}"; want="${spec##*@}"
             BRANCH="maintenance/deps-$(date +%Y%m%d)-major-${pkg//[@\/]/-}"
