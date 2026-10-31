@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { after, afterEach, before, describe, test } from 'node:test'
 import type { Browser, BrowserContext, Page } from 'playwright'
@@ -28,7 +29,8 @@ function gatedCapture() {
     })
 }
 
-/** Holds the page's processing of the join answer until the test releases it */
+/** Holds the page's processing of join answers until the test releases them,
+ * oldest first, the way captureGate queues capture requests */
 function heldJoinAnswer() {
   let realIo: typeof import('socket.io-client').io
   Object.defineProperty(window, 'io', {
@@ -36,15 +38,36 @@ function heldJoinAnswer() {
     get() {
       return (...args: Parameters<typeof import('socket.io-client').io>) => {
         const socket = realIo(...args)
+        window.roomSocket = socket
         const realEmit = socket.emit.bind(socket)
         socket.emit = (event: string, ...rest: unknown[]) => {
           const callback = rest.at(-1)
           if (event === 'join-room' && typeof callback === 'function') {
             rest.pop()
+            // Tag the attempt: the id stays harness metadata, never
+            // transmitted, and its ack outcome is recorded when the
+            // acknowledgement resolves in either direction
+            const attempt: {
+              id: number
+              outcome?: { answer: unknown[] } | { error: string }
+            } = { id: window.joinAttempts.length + 1 }
+            window.joinAttempts.push(attempt)
             // The answer itself arrived in time: socket.io clears its ack
             // timeout on arrival. Only the page's processing is held.
             return realEmit(event, ...rest, (...answer: unknown[]) => {
-              window.releaseJoinAnswer = () => callback(...answer)
+              const [error] = answer
+              // Errors (ack timeout, disconnect flush) fire at once, the
+              // way socket.io would deliver them; only answers that
+              // actually arrived are held, with their raw payload
+              if (error !== null) {
+                attempt.outcome = { error: String(error) }
+                return callback(...answer)
+              }
+              attempt.outcome = { answer }
+              window.heldJoinAnswers.push({
+                answer,
+                release: () => callback(...answer)
+              })
             })
           }
           return realEmit(event, ...rest)
@@ -54,6 +77,83 @@ function heldJoinAnswer() {
     },
     set(value) {
       realIo = value
+    }
+  })
+  window.heldJoinAnswers = []
+  window.joinAttempts = []
+  window.releaseJoinAnswer = () => {
+    const held = window.heldJoinAnswers.shift()
+    // A release with nothing held is a test bug, not a no-op
+    if (!held) throw new Error('no held join answer to release')
+    held.release()
+  }
+}
+
+/** Records, by caller peer id, every call the room page receives, every
+ * one it closes or answers, the connections it answers on, and every
+ * stream the page's outgoing calls receive with its sender's peer id */
+function recordRoomCalls() {
+  window.incomingCalls = []
+  window.closedCalls = []
+  window.answeredCalls = []
+  window.answeredConns = []
+  window.outgoingStreams = []
+  window.outgoingConns = []
+  let RealPeer: typeof Peer
+  Object.defineProperty(window, 'Peer', {
+    configurable: true,
+    get() {
+      return RealPeer
+    },
+    set(value: typeof Peer) {
+      RealPeer = value
+      type On = (
+        this: InstanceType<typeof Peer>,
+        event: string,
+        fn: (...args: unknown[]) => unknown
+      ) => unknown
+      const realOn = value.prototype.on as On
+      ;(value.prototype as { on: On }).on = function (
+        this: InstanceType<typeof Peer>,
+        event: string,
+        fn: (...args: unknown[]) => unknown
+      ) {
+        if (event !== 'call') return realOn.call(this, event, fn)
+        return realOn.call(this, event, ((
+          call: import('peerjs').MediaConnection
+        ) => {
+          window.incomingCalls.push(call.peer)
+          const realClose = call.close.bind(call)
+          call.close = () => {
+            window.closedCalls.push(call.peer)
+            realClose()
+          }
+          const realAnswer = call.answer.bind(call) as (
+            ...args: unknown[]
+          ) => unknown
+          call.answer = (...args: unknown[]) => {
+            window.answeredCalls.push(call.peer)
+            window.answeredConns.push(call)
+            return realAnswer(...args)
+          }
+          fn(call)
+        }) as (...args: unknown[]) => unknown)
+      }
+      const realCall = value.prototype.call as (
+        this: InstanceType<typeof Peer>,
+        ...args: unknown[]
+      ) => import('peerjs').MediaConnection
+      ;(value.prototype as { call: unknown }).call = function (
+        this: InstanceType<typeof Peer>,
+        ...args: unknown[]
+      ) {
+        const conn = realCall.apply(this, args)
+        window.outgoingConns.push(conn)
+        conn.on('stream', (stream: MediaStream) =>
+          window.outgoingStreams.push({ peer: conn.peer, stream })
+        )
+        return conn
+      }
     }
   })
 }
@@ -74,12 +174,13 @@ afterEach(async () => {
 })
 
 /** A page in its own browser context, like a separate person */
-async function newPage(init?: () => void) {
+async function newPage(init?: (() => void) | (() => void)[]) {
   const context = await browser.newContext({ baseURL: server.url })
   context.setDefaultTimeout(10_000)
   contexts.push(context)
   await context.addInitScript(record)
-  if (init) await context.addInitScript(init)
+  for (const fn of Array.isArray(init) ? init : init ? [init] : [])
+    await context.addInitScript(fn)
   return context.newPage()
 }
 
@@ -90,7 +191,10 @@ interface Room {
 }
 
 /** Opens a room page and waits until Join can be pressed */
-async function openRoom(name: string, init?: () => void): Promise<Room> {
+async function openRoom(
+  name: string,
+  init?: (() => void) | (() => void)[]
+): Promise<Room> {
   const page = await newPage(init)
   const idResponse = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/pinto/id'
@@ -325,6 +429,22 @@ async function openCaller() {
     answered: () => page.evaluate(() => window.caller.answered.size)
   }
 }
+
+/** Ids of callers whose calls the room page received */
+const incomingCalls = (page: Page): Promise<string[]> =>
+  page.evaluate(() => window.incomingCalls)
+
+/** Ids of callers whose incoming calls the room page closed */
+const closedCalls = (page: Page): Promise<string[]> =>
+  page.evaluate(() => window.closedCalls)
+
+/** Ids of callers whose incoming calls the room page answered */
+const answeredCalls = (page: Page): Promise<string[]> =>
+  page.evaluate(() => window.answeredCalls)
+
+/** Raw payloads of the join answers currently held, oldest first */
+const heldAnswers = (page: Page): Promise<unknown[][]> =>
+  page.evaluate(() => window.heldJoinAnswers.map((held) => held.answer))
 
 describe('before joining', () => {
   test('shows the room name and lets you join', async () => {
@@ -865,6 +985,7 @@ describe('in a call', () => {
     assert.equal(await caller.page.evaluate(() => window.caller.closed.size), 0)
 
     // The roster answer lands: the queued call is decided and answered
+    await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
     await room.page.evaluate(() => window.releaseJoinAnswer())
     await eventually(
       () => room.page.evaluate(() => window.recorded.peerConnections.length),
@@ -1078,6 +1199,120 @@ describe('in a call', () => {
       }
     })
   }
+
+  for (const kind of ['video', 'audio'] as const) {
+    test(`${kind} grant that arrives after the choice changed is stopped, not used`, async () => {
+      const name = `choice-changed-${kind}`
+      const room = await openRoom(name, gatedCapture)
+      const button = kind === 'video' ? '#camera' : '#mute'
+      if (kind === 'video') await room.page.click(button)
+      await join(room)
+      await room.page.waitForFunction(() => window.captureGate.length > 0)
+      if (kind === 'video') {
+        // Finish the unrelated microphone request first
+        await room.page.evaluate(async () => {
+          const index = window.captureGate.findIndex(
+            (request) => request.constraints?.audio
+          )
+          const [request] = window.captureGate.splice(index, 1)
+          request.resolve(await window.realGetUserMedia(request.constraints))
+        })
+        await room.page.waitForFunction(() => window.captureGate.length === 1)
+      }
+
+      // The choice changes while the capture grant is still pending
+      await room.page.click(button)
+      await room.page.evaluate(async () => {
+        const [request] = window.captureGate.splice(0)
+        request.resolve(await window.realGetUserMedia(request.constraints))
+      })
+
+      // The late grant is stopped, never shown or sent
+      await eventually(
+        async () =>
+          room.page.evaluate(
+            (kind) =>
+              window.recorded.mediaStreams
+                .flatMap((stream) => stream.getTracks())
+                .filter((track) => track.kind === kind)
+                .map((track) => track.readyState),
+            kind
+          ),
+        ['ended'],
+        3_000
+      )
+      assert.deepEqual(await controls(room.page), {
+        ...inCall(name, '1st in the room'),
+        ...(kind === 'audio' ? { mute: 'Unmute' } : {})
+      })
+      if (kind === 'video')
+        assert.deepEqual(await showsCamera(room.page), {
+          self: false,
+          sent: []
+        })
+    })
+  }
+
+  for (const kind of ['video', 'audio'] as const) {
+    test(`${kind} rejection from before a newer choice is ignored`, async () => {
+      const name = `choice-race-${kind}`
+      const room = await openRoom(name, gatedCapture)
+      const button = kind === 'video' ? '#camera' : '#mute'
+      if (kind === 'video') await room.page.click(button)
+      await join(room)
+      await room.page.waitForFunction(() => window.captureGate.length > 0)
+      if (kind === 'video') {
+        // Finish the unrelated microphone request first
+        await room.page.evaluate(async () => {
+          const index = window.captureGate.findIndex(
+            (request) => request.constraints?.audio
+          )
+          const [request] = window.captureGate.splice(index, 1)
+          request.resolve(await window.realGetUserMedia(request.constraints))
+        })
+        await room.page.waitForFunction(() => window.captureGate.length === 1)
+      }
+
+      // Off retires the pending request; on starts the current one
+      await room.page.click(button)
+      await room.page.click(button)
+      await room.page.waitForFunction(() => window.captureGate.length === 2)
+      await room.page.evaluate(async () => {
+        const [older, newer] = window.captureGate.splice(0)
+        older.reject(new DOMException('Old denial', 'NotAllowedError'))
+        // Let the retired rejection's continuation run first
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        newer.resolve(await window.realGetUserMedia(newer.constraints))
+      })
+
+      // The retired rejection writes no choice and shows no error; the
+      // current grant is live and used
+      assert.deepEqual(await controls(room.page), {
+        ...inCall(name, '1st in the room'),
+        ...(kind === 'video'
+          ? { camera: 'Turn Off Camera', photoInput: false, hint: '' }
+          : {})
+      })
+      await eventually(
+        async () =>
+          room.page.evaluate(
+            (kind) =>
+              window.recorded.mediaStreams
+                .flatMap((stream) => stream.getTracks())
+                .filter((track) => track.kind === kind)
+                .map((track) => track.readyState),
+            kind
+          ),
+        ['live'],
+        3_000
+      )
+      if (kind === 'video')
+        await eventually(() => showsCamera(room.page), {
+          self: true,
+          sent: []
+        })
+    })
+  }
 })
 
 test('after losing the PeerJS server, says so and reconnects with the same id', async () => {
@@ -1104,4 +1339,530 @@ test('after losing the PeerJS server, says so and reconnects with the same id', 
   await join(b)
   await eventually(status(a.page), '2nd in the room')
   await eventually(status(b.page), '2nd in the room')
+})
+
+test('a roster answer that arrives after Leave is ignored', async () => {
+  const room = await openRoom('stale-roster', [heldJoinAnswer, recordRoomCalls])
+  await room.page.click('#call') // First Join; its empty roster answer is held
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  await room.page.click('#call') // Leave retires that attempt
+
+  // A member joins, then the page's fresh Join is answered with them in it
+  const member = await openCaller()
+  await member.join('stale-roster')
+  await room.page.click('#call')
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 2)
+
+  // The sensitivity below assumes the stale answer is a success with an
+  // empty roster and the fresh one names the member; check both payloads
+  assert.deepEqual(await heldAnswers(room.page), [
+    [null, []],
+    [null, [await member.page.evaluate(() => window.caller.peer.id)]]
+  ])
+
+  // The stale empty answer lands first. If it loaded a roster, the member
+  // would be refused as a non-member below (line 341 prevents exactly that)
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  const memberId = await member.page.evaluate(() => window.caller.peer.id)
+  await member.call(room.peerId)
+  // Sending the offer does not wait for the room page to process it; hold
+  // the fresh answer until the call has arrived and queued behind it,
+  // or the drain below is not what answers the call
+  await eventually(
+    () => incomingCalls(room.page).then((ids) => ids.includes(memberId)),
+    true
+  )
+  // Still waiting: neither answered nor closed, with one answer held.
+  // With 341 deleted the member is already closed here, so the test fails
+  // fast with a reason instead of timing out below.
+  assert.ok(!(await closedCalls(room.page)).includes(memberId))
+  assert.ok(!(await answeredCalls(room.page)).includes(memberId))
+  assert.equal(await room.page.evaluate(() => window.heldJoinAnswers.length), 1)
+
+  // The fresh answer names the member, so their waiting call is answered
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(member.answered, 1)
+  assert.ok(!(await closedCalls(room.page)).includes(memberId))
+  assert.deepEqual(await answeredCalls(room.page), [memberId])
+  await eventually(status(room.page), '2nd in the room')
+})
+
+test('a call from outside the room is turned down while joined', async () => {
+  const room = await openRoom('outsider', [heldJoinAnswer, recordRoomCalls])
+  await join(room)
+  // join() only waits for the server log; wait for the answer itself
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  assert.deepEqual(await heldAnswers(room.page), [[null, []]])
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(status(room.page), '1st in the room')
+
+  // The roster is loaded and empty: an outsider's offer is refused at once.
+  // The positive proof is the spy seeing the room close the outsider's
+  // incoming call (answerIfMember's refusal); the negative proof is that no
+  // stream is ever sent back (a caller-side close event cannot be the proof:
+  // peerjs.js emits nothing for a close before the call is open).
+  const outsider = await openCaller() // Never joins the room
+  await outsider.call(room.peerId)
+  const outsiderId = await outsider.page.evaluate(() => window.caller.peer.id)
+  await eventually(
+    () => closedCalls(room.page).then((ids) => ids.includes(outsiderId)),
+    true
+  )
+
+  // A member's call right after is answered, so the refusal was a decision
+  // about the outsider, not a stuck call path
+  const member = await openCaller()
+  await member.join('outsider')
+  await member.call(room.peerId)
+  const memberId = await member.page.evaluate(() => window.caller.peer.id)
+  await eventually(member.answered, 1)
+  assert.equal(await outsider.answered(), 0)
+  assert.deepEqual(await closedCalls(room.page), [outsiderId])
+  assert.ok(!(await closedCalls(room.page)).includes(memberId))
+  assert.deepEqual(await answeredCalls(room.page), [memberId])
+  await eventually(status(room.page), '2nd in the room')
+})
+
+test('an outside call that beats the roster answer is turned down when it loads', async () => {
+  // The member joins first, so the page's held roster answer names them and
+  // the drain below decides both calls from the roster alone - not from a
+  // member-joined notification overtaking the held answer
+  const member = await openCaller()
+  await member.join('early-outsider')
+  const room = await openRoom('early-outsider', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  await join(room) // Joined at the server; its roster answer is still held
+  const outsider = await openCaller() // Never joins the room
+
+  // Both calls arrive before the roster and wait for it. When it loads, the
+  // member's is answered and the outsider's is closed by the same pass, so
+  // neither is left waiting.
+  await outsider.call(room.peerId)
+  await member.call(room.peerId)
+  const outsiderId = await outsider.page.evaluate(() => window.caller.peer.id)
+  const memberId = await member.page.evaluate(() => window.caller.peer.id)
+  // Sending the offers does not wait for the room page to process them; both
+  // must have arrived (and queued) before the roster lands, or the drain
+  // loop under test never runs
+  await eventually(
+    () =>
+      incomingCalls(room.page).then(
+        (ids) => ids.includes(outsiderId) && ids.includes(memberId)
+      ),
+    true
+  )
+  // Still waiting: neither call answered nor closed, and the held answer
+  // names the member - the drain below is what decides both calls
+  assert.deepEqual(await closedCalls(room.page), [])
+  assert.deepEqual(await answeredCalls(room.page), [])
+  assert.deepEqual(await heldAnswers(room.page), [[null, [memberId]]])
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(member.answered, 1)
+  await eventually(
+    () => closedCalls(room.page).then((ids) => ids.includes(outsiderId)),
+    true
+  )
+  assert.equal(await outsider.answered(), 0)
+  assert.ok(!(await closedCalls(room.page)).includes(memberId))
+  assert.deepEqual(await answeredCalls(room.page), [memberId])
+  await eventually(status(room.page), '2nd in the room')
+})
+
+test('a Join buffered while disconnected is cancelled by Leave', async () => {
+  const room = await openRoom('buffered-join', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(status(room.page), '1st in the room')
+
+  // Leave cleanly while connected: the server forgets the page
+  const from = server.output().length
+  await room.page.click('#call') // Leave
+  assert.deepEqual(await controls(room.page), beforeJoining('buffered-join'))
+  await server.waitForOutput(`user: ${room.peerId} - left: buffered-join`, from)
+
+  // Disconnect the socket: it can no longer send. Join now buffers the
+  // packet and registers its ack - observed, not inferred
+  await room.page.evaluate(() => window.roomSocket.disconnect())
+  await room.page.click('#call') // Join, buffered
+  assert.deepEqual(
+    await room.page.evaluate(() => {
+      const packet = window.roomSocket.sendBuffer[0]?.data as
+        unknown[] | undefined
+      return {
+        connected: window.roomSocket.connected,
+        event: packet?.[0],
+        buffered: window.roomSocket.sendBuffer.length
+      }
+    }),
+    { connected: false, event: 'join-room', buffered: 1 }
+  )
+  const attempt = await room.page.evaluate(() => window.joinAttempts.length)
+
+  // Watch the socket before Leave: the connect listener proves the
+  // replacement connection by its new id, and the outgoing hook sees
+  // every event packet the reconnect flush sends
+  const oldSocketId = await room.page.evaluate(() => {
+    window.outgoingPackets = []
+    window.roomSocket.onAnyOutgoing((event) =>
+      window.outgoingPackets.push(String(event))
+    )
+    const old = window.roomSocket.id
+    window.roomSocket.once('connect', () => {
+      window.reconnectedAs = window.roomSocket.id
+    })
+    return old
+  })
+
+  // Leave retires the attempt and purges its buffered Join: observed
+  // synchronously inside the click, before any reconnect flush
+  const flushed = server.output().length
+  assert.deepEqual(
+    await room.page.evaluate(() => {
+      document.querySelector<HTMLElement>('#call')?.click()
+      return window.roomSocket.sendBuffer.map(
+        (packet) => (packet.data as unknown[])[0]
+      )
+    }),
+    []
+  )
+  assert.deepEqual(await controls(room.page), beforeJoining('buffered-join'))
+
+  // The purged attempt's acknowledgement still resolves: its timeout
+  // error, in this already-disconnected state. The error alone would
+  // not prove cancellation; the purge assertion above and the flush
+  // log below do that
+  await room.page.waitForFunction(
+    (id) => window.joinAttempts[id - 1]?.outcome !== undefined,
+    attempt
+  )
+  const outcome = await room.page.evaluate(
+    (id) => window.joinAttempts[id - 1].outcome,
+    attempt
+  )
+  assert.ok(outcome && 'error' in outcome)
+  assert.match(outcome.error, /timed out/)
+
+  // The replacement connection is a new socket whose flush carried no
+  // join-room, and the server never re-adds the page
+  await room.page.waitForFunction(
+    (old) => window.reconnectedAs !== undefined && window.reconnectedAs !== old,
+    oldSocketId
+  )
+  assert.deepEqual(
+    await room.page.evaluate(() =>
+      window.outgoingPackets.filter((event) => event === 'join-room')
+    ),
+    []
+  )
+  assert.ok(
+    !server
+      .output()
+      .slice(flushed)
+      .includes(`user: ${room.peerId} - joined: buffered-join`)
+  )
+
+  // A later joiner: the server does not name the departed page
+  const joiner = await openRoom('buffered-join', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  await join(joiner)
+  await joiner.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  assert.deepEqual(await heldAnswers(joiner.page), [[null, []]])
+  await joiner.page.evaluate(() => window.releaseJoinAnswer())
+
+  // The page's next Join is a first Join again: the participant hears
+  // the announcement and calls the page itself. The call records are
+  // cleared before the rejoin click, so a call from the phantom era
+  // could not satisfy this
+  await joiner.page.evaluate(() => {
+    window.outgoingConns.length = 0
+  })
+  await room.page.click('#call') // Join again
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  assert.deepEqual(await heldAnswers(room.page), [[null, [joiner.peerId]]])
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await joiner.page.waitForFunction(
+    (peerId) => window.outgoingConns.some((conn) => conn.peer === peerId),
+    room.peerId
+  )
+  await room.page.waitForFunction(
+    (peerId) => window.answeredCalls.includes(peerId),
+    joiner.peerId
+  )
+  await eventually(status(room.page), '2nd in the room')
+})
+
+test('a Join buffered past the ping deadline is cancelled by Leave', async () => {
+  const room = await openRoom('same-task-join', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(status(room.page), '1st in the room')
+
+  // Leave cleanly while connected: the server forgets the page, and
+  // Leave's own reconnect gives the socket a live connection again
+  const left = server.output().length
+  await room.page.click('#call') // Leave
+  await server.waitForOutput(
+    `user: ${room.peerId} - left: same-task-join`,
+    left
+  )
+  await room.page.waitForFunction(() => window.roomSocket.connected)
+
+  const oldSocketId = await room.page.evaluate(() => {
+    window.outgoingPackets = []
+    window.roomSocket.onAnyOutgoing((event) =>
+      window.outgoingPackets.push(String(event))
+    )
+    const old = window.roomSocket.id
+    window.roomSocket.once('connect', () => {
+      window.reconnectedAs = window.roomSocket.id
+    })
+    return old
+  })
+
+  // One synchronous task: the clock moves past the ping deadline (45
+  // seconds of server defaults covers wherever it last reset), Join
+  // buffers while the socket still reports connected because the
+  // pending close is only scheduled as a microtask, the clock
+  // restores, and Leave purges the packet, all before the scheduled
+  // close can run
+  const facts = await room.page.evaluate(() => {
+    const socket = window.roomSocket
+    const realNow = Date.now
+    const facts: {
+      precondition?: { connected: boolean; event: unknown; buffered: number }
+      attempt: number
+      bufferedAfterLeave?: number
+      outcome?: { answer: unknown[] } | { error: string }
+    } = { attempt: 0 }
+    try {
+      Date.now = () => realNow() + 60_000
+      document.querySelector<HTMLElement>('#call')?.click()
+      const packet = socket.sendBuffer[0]?.data as unknown[] | undefined
+      facts.precondition = {
+        connected: socket.connected,
+        event: packet?.[0],
+        buffered: socket.sendBuffer.length
+      }
+      facts.attempt = window.joinAttempts.length
+    } finally {
+      // Restored before Leave even when a step fails, so the shifted
+      // clock cannot leak into the disconnect or later tests
+      Date.now = realNow
+    }
+    document.querySelector<HTMLElement>('#call')?.click() // Leave
+    facts.bufferedAfterLeave = socket.sendBuffer.length
+    facts.outcome = window.joinAttempts[facts.attempt - 1]?.outcome
+    return facts
+  })
+  assert.deepEqual(facts.precondition, {
+    connected: true,
+    event: 'join-room',
+    buffered: 1
+  })
+  assert.deepEqual(facts.bufferedAfterLeave, 0)
+
+  // Both checks in one assertion, so a failing ordering check cannot
+  // hide the behavioral one: with the packet already purged, the
+  // disconnect inside the Leave click errored the ack at once, and
+  // the replacement connection's flush carried no join-room
+  await room.page.waitForFunction(
+    (old) => window.reconnectedAs !== undefined && window.reconnectedAs !== old,
+    oldSocketId
+  )
+  const joinRoomSent = await room.page.evaluate(() =>
+    window.outgoingPackets.includes('join-room')
+  )
+  assert.deepEqual(
+    {
+      ackOutcome:
+        facts.outcome && 'error' in facts.outcome
+          ? facts.outcome.error
+          : undefined,
+      joinRoomSent
+    },
+    { ackOutcome: 'Error: socket has been disconnected', joinRoomSent: false }
+  )
+})
+
+test('a Join buffered without Leave succeeds on its original attempt', async () => {
+  const room = await openRoom('buffered-rejoin', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(status(room.page), '1st in the room')
+
+  const left = server.output().length
+  await room.page.click('#call') // Leave
+  await server.waitForOutput(
+    `user: ${room.peerId} - left: buffered-rejoin`,
+    left
+  )
+
+  await room.page.evaluate(() => window.roomSocket.disconnect())
+  await room.page.click('#call') // Join, buffered
+  const attempt = await room.page.evaluate(() => window.joinAttempts.length)
+  assert.deepEqual(
+    await room.page.evaluate(() => window.roomSocket.sendBuffer.length),
+    1
+  )
+
+  // No Leave: the original attempt stays live, the reconnect flushes
+  // it, and its own answer arrives - no timeout recorded
+  await room.page.evaluate(() => window.roomSocket.connect())
+  await room.page.waitForFunction(
+    (id) => window.joinAttempts[id - 1]?.outcome !== undefined,
+    attempt
+  )
+  const outcome = await room.page.evaluate(
+    (id) => window.joinAttempts[id - 1].outcome,
+    attempt
+  )
+  assert.ok(outcome && 'answer' in outcome)
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(status(room.page), '1st in the room')
+})
+
+test('a buffered Join lost before reconnect is retried, its loss recorded', async () => {
+  const room = await openRoom('buffered-loss', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(status(room.page), '1st in the room')
+
+  const left = server.output().length
+  await room.page.click('#call') // Leave
+  await server.waitForOutput(`user: ${room.peerId} - left: buffered-loss`, left)
+
+  await room.page.evaluate(() => window.roomSocket.disconnect())
+  await room.page.click('#call') // Join, buffered
+  const attempt = await room.page.evaluate(() => window.joinAttempts.length)
+
+  // The test itself drops the packet, the over-purge the control above
+  // exists to catch: the original attempt can only time out, and the
+  // retry loop still joins the page about 7 seconds later
+  await room.page.evaluate(() => {
+    window.roomSocket.sendBuffer.length = 0
+    window.roomSocket.connect()
+  })
+  await room.page.waitForFunction(
+    (id) => window.joinAttempts[id - 1]?.outcome !== undefined,
+    attempt
+  )
+  const lost = await room.page.evaluate(
+    (id) => window.joinAttempts[id - 1].outcome,
+    attempt
+  )
+  assert.ok(lost && 'error' in lost)
+  assert.match(lost.error, /timed out/)
+
+  // The retry's own tagged attempt succeeds on a fresh answer
+  await room.page.waitForFunction(
+    (id) =>
+      window.joinAttempts.length > id && window.heldJoinAnswers.length === 1,
+    attempt
+  )
+  assert.deepEqual(await heldAnswers(room.page), [[null, []]])
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(status(room.page), '1st in the room')
+})
+
+test('a page that has not joined makes no call when a joiner is announced', async () => {
+  const room = await openRoom('stray-member', [heldJoinAnswer, recordRoomCalls])
+
+  // Register the page at the server directly, while it shows Join: no
+  // callback, so the server joins the socket without replying
+  await room.page.evaluate(
+    ({ name, peerId }) => {
+      window.roomSocket.emit('join-room', name, peerId)
+    },
+    { name: room.name, peerId: room.peerId }
+  )
+  await server.waitForOutput(`user: ${room.peerId} - joined: stray-member`)
+
+  // The page's own handler runs first, so by the time this listener
+  // records the announcement any call it made would be recorded too
+  await room.page.evaluate(() => {
+    window.announcedPeers = []
+    window.roomSocket.on('user-connected', (peerId) => {
+      window.announcedPeers.push(String(peerId))
+    })
+  })
+
+  const joiner = await openRoom('stray-member', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  await join(joiner)
+  await joiner.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  // Positive control: the roster names the page
+  assert.deepEqual(await heldAnswers(joiner.page), [[null, [room.peerId]]])
+  await joiner.page.evaluate(() => window.releaseJoinAnswer())
+
+  // The announcement reached the page - and it made no call. Without
+  // the joined guard this fails with the joiner's id recorded, which
+  // doubles as the call-recording hook's positive control
+  await room.page.waitForFunction(
+    (peerId) => window.announcedPeers.includes(peerId),
+    joiner.peerId
+  )
+  assert.deepEqual(
+    await room.page.evaluate(() =>
+      window.outgoingConns.map((conn) => conn.peer)
+    ),
+    []
+  )
+})
+
+test('the served socket.io bundle matches what the Join purge depends on', async () => {
+  // The purge and its tests read socket.io's internal sendBuffer, so a
+  // bundle change must fail here and force a fresh look at both. The
+  // pin is the served file, not the npm package
+  const response = await fetch(`${server.url}/socket.io/socket.io.min.js`)
+  const hash = createHash('sha256')
+    .update(Buffer.from(await response.arrayBuffer()))
+    .digest('hex')
+  assert.equal(
+    hash,
+    'd5d79a35039e860b32bdef4795528b05c2f788d4b2d9dacc913120e2878f7b3f'
+  )
+})
+
+test('turning the camera back on captures a fresh track', async () => {
+  const room = await openRoom('camera-re-on')
+  await room.page.click('#camera') // Chosen before Join
+  await join(room)
+  await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+
+  await room.page.click('#camera') // Off: the live track is stopped
+  await eventually(() => showsCamera(room.page), { self: false, sent: [] })
+
+  await room.page.click('#camera') // On again: the ended track is replaced
+  await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+
+  // One ended video track from the first capture, one live from the second
+  const videoStates = () =>
+    room.page.evaluate(() =>
+      window.recorded.mediaStreams
+        .flatMap((stream) => stream.getVideoTracks())
+        .map((track) => track.readyState)
+    )
+  assert.deepEqual((await videoStates()).sort(), ['ended', 'live'])
 })
