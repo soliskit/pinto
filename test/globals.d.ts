@@ -12,8 +12,40 @@ declare global {
     realGetUserMedia: (
       constraints?: MediaStreamConstraints
     ) => Promise<MediaStream>
-    /** Releases a join answer held by the heldJoinAnswer test init */
+    /** Join answers held by the heldJoinAnswer test init, oldest first.
+     *  Only server answers that actually arrived are held; ack errors
+     *  (timeout, disconnect flush) are delivered immediately */
+    heldJoinAnswers: { answer: unknown[]; release: () => void }[]
+    /** Releases the oldest held join answer; throws when none is held */
     releaseJoinAnswer: () => void
+    /** The room page's socket, stashed by the heldJoinAnswer test init */
+    roomSocket: ReturnType<typeof io>
+    /** Join-room attempts tagged by the heldJoinAnswer test init, in
+     *  emission order; the outcome records the ack resolving in either
+     *  direction. Harness metadata only, never transmitted */
+    joinAttempts: {
+      id: number
+      outcome?: { answer: unknown[] } | { error: string }
+    }[]
+    /** Events the room page's socket sent, when a test registers
+     *  onAnyOutgoing before a reconnect flush */
+    outgoingPackets: string[]
+    /** The socket id of a replacement connection, when a test records it */
+    reconnectedAs: string | undefined
+    /** Ids announced to the room page's own user-connected test listener */
+    announcedPeers: string[]
+    /** Callers whose calls the room page received (recordRoomCalls init) */
+    incomingCalls: string[]
+    /** Callers whose incoming calls the room page closed (recordRoomCalls) */
+    closedCalls: string[]
+    /** Callers whose incoming calls the room page answered (recordRoomCalls) */
+    answeredCalls: string[]
+    /** Incoming calls the room page answered (recordRoomCalls) */
+    answeredConns: import('peerjs').MediaConnection[]
+    /** Streams received on the room page's outgoing calls, by sender (recordRoomCalls) */
+    outgoingStreams: { peer: string; stream: MediaStream }[]
+    /** The room page's outgoing call connections (recordRoomCalls) */
+    outgoingConns: import('peerjs').MediaConnection[]
     recorded: {
       /** The camera and microphone stream room.js got */
       media?: MediaStream
