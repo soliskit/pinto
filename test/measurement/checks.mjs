@@ -13,8 +13,15 @@ export function checkLockfile() {
   const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'))
   const problems = []
   for (const [path, pkg] of Object.entries(lock.packages || {})) {
-    if (!path.includes('node_modules/peerjs') && !path.includes('node_modules/socket.io')) continue
-    if (pkg.resolved && !pkg.resolved.startsWith('https://registry.npmjs.org/')) {
+    if (
+      !path.includes('node_modules/peerjs') &&
+      !path.includes('node_modules/socket.io')
+    )
+      continue
+    if (
+      pkg.resolved &&
+      !pkg.resolved.startsWith('https://registry.npmjs.org/')
+    ) {
       problems.push(`${path} resolves from non-registry source ${pkg.resolved}`)
     }
   }
@@ -23,7 +30,9 @@ export function checkLockfile() {
     if (!top) problems.push(`${name} is not installed at top level`)
   }
   if (problems.length) {
-    throw new MeasurementFailure('third-party package check failed: ' + problems.join('; '))
+    throw new MeasurementFailure(
+      'third-party package check failed: ' + problems.join('; ')
+    )
   }
 }
 
@@ -31,8 +40,15 @@ export function checkLockfile() {
 // source, and each served third-party script must equal the installed
 // package. A mismatch that is not a declared server-built script fails the run.
 export function checkServedScripts(browserEntries) {
-  const own = new Map(browserFiles().map((f) => [f.servedPath, readFileSync(f.abs, 'utf8')]))
-  const third = new Map(thirdPartyFiles().map((f) => [f.servedPath, readFileSync(f.packageFile, 'utf8')]))
+  const own = new Map(
+    browserFiles().map((f) => [f.servedPath, readFileSync(f.abs, 'utf8')])
+  )
+  const third = new Map(
+    thirdPartyFiles().map((f) => [
+      f.servedPath,
+      readFileSync(f.packageFile, 'utf8')
+    ])
+  )
   // A capture whose source could not be retrieved carries undefined; that is
   // a retrieval gap, not content. Every retrieved source for a known path
   // must match, and a known path seen only through irretrievable sources
@@ -46,7 +62,11 @@ export function checkServedScripts(browserEntries) {
     } catch {
       continue
     }
-    const expected = own.has(pathname) ? own.get(pathname) : third.has(pathname) ? third.get(pathname) : undefined
+    const expected = own.has(pathname)
+      ? own.get(pathname)
+      : third.has(pathname)
+        ? third.get(pathname)
+        : undefined
     if (expected === undefined) continue
     if (entry.source === undefined) {
       if (!seenVerified.has(pathname)) seenUnverifiable.add(pathname)
@@ -63,7 +83,9 @@ export function checkServedScripts(browserEntries) {
     seenUnverifiable.delete(pathname)
   }
   for (const pathname of seenUnverifiable) {
-    throw new MeasurementFailure(`served script content could not be retrieved for verification: ${pathname}`)
+    throw new MeasurementFailure(
+      `served script content could not be retrieved for verification: ${pathname}`
+    )
   }
 }
 
@@ -80,7 +102,9 @@ export function findInlineScripts(html, pageName) {
   const stripped = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
   const handlers = stripped.match(/\son[a-z]+\s*=/gi) || []
   for (const h of handlers) {
-    problems.push(`${pageName} has an event-handler attribute (${h.trim().split('=')[0]})`)
+    problems.push(
+      `${pageName} has an event-handler attribute (${h.trim().split('=')[0]})`
+    )
   }
   return problems
 }
@@ -98,11 +122,15 @@ export async function checkPages(baseUrl) {
     const html = await res.text()
     const onDisk = readFileSync(join(root, 'public', page.name), 'utf8')
     if (html !== onDisk) {
-      throw new MeasurementFailure(`served page differs from its checked-in file: ${page.name}`)
+      throw new MeasurementFailure(
+        `served page differs from its checked-in file: ${page.name}`
+      )
     }
     problems.push(...findInlineScripts(html, page.name))
   }
   if (problems.length) {
-    throw new MeasurementFailure('inline script check failed: ' + problems.join('; '))
+    throw new MeasurementFailure(
+      'inline script check failed: ' + problems.join('; ')
+    )
   }
 }
