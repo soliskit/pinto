@@ -86,7 +86,7 @@ jobs:
           Why: daily inventory found compatible updates in the resolved tree
           How: bare npm update --save=false; greatest versions satisfying all
           declared ranges; package.json untouched; no constraint overridden
-          Tags: dependencies"
+          Tags: None"
           git push -f origin "$BRANCH"
           git checkout -
 
@@ -192,7 +192,7 @@ jobs:
           Why: newer same-major versions blocked by declared ranges
           How: exact pinned installs computed from registry dist-tags;
           installed versions verified after install
-          Tags: dependencies"
+          Tags: None"
           git push -f origin "$BRANCH"
           git checkout -
 
@@ -251,7 +251,7 @@ jobs:
 
             Why: new major version available (daily inventory)
             How: exact pinned install $spec; installed version verified
-            Tags: dependencies, major"
+            Tags: None"
             git push -f origin "$BRANCH"
             git checkout -
           done < direct-major.txt
