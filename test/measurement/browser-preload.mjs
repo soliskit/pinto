@@ -25,7 +25,16 @@ if (process.env.PINTO_MEASURE === '1') {
   mkdirSync(captureDir, { recursive: true })
   const indexFile = join(captureDir, 'captures.index')
   const POLL_MS = 250
-  const NAV_APIS = ['goto', 'reload', 'goBack', 'goForward', 'click', 'dblclick', 'tap', 'press']
+  const NAV_APIS = [
+    'goto',
+    'reload',
+    'goBack',
+    'goForward',
+    'click',
+    'dblclick',
+    'tap',
+    'press'
+  ]
   let seq = 0
 
   async function instrument(page, context) {
@@ -33,7 +42,10 @@ if (process.env.PINTO_MEASURE === '1') {
     await session.send('Page.enable')
     await session.send('Debugger.enable')
     await session.send('Profiler.enable')
-    await session.send('Profiler.startPreciseCoverage', { callCount: true, detailed: true })
+    await session.send('Profiler.startPreciseCoverage', {
+      callCount: true,
+      detailed: true
+    })
 
     const sources = new Map()
     session.on('Debugger.scriptParsed', (event) => {
@@ -41,7 +53,8 @@ if (process.env.PINTO_MEASURE === '1') {
     })
     const navLog = []
     page.on('framenavigated', (frame) => {
-      if (frame === page.mainFrame()) navLog.push({ at: Date.now(), url: page.url() })
+      if (frame === page.mainFrame())
+        navLog.push({ at: Date.now(), url: page.url() })
     })
 
     async function sourceFor(scriptId) {
@@ -66,18 +79,31 @@ if (process.env.PINTO_MEASURE === '1') {
         // the run. A crashed test process fails the suite itself, so a
         // capture indexed only after success can never look valid.
         if (/closed/i.test(String(error))) return
-        writeFileSync(join(captureDir, `${name}.failed`), `takePreciseCoverage threw during ${why}: ${error}\n`)
+        writeFileSync(
+          join(captureDir, `${name}.failed`),
+          `takePreciseCoverage threw during ${why}: ${error}\n`
+        )
         return
       }
       appendFileSync(indexFile, `${name}\t${why}\n`)
       const entries = []
       for (const entry of result) {
         if (!entry.url) continue
-        entries.push({ url: entry.url, source: await sourceFor(entry.scriptId), functions: entry.functions })
+        entries.push({
+          url: entry.url,
+          source: await sourceFor(entry.scriptId),
+          functions: entry.functions
+        })
       }
       writeFileSync(
         join(captureDir, name),
-        JSON.stringify({ pid: process.pid, why, at, navigations: navLog.slice(), entries })
+        JSON.stringify({
+          pid: process.pid,
+          why,
+          at,
+          navigations: navLog.slice(),
+          entries
+        })
       )
     }
 
@@ -133,7 +159,9 @@ if (process.env.PINTO_MEASURE === '1') {
           closing.add(page)
           try {
             await handle.take('context.close')
-          } catch {}
+          } catch {
+            // The page is already closing; a missed capture here is expected.
+          }
         }
       }
       return originalClose(...args)
@@ -161,7 +189,9 @@ if (process.env.PINTO_MEASURE === '1') {
       for (const context of browser.contexts()) {
         try {
           await context.close()
-        } catch {}
+        } catch {
+          // The context is already closing; ignore and keep closing the rest.
+        }
       }
       return originalClose(...closeArgs)
     }
