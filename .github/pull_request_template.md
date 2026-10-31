@@ -1,6 +1,6 @@
 # Pull Request
 
-A checklist for change class, behavior, safeguards, and decision records.
+A checklist for change class, behavior, and safeguards.
 
 ## What this changes
 
