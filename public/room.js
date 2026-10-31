@@ -315,6 +315,16 @@ removePhotoButton.addEventListener('click', () => setPhoto(DEFAULT_PHOTO))
 callButton.addEventListener('click', () => {
   if (joined) {
     joinSerial++
+    // Leaving retires every Join attempt, so a join-room packet still
+    // buffered for the next connection must not be sent: the server
+    // entry it would create would outlive the Leave. The packet's
+    // acknowledgement stays registered and still resolves, on the
+    // disconnect or on its own timeout, so nothing is left waiting.
+    // This touches socket.io's internal buffer; the served-bundle
+    // tripwire in room.test.ts pins what it relies on
+    socket.sendBuffer = socket.sendBuffer.filter(
+      (packet) => packet.data[0] !== 'join-room'
+    )
     for (const peerId of calls.keys()) removeCall(peerId)
     roomPeers.clear()
     rosterLoaded = false
@@ -407,6 +417,9 @@ peer.on('error', (error) =>
 )
 
 socket.on('user-connected', (peerId) => {
+  // A page that considers itself outside the room must not call:
+  // stray membership can still announce joiners to it
+  if (!joined) return
   roomPeers.add(peerId)
   addCall(peer.call(peerId, outgoing))
 })
