@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": "^22.18.0"
+    "node": ">=26 <27"
   },
   "scripts": {
     "start": "node src/index.ts",
@@ -24,7 +24,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
-    "@types/node": "^22.20.4",
+    "@types/node": "^26.6.6",
     "@types/ws": "^8.18.1",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
