@@ -72,6 +72,8 @@ Later entries preserve each decision's original scope and record changes. The [E
   Status: Settled.
 - **P29 The readiness note is cut.** The audit report holds the record of the audit. The one-page readiness note (P10) is deleted, so P10's note no longer lives in the repo, and the audit's real-device steps and limits are no longer written there. Decided October 24, 2026.
   Status: Settled.
+- **P33 The phantom-membership fix is approved.** Implement the selective buffered-Join purge on Leave and the joined safeguard, with the regression, control and attribution tests, delivered as a pull request only; no merge, no coverage-policy change, and no public issue edit. Audit findings 6 and 7 otherwise remain open, including server acceptance of repeated joins, multiroom membership, and reconnection and presence behavior. Decided October 30, 2026.
+  Status: Settled for this fix scope.
 
 ## Derivation decisions
 
