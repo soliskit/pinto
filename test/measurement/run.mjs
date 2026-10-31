@@ -5,20 +5,33 @@
 // kept unfiltered under the run directory. Nothing here runs outside
 // measurement, and the existing checks behave exactly as today.
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { browserFiles, root, serverFiles, thirdPartyFiles, readFile } from './filelists.mjs'
+import {
+  browserFiles,
+  root,
+  serverFiles,
+  thirdPartyFiles,
+  readFile
+} from './filelists.mjs'
 import { mergeV8Entries, uncovered } from './v8merge.mjs'
 import { toFileCoverage, summarize } from './convert.mjs'
-import { MeasurementFailure, checkNavigationCoverage, validateBrowserDir, validateServerDir } from './validate.mjs'
+import {
+  MeasurementFailure,
+  checkNavigationCoverage,
+  validateBrowserDir,
+  validateServerDir
+} from './validate.mjs'
 import { checkLockfile, checkPages, checkServedScripts } from './checks.mjs'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const args = process.argv.slice(2)
 const suite = args.includes('--slow') ? 'slow' : 'fast'
-const outDir = args[args.indexOf('--out') + 1] || mkdtempSync(join(tmpdir(), 'pinto-measure-'))
+const outDir =
+  args[args.indexOf('--out') + 1] ||
+  mkdtempSync(join(tmpdir(), 'pinto-measure-'))
 const TIMEOUT_MS = 20 * 60 * 1000
 
 function git(...gitArgs) {
@@ -46,12 +59,21 @@ function runSuite() {
     )
     const killer = setTimeout(() => {
       child.kill('SIGKILL')
-      reject(new MeasurementFailure(`suite exceeded ${TIMEOUT_MS / 60000} minutes; run failed, no numbers produced`))
+      reject(
+        new MeasurementFailure(
+          `suite exceeded ${TIMEOUT_MS / 60000} minutes; run failed, no numbers produced`
+        )
+      )
     }, TIMEOUT_MS)
     child.on('exit', (code) => {
       clearTimeout(killer)
       if (code === 0) resolve()
-      else reject(new MeasurementFailure(`${suite} suite exited ${code}; measurement run failed`))
+      else
+        reject(
+          new MeasurementFailure(
+            `${suite} suite exited ${code}; measurement run failed`
+          )
+        )
     })
   })
 }
@@ -63,7 +85,13 @@ async function withVerificationServer(fn) {
   const port = 20000 + Math.floor(Math.random() * 20000)
   const child = spawnRaw(process.execPath, ['src/index.ts'], {
     cwd: root,
-    env: { ...process.env, KEY: '', TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', PORT: String(port) },
+    env: {
+      ...process.env,
+      KEY: '',
+      TWILIO_ACCOUNT_SID: '',
+      TWILIO_AUTH_TOKEN: '',
+      PORT: String(port)
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   })
   let output = ''
@@ -73,9 +101,11 @@ async function withVerificationServer(fn) {
   while (!output.includes('Pinto listening')) {
     if (Date.now() > deadline) {
       child.kill('SIGKILL')
-      throw new MeasurementFailure('verification server never started. Output:\n' + output)
+      throw new MeasurementFailure(
+        'verification server never started. Output:\n' + output
+      )
     }
-    await new Promise((r) => setTimeout(r, 50))
+    await new Promise((resolve) => setTimeout(resolve, 50))
   }
   try {
     await fn(`http://localhost:${port}`)
@@ -114,7 +144,11 @@ checkServedScripts(browserCaptures)
 // Server pipeline: source comes from disk (V8 reports carry no source), which
 // the clean-tree check above ties to the pinned commit.
 const serverMerged = mergeV8Entries(
-  serverEntries.map((e) => ({ url: e.url, source: readFile(fileURLToPath(e.url)), functions: e.functions }))
+  serverEntries.map((e) => ({
+    url: e.url,
+    source: readFile(fileURLToPath(e.url)),
+    functions: e.functions
+  }))
 )
 // Suite servers listen on different ports; browser scripts key by path,
 // with content identity still enforced across every load.
@@ -140,7 +174,9 @@ for (const [pathname, merged] of browserMerged) {
   const f = own.get(pathname)
   if (!f) continue
   if (browserByPath.has(pathname)) {
-    throw new MeasurementFailure(`internal: duplicate merged browser entry for ${pathname}`)
+    throw new MeasurementFailure(
+      `internal: duplicate merged browser entry for ${pathname}`
+    )
   }
   browserByPath.set(pathname, f)
   files.push({ path: f.rel, coverage: await toFileCoverage(merged, f.abs) })
@@ -149,12 +185,18 @@ for (const [pathname, merged] of browserMerged) {
 // execution so the converter emits fully-uncovered counts.
 for (const f of serverFiles()) {
   if (!files.some((x) => x.path === f.rel)) {
-    files.push({ path: f.rel, coverage: await toFileCoverage(uncovered(f.url, readFile(f.abs)), f.abs) })
+    files.push({
+      path: f.rel,
+      coverage: await toFileCoverage(uncovered(f.url, readFile(f.abs)), f.abs)
+    })
   }
 }
 for (const f of browserFiles()) {
   if (!files.some((x) => x.path === f.rel)) {
-    files.push({ path: f.rel, coverage: await toFileCoverage(uncovered(f.rel, readFile(f.abs)), f.abs) })
+    files.push({
+      path: f.rel,
+      coverage: await toFileCoverage(uncovered(f.rel, readFile(f.abs)), f.abs)
+    })
   }
 }
 
@@ -163,7 +205,9 @@ const report = {
   repo: 'pinto',
   suite,
   commit,
-  harnessRevision: git('status', '--porcelain') ? `${commit}+uncommitted` : commit,
+  harnessRevision: git('status', '--porcelain')
+    ? `${commit}+uncommitted`
+    : commit,
   node: process.version,
   command: `node --test --test-timeout=120000 ${suite === 'slow' ? 'test/slow/*.test.ts' : 'test/*.test.ts'}`,
   fileListScope: {
@@ -176,7 +220,10 @@ const report = {
 }
 writeFileSync(join(outDir, 'report.json'), JSON.stringify(report, null, 2))
 
-for (const rel of [...report.fileListScope.server, ...report.fileListScope.browser]) {
+for (const rel of [
+  ...report.fileListScope.server,
+  ...report.fileListScope.browser
+]) {
   const s = summary[rel]
   if (!s) {
     console.log(`${rel}: not measured`)
