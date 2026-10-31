@@ -18,7 +18,7 @@ The requirements below are numbered REQ 1 and up; the earlier decision-log numbe
 
 ## Planned services, scoped line by line
 
-Nothing below is built at `8e9d006`: the source has no sign-in, no diagnostics, no LiveKit (the planned video provider service), no Cloudflare state [read: `src/index.ts`, `package.json`, file lists]. Each line is PLANNED and stays Not Certified.
+Nothing below is built at `8e9d006` (a commit from before the history rewrite; GitHub still shows it by its hash): the source has no sign-in, no diagnostics, no LiveKit (the planned video provider service), no Cloudflare state [read: `src/index.ts`, `package.json`, file lists]. Each line is PLANNED and stays Not Certified.
 
 - **P13** sign-in with emailed codes; passkeys (sign-ins that use the device's own lock instead of a password) wait. PLANNED.
 - **P14** diagnostics reports: exact preview, explicit Send, error information only, owner reads them. PLANNED.
