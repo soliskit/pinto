@@ -13,7 +13,7 @@ The Node server serves the app and helps browsers connect. A STUN server finds a
 
 ## Run locally
 
-- [Node.js](https://nodejs.org) `22.18` or newer in the 22 line (npm comes with it). Node runs the TypeScript source directly, so nothing needs building
+- [Node.js](https://nodejs.org) `26` or newer in the 26 line (npm comes with it). Node runs the TypeScript source directly, so nothing needs building
 
 ### Start the server
 
@@ -146,7 +146,7 @@ To add TURN relays, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under the s
 
 ### Other hosts
 
-Other hosts need to run Node 22.18 or newer in the 22 line as one long-running process.
+Other hosts need to run Node 26 or newer in the 26 line as one long-running process.
 
 ## License
 
