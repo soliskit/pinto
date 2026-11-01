@@ -34,7 +34,7 @@ Nothing below is built at `8e9d006` (a commit from before the history rewrite; G
 | P23 | sign-in email safeguard; exact limits unset. PLANNED. |
 | P24 | host list owner-only; its "guests join calls without an account" line is REQ 2 above. PLANNED. |
 
-- The Playbook's How It Works rows (Terms, link authority and tokens, host sign-in, recovery, responses and headers, diagnostics, limits and messages, release, and B1 to B16, the named checks each planned service must pass) restate these planned services with their checks. PLANNED. Its camera, microphone, and release "Teardown" row restates REQ 7 as a target. The derivation entries G1, G2, R1 to R3, T1 and T3 (`d7cb35f`) record reasoning behind planned-service numbers. PLANNED.
+- The Playbook's How It Works rows (Terms, link authority and tokens, host sign-in, recovery, responses and headers, diagnostics, limits and messages, release, and B1 to B16, the named checks each planned service must pass) hold the full private definitions of these planned services and their checks. The public rows above are scoped summaries, not a second complete contract. PLANNED. Its camera, microphone, and release "Teardown" row restates REQ 7 as a target. The derivation entries G1, G2, R1 to R3, T1 and T3 (`d7cb35f`) record reasoning behind planned-service numbers. PLANNED.
 
 ## Audit constraints on record
 
