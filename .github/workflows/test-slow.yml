@@ -4,13 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# A newer push to the same branch replaces a run still in progress
+# A newer push to the same branch replaces a run still in progress.
+# Scheduled and manual runs use a separate group so they never cancel
+# or replace push or pull request runs, queued or running
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '-weekly' || '' }}
   cancel-in-progress: true
 
 jobs:
