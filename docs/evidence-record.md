@@ -12,7 +12,7 @@ Entries keep their original check dates; nothing was rechecked or rerun for this
 
 ## Checks
 
-Every service check below is recorded as Pending. The later capture and call-access fixes in PRs #88 and #89 have local and CI results; those results do not close the planned service checks or establish physical capture indicators and real-device calls. The [existing-app audit](audit/audit-report.md) is a separate result: no review verdict covers this exact version of the planned checks, and the audit does not close or certify them. Real-device behavior is still unproven. The private Playbook holds the Check and Fail text for B1 to B16 under How It Works, and the pass rule for each unproven check under What's next in the Charter.
+Every service check below is recorded as Pending. The later capture and call-access fixes in PRs #88 and #89 have local and CI results; those results do not close the planned service checks or establish physical capture indicators and real-device calls. The [existing-app audit](audit/audit-report.md) is a separate result: no review verdict covers this exact version of the planned checks, and the audit does not close or certify them. Real-device behavior is still unproven. The private Playbook holds the Check and Fail text for B1 to B16 under How It Works, and the full private pass rule for each unproven check under Private proof definitions in the Charter. [The Pinto Project](https://github.com/users/soliskit/projects/7) owns work order and current status.
 
 The earlier app audit (kept in git history) left these checks open: physical camera and microphone indicators on any device; what happens when replaceTrack fails; revoking camera permission in the middle of a call (the page has no handler for a track ending); locking a phone and returning, switching apps, and navigating away on a phone; direct versus relayed calls across separate networks, and whether Twilio relay is configured; wake-up time after the free host sleeps; behavior in Safari, Firefox, and on phones; whether the deployed server code matches the audited commit; server memory, speed, and stability under repeated joins; stale tiles after a replaced call, and PeerJS behavior after a call error. Until these run, no record claims the app works every time. Room-lifecycle and reconnection paths beyond the merged repairs also remain open.
 
@@ -35,7 +35,7 @@ The earlier app audit (kept in git history) left these checks open: physical cam
 
 ### Unproven checks
 
-Each is Pending. Items 1 to 8 are the unproven checks and gates under What's next in the Playbook Charter.
+Each is Pending. Items 1 to 8 have their full private pass definitions under Private proof definitions in the Playbook Charter. [The Pinto Project](https://github.com/users/soliskit/projects/7) owns work order and current status. This list is an evidence index, not a second plan.
 
 1. TURN accounting
 2. WebSocket request counting
