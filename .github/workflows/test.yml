@@ -72,7 +72,7 @@ jobs:
           [ "${TEST_SKIPPED:-0}" -eq 0 ] || exit 1
 
   webkit:
-    # A trial, not a required check. Main pushes only.
+    # A trial, not a required check. Runs on pushes, weekly and manual runs; skipped on pull requests.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
