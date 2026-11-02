@@ -76,4 +76,3 @@ non-loopback peer.
   run's clients are HTTP/1.1.
 - The control endpoint has no auth: loopback-only, run-local, gone with
   the process.
-
