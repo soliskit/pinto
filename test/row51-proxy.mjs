@@ -233,9 +233,7 @@ export function startProxy({
     }
     if (message && message.opcode === OPCODES.TEXT) {
       const text = message.payload.toString('utf8')
-      ev.text = text.length > TEXT_LOG_CAP
-        ? text.slice(0, TEXT_LOG_CAP)
-        : text
+      ev.text = text.length > TEXT_LOG_CAP ? text.slice(0, TEXT_LOG_CAP) : text
       ev.textTruncated = text.length > TEXT_LOG_CAP
     } else if (message) {
       ev.payloadHex = message.payload.toString('hex')
@@ -245,7 +243,7 @@ export function startProxy({
 
   function inspectPeerMessage(conn, dir, message) {
     if (conn.kind !== 'peer' || message.opcode !== OPCODES.TEXT) return
-    let type = null
+    let type
     try {
       type = JSON.parse(message.payload.toString('utf8')).type
     } catch {
@@ -331,14 +329,14 @@ export function startProxy({
     })
   }
 
-  function classifyUpgrade(pathname, query) {
+  function classifyUpgrade(pathname) {
     if (pathname === '/peerjs') return 'peer'
     if (pathname.startsWith('/socket.io/')) return 'socketio'
     return 'other-upgrade'
   }
 
   function handleUpgrade(conn, headText, headBytes, leftover) {
-    const { start, headers } = parseHead(headText)
+    const { start } = parseHead(headText)
     const target = start.split(' ')[1] || ''
     let pathname = target
     let query = {}
@@ -349,7 +347,7 @@ export function startProxy({
     } catch {
       // keep raw pathname
     }
-    conn.kind = classifyUpgrade(pathname, query)
+    conn.kind = classifyUpgrade(pathname)
     conn.clientState = 'websocket'
     conn.upstreamState = 'ws-101-head'
     conn.wsParserCS = new WsFrameParser()
@@ -415,8 +413,7 @@ export function startProxy({
         }
         const isUpgrade =
           /\bupgrade\b/i.test(headerValue(headers, 'connection') || '') &&
-          (headerValue(headers, 'upgrade') || '').toLowerCase() ===
-            'websocket'
+          (headerValue(headers, 'upgrade') || '').toLowerCase() === 'websocket'
         emit({ ev: 'request', conn: conn.id, method, url: target })
         if (isUpgrade) {
           handleUpgrade(conn, headText, headBytes, conn.clientBuf)
@@ -548,7 +545,11 @@ export function startProxy({
         const end = conn.upstreamBuf.indexOf('\r\n\r\n')
         if (end === -1) {
           if (conn.upstreamBuf.length > HEAD_CAP) {
-            emit({ ev: 'error', conn: conn.id, error: 'response head over cap' })
+            emit({
+              ev: 'error',
+              conn: conn.id,
+              error: 'response head over cap'
+            })
             conn.clientSock.destroy()
           }
           return
@@ -570,8 +571,7 @@ export function startProxy({
         const noBody =
           (status >= 100 && status < 200) || status === 204 || status === 304
         const len = Number(headerValue(headers, 'content-length') || 0)
-        const chunked =
-          headerValue(headers, 'transfer-encoding') === 'chunked'
+        const chunked = headerValue(headers, 'transfer-encoding') === 'chunked'
         if (req.isConfig && !noBody) {
           conn.configCollect = {
             headText,
@@ -629,7 +629,7 @@ export function startProxy({
         const cc = conn.configCollect
         const part = conn.upstreamBuf
         conn.upstreamBuf = Buffer.alloc(0)
-        let done = false
+        let done
         if (cc.chunkedScanner) {
           try {
             done = cc.chunkedScanner.push(part)
