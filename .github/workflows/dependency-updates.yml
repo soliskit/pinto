@@ -246,6 +246,19 @@ jobs:
             if(diffs.length){console.error(diffs.join("\n"));process.exit(1);}
             console.log("post-diff guard ok: only intended spec changes, styles preserved");
           GUARD
+            # Clean-install verification: the checks install with `npm ci`. A
+            # prepared branch must pass that same gate before it is published. When a clean
+            # install fails (for example an installed package's declared peer range
+            # excludes the new major), skip this candidate: publish no branch,
+            # record the skip for the summary, and let a future run retry it.
+            if ! npm ci --no-audit --no-fund --loglevel=error; then
+              echo "skip: $spec - clean npm ci fails; not publishing branch"
+              echo "$spec" >> skipped-major.txt
+              git checkout -- package.json package-lock.json
+              git checkout -
+              git branch -D "$BRANCH"
+              continue
+            fi
             git add package.json package-lock.json
             git commit -m "Update $pkg to latest major
 
@@ -264,6 +277,9 @@ jobs:
           {
             echo "### Blocked direct major updates (separate review, one PR each)"
             if [ -s direct-major.txt ]; then sed 's/^/- /' direct-major.txt; else echo "- none"; fi
+            echo
+            echo "### Skipped this run (clean npm ci fails; retried on each run)"
+            if [ -s skipped-major.txt ]; then sed 's/^/- /' skipped-major.txt; else echo "- none"; fi
             echo
             echo "### Blocked transitive updates (parent constraint held, not forced)"
             node <<'NODE'
