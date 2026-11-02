@@ -230,10 +230,10 @@ test('proxy: coalesced 101+OPEN is captured from connection start', async (t) =>
   const upstream = await startWsUpstream(t, { coalesceOpen: true })
   const { events, pagePort } = await startTestProxy(t, upstream.port)
   const { sock } = await wsClient(t, pagePort, PEER_PATH)
-  sock.write(encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true }))
-  await waitFor(() =>
-    events.some((e) => e.ev === 'heartbeat-forwarded')
+  sock.write(
+    encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
   )
+  await waitFor(() => events.some((e) => e.ev === 'heartbeat-forwarded'))
   const open101 = events.find((e) => e.ev === 'ws-101')
   assert.ok(open101, 'ws-101 logged')
   assert.equal(open101.extensions, null)
@@ -241,7 +241,10 @@ test('proxy: coalesced 101+OPEN is captured from connection start', async (t) =>
     (e) => e.ev === 'ws-frame' && e.dir === 'sc' && e.text === OPEN_TEXT
   )
   assert.ok(openFrame, 'coalesced OPEN frame logged')
-  assert.ok(events.some((e) => e.ev === 'open-frame'), 'derived open-frame')
+  assert.ok(
+    events.some((e) => e.ev === 'open-frame'),
+    'derived open-frame'
+  )
   // OPEN came first, so no no-open decision point may be declared
   assert.ok(!events.some((e) => e.ev === 'decision-point'))
 })
@@ -250,7 +253,9 @@ test('proxy: no-OPEN decision point at first post-resume heartbeat', async (t) =
   const upstream = await startWsUpstream(t)
   const { events, pagePort } = await startTestProxy(t, upstream.port)
   const { sock } = await wsClient(t, pagePort, PEER_PATH)
-  sock.write(encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true }))
+  sock.write(
+    encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
+  )
   await waitFor(() => events.some((e) => e.ev === 'decision-point'))
   const dp = events.find((e) => e.ev === 'decision-point')
   assert.equal(dp.result, 'no-open-resume')
@@ -260,13 +265,18 @@ test('proxy: no-OPEN decision point at first post-resume heartbeat', async (t) =
 
 test('proxy: kill fin - no close leak server-ward until tidy', async (t) => {
   const upstream = await startWsUpstream(t)
-  const { events, pagePort, controlPort } = await startTestProxy(t, upstream.port)
+  const { events, pagePort, controlPort } = await startTestProxy(
+    t,
+    upstream.port
+  )
   // allowHalfOpen: the client can still write after the proxy's FIN, which
   // is what exercises the post-kill discard path
   const { sock } = await wsClient(t, pagePort, PEER_PATH, {
     allowHalfOpen: true
   })
-  sock.write(encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true }))
+  sock.write(
+    encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
+  )
   await waitFor(() => upstream.state.frames.length === 1)
   const bytesBefore = upstream.state.dataEvents.reduce((a, b) => a + b, 0)
 
@@ -275,7 +285,9 @@ test('proxy: kill fin - no close leak server-ward until tidy', async (t) => {
   // The client leg closes (bare FIN): client observes end
   await onceEvent(sock, 'end')
   // Post-kill client bytes are discarded, never forwarded
-  sock.write(encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true }))
+  sock.write(
+    encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
+  )
   await sleep(400)
   const bytesAfter = upstream.state.dataEvents.reduce((a, b) => a + b, 0)
   assert.equal(bytesAfter, bytesBefore, 'nothing forwarded server-ward')
@@ -296,13 +308,18 @@ test('proxy: kill fin - no close leak server-ward until tidy', async (t) => {
 
 test('proxy: kill close-frame - close goes client-ward only', async (t) => {
   const upstream = await startWsUpstream(t)
-  const { events, pagePort, controlPort } = await startTestProxy(t, upstream.port)
+  const { events, pagePort, controlPort } = await startTestProxy(
+    t,
+    upstream.port
+  )
   const { sock, leftover } = await wsClient(t, pagePort, PEER_PATH)
   const parser = new WsFrameParser()
   const frames = []
   if (leftover.length) frames.push(...parser.push(leftover))
   sock.on('data', (c) => frames.push(...parser.push(c)))
-  sock.write(encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true }))
+  sock.write(
+    encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
+  )
   await waitFor(() => upstream.state.frames.length === 1)
 
   const res = await control(controlPort, '/kill?conn=1&mode=close-frame')
@@ -319,9 +336,14 @@ test('proxy: kill close-frame - close goes client-ward only', async (t) => {
 
 test('proxy: deliver close-frame - server-SEEN drop (scenario B)', async (t) => {
   const upstream = await startWsUpstream(t)
-  const { events, pagePort, controlPort } = await startTestProxy(t, upstream.port)
+  const { events, pagePort, controlPort } = await startTestProxy(
+    t,
+    upstream.port
+  )
   const { sock } = await wsClient(t, pagePort, PEER_PATH)
-  sock.write(encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true }))
+  sock.write(
+    encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
+  )
   await waitFor(() => upstream.state.frames.length === 1)
 
   const res = await control(controlPort, '/deliver?conn=1&mode=close-frame')
@@ -340,7 +362,9 @@ test('proxy: deliver fin - FIN delivered server-ward', async (t) => {
   const upstream = await startWsUpstream(t)
   const { pagePort, controlPort } = await startTestProxy(t, upstream.port)
   const { sock } = await wsClient(t, pagePort, PEER_PATH)
-  sock.write(encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true }))
+  sock.write(
+    encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
+  )
   await waitFor(() => upstream.state.frames.length === 1)
 
   const res = await control(controlPort, '/deliver?conn=1&mode=fin')
@@ -369,7 +393,9 @@ test('proxy: upgrade classification peer vs socket.io vs other', async (t) => {
   await waitFor(() => events.filter((e) => e.ev === 'upgrade').length === 3)
   const kinds = events.filter((e) => e.ev === 'upgrade').map((e) => e.kind)
   assert.deepEqual(kinds, ['peer', 'socketio', 'other-upgrade'])
-  const peerUpgrade = events.find((e) => e.ev === 'upgrade' && e.kind === 'peer')
+  const peerUpgrade = events.find(
+    (e) => e.ev === 'upgrade' && e.kind === 'peer'
+  )
   assert.deepEqual(
     [peerUpgrade.hasKey, peerUpgrade.hasId, peerUpgrade.hasToken],
     [true, true, true]
@@ -448,7 +474,14 @@ async function httpGet(port, path, { close = false } = {}) {
       sock.once('close', () => resolve(Buffer.concat(parts)))
     })
   }
-  return { sock, head, body, readHead, getBuf: () => buf, setBuf: (b) => (buf = b) }
+  return {
+    sock,
+    head,
+    body,
+    readHead,
+    getBuf: () => buf,
+    setBuf: (b) => (buf = b)
+  }
 }
 
 test('proxy: /config interception rewrites iceServers only', async (t) => {
@@ -470,9 +503,7 @@ test('proxy: /config interception rewrites iceServers only', async (t) => {
   const json = JSON.parse(first.body.toString('utf8'))
   assert.equal(json.key, 'pinto', 'key unchanged')
   assert.deepEqual(json.iceServers, [], 'iceServers emptied')
-  const declared = Number(
-    /content-length: (\d+)/i.exec(first.head)[1]
-  )
+  const declared = Number(/content-length: (\d+)/i.exec(first.head)[1])
   assert.equal(
     declared,
     first.body.length,
