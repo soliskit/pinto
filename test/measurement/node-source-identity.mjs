@@ -1,0 +1,44 @@
+// Measurement-only own-source identity for Node module reload URLs.
+import { realpathSync, readFileSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createHash } from 'node:crypto'
+export function scopedSourceBindings(files) {
+  return new Map(
+    files.map((f) => {
+      const physical = realpathSync(f.abs)
+      const source = readFileSync(physical, 'utf8')
+      return [
+        physical,
+        {
+          url: pathToFileURL(physical).href,
+          source,
+          sha256: createHash('sha256').update(source).digest('hex')
+        }
+      ]
+    })
+  )
+}
+export function normalizeOwnNodeEntry(entry, bindings) {
+  let u, physical
+  try {
+    u = new URL(entry.url)
+    if (u.protocol !== 'file:') return null
+    physical = realpathSync(fileURLToPath(u))
+  } catch {
+    return null
+  }
+  const binding = bindings.get(physical)
+  if (!binding) return null
+  // The raw Node V8 format has no script source. Caller must bind the disk
+  // snapshot to clean pinned production source; a supplied source must match.
+  const currentHash = createHash('sha256')
+    .update(readFileSync(physical, 'utf8'))
+    .digest('hex')
+  if (currentHash !== binding.sha256)
+    throw new Error('source changed during measurement for ' + physical)
+  const source = entry.source === undefined ? binding.source : entry.source
+  const hash = createHash('sha256').update(source).digest('hex')
+  if (hash !== binding.sha256)
+    throw new Error('source conflict for ' + physical)
+  return { ...entry, url: binding.url, source }
+}

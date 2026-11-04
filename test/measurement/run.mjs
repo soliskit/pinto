@@ -1,3 +1,4 @@
+import { scopedSourceBindings } from './node-source-identity.mjs'
 // Pinto's measurement runner. Measures the existing tests only: it spawns the
 // suites with the measurement preloads active, validates every report, merges
 // coverage keyed to path plus content, converts with the converter Tetris
@@ -127,13 +128,15 @@ if (appDiff) {
 }
 
 checkLockfile()
+const nodeSourceBindings = scopedSourceBindings(serverFiles())
 console.error(`measuring ${suite} suite at ${commit} into ${outDir}`)
 await runSuite()
 
 const serverEntries = validateServerDir(
   join(outDir, 'server'),
   runStartedAt,
-  new Set(serverFiles().map((f) => f.url))
+  new Set(serverFiles().map((f) => f.url)),
+  nodeSourceBindings
 )
 const browserCaptures = validateBrowserDir(join(outDir, 'browser'))
 checkNavigationCoverage(join(outDir, 'browser'))

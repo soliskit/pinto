@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process'
 import { chromium } from 'playwright'
 import { setTimeout as sleep } from 'node:timers/promises'
 
+const measurementStart = Date.now()
 const server = spawn(process.execPath, ['src/index.ts'], {
   env: { ...process.env, PORT: '80' },
   stdio: ['ignore', 'ignore', 'ignore']
@@ -15,6 +16,19 @@ const server = spawn(process.execPath, ['src/index.ts'], {
 process.on('exit', () => server.kill('SIGKILL'))
 
 // Wait for the server on the default port
+async function finish(code) {
+  if (process.env.PINTO_MEASURE === '1') {
+    const { stopMeasuredServer } =
+      await import('./measurement/stop-measured-server.mjs')
+    await stopMeasuredServer(server, {
+      dir: process.env.NODE_V8_COVERAGE,
+      startedAt: measurementStart,
+      sourceUrl: new URL('../src/index.ts', import.meta.url).href
+    })
+  }
+  process.exit(code)
+}
+
 const deadline = Date.now() + 15_000
 for (;;) {
   try {
@@ -24,7 +38,7 @@ for (;;) {
   }
   if (Date.now() > deadline) {
     console.log('server on port 80 never answered')
-    process.exit(1)
+    await finish(1)
   }
   await sleep(100)
 }
@@ -38,13 +52,13 @@ page.on('websocket', (ws) => {
 await page.goto('http://127.0.0.1/room/default-port-check', { timeout: 15_000 })
 if ((await page.evaluate(() => globalThis.location.port)) !== '') {
   console.log('location.port was not empty on the default port')
-  process.exit(1)
+  await finish(1)
 }
 const wsDeadline = Date.now() + 15_000
 while (peerSockets.length === 0) {
   if (Date.now() > wsDeadline) {
     console.log('no PeerJS websocket was attempted')
-    process.exit(1)
+    await finish(1)
   }
   await sleep(100)
 }
@@ -52,5 +66,5 @@ while (peerSockets.length === 0) {
 const url = new URL(peerSockets[0])
 console.log('FALLBACK-80-WS', peerSockets[0])
 await browser.close()
-server.kill('SIGKILL')
-process.exit(url.port === '' ? 0 : 1)
+if (process.env.PINTO_MEASURE !== '1') server.kill('SIGKILL')
+await finish(url.port === '' ? 0 : 1)
