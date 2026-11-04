@@ -41,6 +41,7 @@ if (gen.status !== 0) {
   process.exit(1)
 }
 
+const measurementStart = Date.now()
 const app = spawn(process.execPath, ['src/index.ts'], {
   env: { ...process.env, PORT: '80' },
   stdio: ['ignore', 'ignore', 'ignore']
@@ -76,6 +77,19 @@ const tls = https.createServer(
 tls.on('upgrade', (socket) => socket.destroy())
 tls.listen(443, '127.0.0.1')
 
+async function finish(code) {
+  if (process.env.PINTO_MEASURE === '1') {
+    const { stopMeasuredServer } =
+      await import('./measurement/stop-measured-server.mjs')
+    await stopMeasuredServer(app, {
+      dir: process.env.NODE_V8_COVERAGE,
+      startedAt: measurementStart,
+      sourceUrl: new URL('../src/index.ts', import.meta.url).href
+    })
+  }
+  process.exit(code)
+}
+
 const deadline = Date.now() + 15_000
 for (;;) {
   try {
@@ -85,7 +99,7 @@ for (;;) {
   }
   if (Date.now() > deadline) {
     console.log('app on port 80 never answered')
-    process.exit(1)
+    await finish(1)
   }
   await sleep(100)
 }
@@ -106,18 +120,18 @@ const pageUrl = await page.evaluate(
 )
 if (pageUrl !== 'https://127.0.0.1') {
   console.log('page was not https on the default port:', pageUrl)
-  process.exit(1)
+  await finish(1)
 }
 const wsDeadline = Date.now() + 15_000
 while (peerSockets.length === 0) {
   if (Date.now() > wsDeadline) {
     console.log('no PeerJS websocket was attempted')
-    process.exit(1)
+    await finish(1)
   }
   await sleep(100)
 }
 const url = new URL(peerSockets[0])
 console.log('FALLBACK-443-WSS', peerSockets[0])
 await browser.close()
-app.kill('SIGKILL')
-process.exit(url.protocol === 'wss:' && url.port === '' ? 0 : 1)
+if (process.env.PINTO_MEASURE !== '1') app.kill('SIGKILL')
+await finish(url.protocol === 'wss:' && url.port === '' ? 0 : 1)
