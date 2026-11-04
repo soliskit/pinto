@@ -1,3 +1,4 @@
+import { normalizeOwnNodeEntry } from './node-source-identity.mjs'
 // Run validation. A report is never assumed from a file's existence: each
 // server report must be complete, readable and tied to its own process, and
 // stale or cut-off reports are rejected. Browser captures are counted against
@@ -7,7 +8,12 @@ import { join } from 'node:path'
 
 export class MeasurementFailure extends Error {}
 
-export function validateServerDir(dir, runStartedAt, serverUrls) {
+export function validateServerDir(
+  dir,
+  runStartedAt,
+  serverUrls,
+  sourceBindings
+) {
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
   if (files.length === 0) {
     throw new MeasurementFailure(`no server coverage reports in ${dir}`)
@@ -30,7 +36,11 @@ export function validateServerDir(dir, runStartedAt, serverUrls) {
     if (!Array.isArray(parsed.result)) {
       throw new MeasurementFailure(`coverage report has no result array: ${f}`)
     }
-    const appEntries = parsed.result.filter((r) => serverUrls.has(r.url))
+    const appEntries = sourceBindings
+      ? parsed.result
+          .map((r) => normalizeOwnNodeEntry(r, sourceBindings))
+          .filter(Boolean)
+      : parsed.result.filter((r) => serverUrls.has(r.url))
     if (appEntries.length > 0) filesWithApp++
     for (const r of appEntries) entries.push(r)
   }
