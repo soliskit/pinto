@@ -1,0 +1,154 @@
+PINTO AUDIT - PHASE 5 RESULTS (candidate findings; nothing adopted yet)
+Nov 4, 2026.
+
+This is the Phase 5 evidence record of the Pinto audit: the current candidate classification of every finding in the audit register, with its evidence basis and limits. All classifications here are CANDIDATE and UNADOPTED. No status, totals, register, or board change takes effect unless the owner approves and merges the adopting change. Nothing on this page is an exit or certification claim.
+
+== 1. HOW THE EVIDENCE WAS GATHERED (methods and their limits) ==
+- Source reads at pin 8e9d006. Pin-vs-current equality is established file by file, not claimed in general: ice-servers.ts is byte-identical between the pin and current source; every other row says which source it was read from, and rows whose mechanism changed since the pin (PR #89) are labeled as such in the table.
+- Local pinned runs: server and browser runs against a local copy at pin 8e9d006, endpoints on 127.0.0.1 only, no production-site or live-site operation. External-network isolation is NOT established for these runs: the child-process environment was inherited, Twilio variables were unrecorded, and browser STUN traffic was possible even against localhost.
+- Module-level runs with the network and clock stubbed in-process (no network, no browser, no server).
+- Outside audit-run reports are treated as external reports and labeled as such; where one was not rerun here, the row says so.
+- Where a check was not run, the row carries an owner-approved documented limit instead, and says which.
+- Environment versions for the pinned runs: peer 1.0.2 / peerjs 1.5.5 / socket.io 4.8.4 (independently verified against the lockfile); Node v22.23.4 and Chrome 156.0.8078.47 are executor-reported, not independently reproduced.
+
+== 2. WHAT THE REGISTER CONTAINS ==
+97 register rows plus one non-register record (#132) = 98 records. Rows 4 and 28 are one work item; rows 12, 31 and 87 are non-work dispositions (cut, closed-corrected, residue); the register therefore carries 93 work items. Totals below count records, not items.
+Bucket vocabulary (confirmed-defect eligible, defect-shaped allegation, rejected, split, not reproduced, read in source, holds, open) follows the judging rule in the audit plan tab.
+
+== 3. STATUS LABELS ==
+S = settled evidence on record: the evidence for the candidate classification is complete. Two different reviews exist and this distinction matters: evidence review (is the evidence complete) and the adoption review (the required per-item review before any candidate status takes effect). S speaks only to evidence. Where a settled row says 'required review pending', that is the adoption review, which applies to every row - not missing evidence.
+P = provisional: evidence in hand (a pinned run), not yet through final evidence review; nothing P-tier feeds the totals as final.
+O = open: a review call, conditional owner item, or contingent route remains.
+Variants: S-cand = settled evidence base with the classification still candidate pending required review; S-doc = documented non-work disposition; P/S = provisional mechanism closure over a settled historical base.
+No P or O row is a final classification.
+
+== 4. FINDINGS SUMMARY (98 records; provisional counted separately) ==
+CD-ELIGIBLE CANDIDATES (evidence-qualified; required review pending; S): 5 - r3, r19, r49, r90, r97
+PROVISIONAL CD-ELIGIBLE (P): 3 - r14, r29, r38
+PROVISIONAL REPRODUCED-AT-PIN (P): 2 - r57, r73
+DEFECT-SHAPED ALLEGATIONS (rerun or review gates open; O): 29 - r1, r2, r5, r7, r8, r17, r18, r25, r30, r32, r33, r35, r36, r40, r45, r47, r48, r50, r53, r55, r59, r60, r65, r76, r84, r88, r91, r92, r93
+REJECTED (ruled or route settled): 7 - r6, r23, r27, r34, r39 (in-bounds), r61, r95
+SPLIT (ruled; mandatory split labels): 2 - r26, r75
+NOT REPRODUCED (bounded/terminal): 3 - r44 (mechanism corroborated at pin, provisional), r51, r74
+READ IN SOURCE (incl. bounded): 21 - r4+28 (2 rows, 1 item), r10, r11, r13, r20, r21, r62, r63, r64, r66, r67, r68, r69, r78, r80, r81, r85, r86, r94, r96
+HOLDS (non-property test-quality facts): 5 - r70, r71, r72, r79, r82
+NON-WORK DISPOSITIONS: 3 - r12, r31, r87
+OPEN (review call / conditional owner item / contingent): 18 - r9, r15, r16, r22, r24, r37, r41, r42, r43, r46, r52, r54, r56, r58, r77, r83, r89, #132
+TOTAL: 5+3+2+29+7+2+3+21+5+3+18 = 98 records.
+
+== 5. FULL FINDINGS TABLE (row | candidate classification | evidence basis | status) ==
+r1    | CD-ALLEG | proposition 6 plus roster half of proposition 3; issue-era evidence | O
+r2    | CD-ALLEG | proposition 6 (reproduced 2/2 at 38004b0) | O
+r3    | CD-ELIG | reviewed; owner-decided rule (Nov 1); narrow historical reproduction at pin; the purged-issue reference (#151) is carried as a bounded observation - the mechanism stands independent of it | S
+r4+28 | RIS (1 item) | per-slice documented limits, approved and on record | S
+r5    | CD-ALLEG | proposition 6; owner-decided rule (Oct 20) | O
+r6    | REJ | reviewed under proposition 1; approved documented limit; the 0.24% figure is kept as a bounded observation | S
+r7    | CD-ALLEG | proposition 7, keyboard clause | O
+r8    | CD-ALLEG | proposition 8 | O
+r9    | OPEN | branch: rejected-in-bounds vs not-reproduced | O
+r10   | RIS | version-pin documented limit (5.2.1 vs 5.3.0); approved documented limit | S
+r11   | RIS | source read at ice-servers.ts:11 and :44-49; approved documented limit | S
+r12   | NONWORK CUT | cut in the Oct 26 plan; build and manifest records show the exclusion; adoption stays gated on review of the ledger lineage | S-doc
+r13   | RIS bounded | reviewed; exact CSV 13.1 documented limit | S
+r14   | PROV-CD | pinned run 2 (joined during outage, silent rejection, no recovery) | P
+r15   | OPEN | stands or falls with #132; conditional owner decision | O
+r16   | OPEN | proposition 3 / REQ 7 target / owner-decision fallback | O
+r17   | CD-ALLEG | proposition 6 (run 4, reproduced 2/2 at 38004b0) | O
+r18   | CD-ALLEG | proposition 8 | O
+r19   | CD-ELIG | proposition 7 plus the WCAG AA 4.5:1 rule; independent rerun recorded; required review pending | S
+r20   | RIS | proposition 9; approved documented limit; owner stance recorded (Oct 20) | S
+r21   | RIS | mechanism changed by PR #89; not a confirmed defect | S
+r22   | OPEN | reproduction-in-part gates: pinned-run requirement plus an approved limit for the unseen part | O
+r23   | REJ | malformed-input half not reproduced (terminal); case half rejected on review | S
+r24   | OPEN | mechanism read; review call pending (quirk vs proposition 1) | O
+r25   | CD-ALLEG | proposition 2 (socket.to emits without a membership check) | O
+r26   | SPLIT | reviewed: bounded not-reproduced, preserved no-notice observation, narrow rejection of the allegation | S
+r27   | REJ | approved rule wording; covered by the Oct 24 documented-limits approval (sentence-level map held in the audit's working papers) | S
+r29   | PROV-CD | module-level pinned run (fetch and clock stubbed in-process): a hanging Twilio fetch leaves getIceServers() pending - observed pending at a 3-second window; the absence of any timeout is a source fact (ice-servers.ts has no timeout path); only a settling failure logs (ice-servers.ts:47) and falls back to public STUN. Independently re-executed and verified at the same pin. Provisional candidate CD-eligible under proposition 9 pending required review; no owner limit needed if this run route is accepted | P
+r30   | CD-ALLEG | proposition 9 (no negative caching) | O
+r31   | NONWORK | closed-corrected; PR #82 merged Oct 25 | S
+r32   | CD-ALLEG | narrowed; review may narrow or reroute further | O
+r33   | CD-ALLEG | proposition 11 only | O
+r34   | REJ | reviewed; bounded observation carried | S
+r35   | CD-ALLEG | proposition 11 within the Oct 23 documented limit | O
+r36   | CD-ALLEG | proposition 11 within the Oct 23 documented limit | O
+r37   | OPEN | review weighs the accepted limit plus the bounded attempt (4,074 of 5,000) | O
+r38   | PROV-CD | pinned run 1 reproduced the handoff; the ID-TAKEN detail was refuted | P
+r39   | REJ in-bounds | proposition 10's approved wording plus the >900 KB bounded observation; a Nov 3 new-requirement question is pending, non-gating | S
+r40   | CD-ALLEG | proposition 11 (no Twilio validation) | O
+r41   | OPEN | mapping of proposition 10 vs 9 | O
+r42   | OPEN | record-only read-in-source; owner adoption only if a defect route is wanted | O
+r43   | OPEN | holds within the Oct 23 documented limit; stranding residue is a review call | O
+r44   | NR | mechanism corroborated at pin (provisional); historical not-reproduced stands; PR #89 lifecycle is follow-up scope | P/S
+r45   | CD-ALLEG | narrowed (proposition 5 overclaimed; proposition 6 candidate) | O
+r46   | OPEN | clarification route; instrumented-room.js provenance noted | O
+r47   | CD-ALLEG | narrowed (proposition 3 mismatch unestablished; proposition 6 candidate) | O
+r48   | CD-ALLEG | proposition 6 (call.close() emits nothing) | O
+r49   | CD-ELIG | candidate verdict; Web Locks rule verified twice; required review pending; also one of the Oct 26 context cuts | S-cand
+r50   | CD-ALLEG | proposition 6 (track-end failure) | O
+r51   | NR bounded | approved documented limit; owner direction of Nov 1 supersedes the earlier home mapping (register note pending) | S
+r52   | OPEN | reproduction-in-part if the run package qualifies, otherwise read-in-source | O
+r53   | CD-ALLEG | narrowed; bounded signaling observation | O
+r54   | OPEN | conditional owner decision (client store vs proposition 10's server wording) | O
+r55   | CD-ALLEG | proposition 3 | O
+r56   | OPEN | proposition 2 / REQ 8 target; review call pending | O
+r57   | PROV-RIP | pinned run 3, facet-scoped, plus approved documented limit; whole-claim reproduction not asserted | P
+r58   | OPEN | mechanism changed by PR #89; rerun separately gated | O
+r59   | CD-ALLEG | issue #103 evidence; REQ 9 vs proposition 9 fit open | O
+r60   | CD-ALLEG | proposition 8 | O
+r61   | REJ | ruled proposition 3 (:274 ordinal render) | S
+r62   | RIS | phone-keyboard bound covered by an approved documented limit (Oct 19) | S
+r63   | RIS | Safari leg conditional by design; no autoplay-fallback rule | S
+r64   | RIS | refutes the alarming version; device-limit residue | S
+r65   | CD-ALLEG | proposition 6, silent-failure cases | O
+r66   | RIS split | markup half terminal; VoiceOver documented limit approved (Oct 19) | S
+r67   | RIS | Basic SID:token verified at :24-30; deployment and narrower-key gaps named | S
+r68   | RIS | documented limit: dashboard behavior unknown | S
+r69   | RIS | code-read documented limit approved (Oct 19); the auto-deploy gap is NOT approved | S
+r70   | HOLDS | test-quality fact, room.test.ts:1318 | S
+r71   | HOLDS | test-quality fact: attendees() helper; real RTP stats now read | S
+r72   | HOLDS | test-quality fact, home.test.ts:112-124 | S
+r73   | PROV-RIP | pinned server-only run (curl at 8e9d006, Node v22.23.4 defaults, endpoints 127.0.0.1 only): room-name lengths 20/41/16000/16300 -> HTTP 200; 17000/20000 -> HTTP 431. The historical ~17,000-character refusal is REPRODUCED AT PIN; mechanism = Node's maxHeaderSize 16384 HTTP-layer limit, NOT app code (the 41-character 200 corroborates there is no app length check; that acceptance is a separate claim's lane). The run discharges the not-run gap, so no owner ask and read-in-source is formally unavailable. Not a confirmed defect - no approved rule names the HTTP-layer boundary. Bounds: the 431 boundary depends on TOTAL HEADER BYTES (request line + all headers), not room-name length - different headers shift it (observed window: 16300 OK / 17000 rejected under the exact curl header set used); the run was server-only and the page was not driven; this is not a measured limit of any deployed service, which may sit behind a proxy with its own limit; the original row's accented-letters sub-case (3,000 accented letters -> 18,000-character encoded address -> 431) was NOT rerun and stays historical record only. | P
+r74   | NR bounded | Chrome no-restore + Safari conditional leg | S
+r75   | SPLIT | ruled; 19-vs-18 count difference UNRESOLVED; split mandatory | S
+r76   | CD-ALLEG | prop 11 (PORT||443) | O
+r77   | OPEN | three lawful branches; rule ruling pending on review | O
+r78   | RIS | 1000ms repaint timer; background bound covered | S
+r79   | HOLDS | test-quality fact, both halves | S
+r80   | RIS | mechanism changed PR #89; current failed-camera untested | S
+r81   | RIS | source read at :82 and :100-101; approved documented limit | S
+r82   | HOLDS | test-quality fact: partially changed; claim as written outdated | S
+r83   | OPEN | not a confirmed defect on review; residual owner item at exit (real-touch limit or an on-phone run) | O
+r84   | CD-ALLEG | proposition 7 (no accessible name); VoiceOver device bound | O
+r85   | RIS | approved documented limits | S
+r86   | RIS | approved documented limits | S
+r87   | NONWORK | off-scale residue tracked in #164; report retired by PR #213 | S
+r88   | CD-ALLEG | proposition 6 only | O
+r89   | OPEN | reproduction-in-part if the run package qualifies; approved documented limits | O
+r90   | CD-ELIG | version gate closed: the register's own run record names the pinned source; the module-level rerun leg is discharged - original design point reproduced for point and independently re-executed and verified (original run Node 26.12.0; rerun Node v22.23.4); review pending | S
+r91   | CD-ALLEG | proposition 6 (one error box) | O
+r92   | CD-ALLEG | weak rule fit; claims kept separate | O
+r93   | CD-ALLEG | proposition 6 (no connect timeout) | O
+r94   | RIS | settled Nov 2 (property disposition and finding both in the approved text); carrier choice is a review form call | S
+r95   | REJ | rejection strengthened on review; proposition 9 routes acceptability to the owner, who decided (row-20 acceptance) | S
+r96   | RIS | reviewed (current-source target match); approved documented limit | S
+r97   | CD-ELIG | candidate verdict; owner-decided rule (Oct 23); the Oct 22 limit-note answer is not recovered from searched records (named gap; not asserted absent); review pending | S-cand
+#132  | OPEN | conditional owner decision; stands or falls with r15 | O
+
+== 6. PROVISIONAL RESULTS AND VERIFICATION NOTES ==
+- The provisional set is r14, r29, r38 (provisional CD-eligible) and r57, r73 (provisional reproduced-at-pin). r14, r38 and r57 come from pinned runs 1-3, r73 from the server-only pinned run, and r29 from the module-level run described below. Harnesses r38-run.mjs / r14-shot.mjs / r57-run.mjs; raw outputs and screenshots are preserved in the audit's working papers. Fallback if any element is refuted on review: r14 -> candidate (owner limit only if the read-in-source route is wanted); r29 -> its prior open state, with the proposition-9 fit closed and the module route executed (the owner-limit requirement is discharged by the run); r38 -> defect-shaped allegation (rerun owed); r57 -> reproduced-in-part with its commit gate re-opened; r73 -> its prior open state; r44 -> its prior bucket framing.
+- r57 facet scope: the full-connection-loss facet was witnessed; the peer-only heartbeat facet is source-settled (no room broadcast path at pin: the only room-departure path is index.ts:66-71; a peer-server timeout's page-side effect is peer 'disconnected' -> reconnect loop room.js:215-219 with membership intact). Whole-claim reproduction is NOT asserted.
+- Independent technical review (Nov 4) returned clear for the bounded conclusions as scoped, with these caveats, all preserved:
+  - r38: mechanism independently verified from the peer@1.0.2 published dist source (queue on unregistered destination; flush to a new registrant regardless of token). CAVEAT: the r38 client payload receipts in the raw record are TRANSCRIBED - source and server log corroborate them; they do not replace an independent client capture.
+  - r14: CAVEAT: the S1/S2 screenshots are BYTE-IDENTICAL images; display states are supported, but timing comes from the harness and raw outputs, not independent pixels.
+  - r57: full-signaling-silence facet only; the peer-only source distinction was verified.
+  - r44's mechanism closure is provisional; its historical not-reproduced base is settled.
+  - r90's version-gate closure (the register's own run record names the pinned source) is settled; its rerun leg is now discharged by the module-level run below.
+- r29 and r90 module-level pinned runs (Nov 4): fetch and Date.now stubbed in-process at pin 8e9d006 - no network, no browser, no server; dummy credentials in the child process only. Both independently re-executed at the same pin and harness (Node v22.23.4) with every claimed outcome matching. r29: a hanging Twilio fetch leaves getIceServers() pending (observed at a 3-second window; the no-timeout mechanism is a source fact), while a rejecting fetch logs (ice-servers.ts:47) and falls back to public STUN. r90: the original clock step-back design point reproduced for point (ttl 100s; a +110s/-100s step-back with net +10s leaves the cache served past its real expiry; a control pair with the same net offset stays cached, isolating the step-back as the cause; a forward step past expiry refetches; expiresAt = Date.now() + ttl*500 at ice-servers.ts:44). Bounds: module-level stubbed runs are not provider, device, or browser evidence; r90's original run was Node 26.12.0 against the rerun's Node v22.23.4. r29's classification stays provisional (P) because the required review of the new module-run evidence is still in progress; the proposition-9 fit is closed, the run was independently re-executed with its bounds intact, and no other evidence gate remains. r90's rerun leg is discharged as evidence, so its candidate classification stays settled-evidence (S). Like every row, both await the adoption review before any status takes effect.
+
+== 7. UNRESOLVED WORK ==
+- 18 open records and 29 defect-shaped allegations stand as recorded states; they are not pending owner decisions. They resolve through the audit's review pass before any adoption.
+- Owner items that fire only at their conditions: Render memory/CPU and Render sleep/health device limits (unverified; at most these two, at audit exit); r83 real-touch device limit or an on-phone run (batched at exit); r14 owner limit only if the read-in-source route is wanted; REQ 6's runtime-evidence basis (a future decision when a runtime item needs it; not a classification gate); r39's Nov 3 new-requirement question (pending, non-gating).
+- Not recovered from searched records (not asserted absent): r97's Oct 22 limit-note answer; r57's Oct 24 execution-time commit reference (superseded by the pinned rerun).
+- Carried open from earlier phases: A-2 (socket-entry remainder of the Oct 23 rule), A-3 (the alphabet of "letters"); r75's 19-vs-18 count difference.
+- Before adoption: the audit plan's per-item review of each change and evidenced owner approval of the adopting change itself. The sentence-level map of the Oct 24 documented-limits approval (27 evidence sentences) is held in the audit's working papers.
