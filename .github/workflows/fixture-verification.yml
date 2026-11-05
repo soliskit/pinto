@@ -27,7 +27,7 @@ jobs:
           set -euo pipefail
           test "$(git -C app rev-parse HEAD)" = 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
           file=fixture-source/test/measurement/fixtures/submit-navigation-only.mjs
-          test "$(sha256sum "$file" | cut -d' ' -f1)" = e23d046cfb1d0992dafd4e2767f5ce2fcd1244bd625ada519b415db01c1adc8e
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 77074e41ebd52f63192b01d20a0ade7a77b349eafc1e63bf316b212fff985f2b
           cp "$file" app/test/measurement/fixtures/submit-navigation-only.mjs
       - name: Run only the two isolated measurement fixtures
         shell: bash
