@@ -21,9 +21,6 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
-      options: --init --ipc=host
     timeout-minutes: 10
     outputs:
       tests: ${{ steps.counts.outputs.tests }}
@@ -35,10 +32,14 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - name: Check Playwright version matches the container image
+      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+      - run: npx playwright install --with-deps chromium
+      - name: Check Playwright package version
         run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
       - run: npm run typecheck
       - run: npm run lint
+      - name: Allow unprivileged low-port binds for the default-port probe
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
       - name: Run the tests
         shell: bash
         run: |
