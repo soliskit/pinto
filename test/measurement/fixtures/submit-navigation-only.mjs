@@ -92,8 +92,12 @@ const server = createServer((req, res) => {
   if (req.url === '/event.js') {
     res.writeHead(200, { 'content-type': 'text/javascript' }); res.end(src)
   } else if (req.url === '/p') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
     res.end('<form><input name="x"><button>Go</button></form><script src="/event.js"></script>')
-  } else res.end('<p>Next</p>')
+  } else {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    res.end('<p>Next</p>')
+  }
 })
 await new Promise((resolve) => server.listen(0, resolve))
 const base = 'http://localhost:' + server.address().port
