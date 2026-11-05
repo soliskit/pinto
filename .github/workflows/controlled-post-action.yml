@@ -1,0 +1,116 @@
+name: Manual controlled post-action diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
+          path: app
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: fixture-source
+          sparse-checkout: |
+            test/measurement/browser-preload.mjs
+            test/measurement/fixtures/controlled-post-action.mjs
+            test/measurement/fixtures/controlled-screen.mjs
+            test/measurement/convert.mjs
+            test/measurement/fixtures/source-stage.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: app/package.json
+      - name: Prepare the exact isolated fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C app rev-parse HEAD)" = 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
+          file=fixture-source/test/measurement/browser-preload.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = a27ce1901217a266463ddc8501b4a70b6562d10d4172cbd48b775b3f657e726e
+          cp "$file" app/test/measurement/browser-preload.mjs
+          file=fixture-source/test/measurement/fixtures/controlled-post-action.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 8d14e802f0954120944266fdc506022676efabc79eb5a0d8d608d049edb924c8
+          cp "$file" app/test/measurement/fixtures/controlled-post-action.mjs
+          file=fixture-source/test/measurement/fixtures/controlled-screen.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 5416de79e5297c61568a8adba344129c617644eba2c11f2ad490925235508f95
+          cp "$file" app/test/measurement/fixtures/controlled-screen.mjs
+          file=fixture-source/test/measurement/convert.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = d29fc9f507b060b82f2e69cc3fa38bfe5f3ca9d189af75aa096a6f980a7e8de1
+          cp "$file" app/test/measurement/convert.mjs
+          file=fixture-source/test/measurement/fixtures/source-stage.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = e3c78baac9ef45599c147aa3f6817aceb7e2ffb690c3c6e7b8403e25e6ff1ce7
+          cp "$file" app/test/measurement/fixtures/source-stage.mjs
+      - name: Run exactly four isolated diagnostic cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="pinto-fixture-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf '%s\n' "$name" > "$RUNNER_TEMP/pinto-fixture-name"
+          cleanup() {
+            timeout --signal=TERM --kill-after=5s 30s docker rm --force "$name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT INT TERM
+          node_root=$(dirname "$(dirname "$(command -v node)")")
+          docker create --name "$name" --init --ipc=host --workdir /work \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/app,dst=/work" \
+            --mount "type=bind,src=$node_root,dst=/node,readonly" --env "PATH=/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            mcr.microsoft.com/playwright:v1.64.1-noble \
+            bash -c 'set -uo pipefail
+              printf "%s\n" "fixture-phase=container-start"
+              if ! node -e "process.exit(/^v26[.]/.test(process.version)?0:1)" >/tmp/node.log 2>&1; then printf "%s\n" "fixture-phase=node-failed"; exit 1; fi
+              if ! npm ci >/tmp/install.log 2>&1; then printf "%s\n" "fixture-phase=install-failed"; exit 1; fi
+              if ! test "$(node -p "require(\"playwright/package.json\").version" 2>/tmp/version.log)" = 1.64.1; then printf "%s\n" "fixture-phase=version-failed"; exit 1; fi
+              if ! command -v timeout >/dev/null; then printf "%s\n" "fixture-phase=timeout-missing"; exit 1; fi
+              printf "%s\n" "fixture-phase=fixtures-start"
+              timeout --signal=TERM --kill-after=5s 500s node test/measurement/fixtures/controlled-post-action.mjs >/tmp/fixture.log 2>&1
+              code=$?
+              node test/measurement/fixtures/controlled-screen.mjs /tmp/fixture.log 2>/tmp/summary.log
+              screen=$?
+              if [ "$screen" != 0 ]; then printf "%s\n" "fixture-phase=summary-failed"; if [ "$code" = 0 ]; then code=1; fi; fi
+              if [ "$code" = 0 ]; then printf "%s\n" "fixture-phase=fixtures-pass"; elif [ "$code" = 124 ] || [ "$code" = 137 ]; then printf "%s\n" "fixture-phase=fixtures-timeout"; else printf "%s\n" "fixture-phase=fixtures-failed"; fi
+              exit "$code"' \
+            >/dev/null 2>&1
+          set +e
+          timeout --signal=TERM --kill-after=5s 1200s docker start --attach "$name" >"$RUNNER_TEMP/pinto-fixture-host.log" 2>&1
+          status=$?
+          set -e
+          set +e
+          node fixture-source/test/measurement/fixtures/controlled-screen.mjs "$RUNNER_TEMP/pinto-fixture-host.log"
+          summary_status=$?
+          set -e
+          if [ "$status" = 0 ] && [ "$summary_status" != 0 ]; then status=1; fi
+          if [ "$status" = 0 ]; then printf '%s\n' 'fixture-pair=pass'; else printf '%s\n' 'fixture-pair=fail-or-timeout'; fi
+          exit "$status"
+      - name: Verify whole-container cleanup
+        if: ${{ always() }}
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$RUNNER_TEMP/pinto-fixture-name" ]; then
+            printf '%s\n' 'fixture-cleanup=not-created'
+            exit 0
+          fi
+          name=$(cat "$RUNNER_TEMP/pinto-fixture-name")
+          timeout --signal=TERM --kill-after=5s 30s docker rm --force "$name" >"$RUNNER_TEMP/pinto-fixture-cleanup.log" 2>&1 || true
+          if ! ids=$(timeout --signal=TERM --kill-after=5s 30s docker container ls --all --quiet --filter "name=^/${name}$" 2>"$RUNNER_TEMP/pinto-fixture-inspect.log"); then
+            printf '%s\n' 'fixture-cleanup=unverified'
+            exit 1
+          fi
+          if [ -n "$ids" ]; then
+            printf '%s\n' 'fixture-cleanup=failed'
+            exit 1
+          fi
+          rm -f app/test/measurement/fixtures/.child-controlled.mjs
+          if [ -e app/test/measurement/fixtures/.child-controlled.mjs ]; then
+            printf '%s\n' 'fixture-scratch-cleanup=failed'
+            exit 1
+          fi
+          printf '%s\n' 'fixture-scratch-cleanup=verified-absent'
+          printf '%s\n' 'fixture-cleanup=verified-absent'
