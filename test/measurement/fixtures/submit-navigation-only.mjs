@@ -7,11 +7,29 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import libCoverage from 'istanbul-lib-coverage'
+import V8ToIstanbul from 'v8-to-istanbul'
+import {
+  sourceMatch,
+  rawHelperPositive,
+  directLine2Positive,
+  wrapperLine2Positive
+} from './source-stage.mjs'
 import { mergeV8Entries } from '../v8merge.mjs'
 import { toFileCoverage } from '../convert.mjs'
 import { validateBrowserDir } from '../validate.mjs'
 const here = fileURLToPath(new URL('.', import.meta.url))
 const results = []
+const observations = Object.fromEntries(
+  ['click', 'enter'].map((mode) => [
+    mode,
+    {
+      'source-match': 'inconclusive',
+      'raw-helper-positive': 'inconclusive',
+      'direct-line2-positive': 'inconclusive',
+      'wrapper-line2-positive': 'inconclusive'
+    }
+  ])
+)
 let activeMode = 'unavailable'
 let phase = 'setup'
 let childPhaseFile
@@ -194,6 +212,20 @@ mark('done')
       phase = 'capture-present'
       assert(entries.length > 0, 'event script was not captured')
       const abs = tempScript('event.js', src)
+      const observed = observations[fixtureMode]
+      observed['source-match'] = sourceMatch(entries, src)
+      observed['raw-helper-positive'] = rawHelperPositive(entries, src)
+      assert.equal(observed['source-match'], 'yes', 'stored source identity')
+      observed['direct-line2-positive'] = await directLine2Positive(
+        entries,
+        src,
+        async (entry) => {
+          const direct = new V8ToIstanbul(abs, 0, { source: src })
+          await direct.load()
+          direct.applyCoverage(entry.functions)
+          return lineHits(direct.toIstanbul()[abs])[2]
+        }
+      )
       phase = 'merge'
       const merged = mergeV8Entries(
         entries.map((entry) => ({
@@ -205,6 +237,7 @@ mark('done')
       phase = 'convert'
       const cov = await toFileCoverage(merged.get('/event.js'), abs)
       const lines = lineHits(cov)
+      observed['wrapper-line2-positive'] = wrapperLine2Positive(lines[2])
       phase = 'credit-line-2'
       assert(
         lines[2] > 0,
@@ -239,3 +272,7 @@ for (const [index, result] of results.entries())
       (result.startsWith('ok -') ? 'pass' : 'fail')
   )
 if (results.length !== 2) process.exitCode = 1
+
+for (const [mode, values] of Object.entries(observations))
+  for (const [key, value] of Object.entries(values))
+    console.log(mode + '-' + key + '=' + value)
