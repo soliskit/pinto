@@ -5,7 +5,9 @@ import { ordinal } from './ordinal.js'
 /** @typedef {import('peerjs').MediaConnection} MediaConnection */
 
 const DEFAULT_PHOTO = '/no-video.svg'
-const roomName = decodeURIComponent(location.pathname.slice('/room/'.length))
+const roomName = decodeURIComponent(
+  location.pathname.slice('/room/'.length).replace(/\/+$/, '')
+)
 
 const errorBox = element('error', HTMLDivElement)
 const errorTitle = element('error-title', HTMLHeadingElement)

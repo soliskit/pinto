@@ -193,13 +193,14 @@ interface Room {
 /** Opens a room page and waits until Join can be pressed */
 async function openRoom(
   name: string,
-  init?: (() => void) | (() => void)[]
+  init?: (() => void) | (() => void)[],
+  suffix = ''
 ): Promise<Room> {
   const page = await newPage(init)
   const idResponse = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/pinto/id'
   )
-  await page.goto(`/room/${encodeURIComponent(name)}`)
+  await page.goto(`/room/${encodeURIComponent(name)}${suffix}`)
   const peerId = await (await idResponse).text()
   await page.locator('#call:enabled').waitFor()
   // PeerJS makes one while checking what the browser supports
@@ -648,6 +649,18 @@ describe('in a call', () => {
     await room.page.click('#call')
     assert.deepEqual(await controls(room.page), beforeJoining('solo'))
     await server.waitForOutput(`user: ${room.peerId} - left: solo`, from)
+  })
+
+  test('a trailing slash joins the same room without removing an encoded slash', async () => {
+    const name = 'shared/'
+    const plain = await openRoom(name)
+    const trailing = await openRoom(name, undefined, '/')
+    await join(plain)
+    await join(trailing)
+    for (const { page } of [plain, trailing]) {
+      await eventually(attendees(page), ['audio+video playing'])
+      assert.deepEqual(await controls(page), inCall(name, '2nd in the room'))
+    }
   })
 
   test('everyone in the room sees and hears everyone else', async () => {
