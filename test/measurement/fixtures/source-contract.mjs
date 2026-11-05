@@ -41,8 +41,7 @@ const full = [root, span('cold', 0), span('hot', 1)]
 const coldTake = [root, span('cold', 0), span('hot', 0)]
 const absentTake = [root, span('cold', 0)]
 const merged = (takes) => ({ url: '/input.js', source, coverageList: takes })
-const lines = (cov) =>
-  libCoverage.createFileCoverage(cov).getLineCoverage()
+const lines = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
 const functionHit = (cov, name) => {
   const found = Object.entries(cov.fnMap).find(([, fn]) => fn.name === name)
   assert(found, 'expected named function is present')
@@ -107,10 +106,18 @@ try {
       path
     )
     assert.deepEqual(shape(cov), {
-      statementMap: {}, s: {}, fnMap: {}, f: {}, branchMap: {}, b: {}
+      statementMap: {},
+      s: {},
+      fnMap: {},
+      f: {},
+      branchMap: {},
+      b: {}
     })
     await assert.rejects(
-      toFileCoverage({ url: '/input.js', source: '', coverageList: [full] }, path),
+      toFileCoverage(
+        { url: '/input.js', source: '', coverageList: [full] },
+        path
+      ),
       /coverage range exceeds empty source/
     )
   })
