@@ -1,0 +1,80 @@
+name: Manual submit navigation fixture
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
+          path: app
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: fixture-source
+          sparse-checkout: test/measurement/fixtures/submit-navigation-only.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: app/package.json
+      - name: Prepare the exact isolated fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C app rev-parse HEAD)" = 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
+          file=fixture-source/test/measurement/fixtures/submit-navigation-only.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = e23d046cfb1d0992dafd4e2767f5ce2fcd1244bd625ada519b415db01c1adc8e
+          cp "$file" app/test/measurement/fixtures/submit-navigation-only.mjs
+      - name: Run only the two isolated measurement fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="pinto-fixture-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf '%s\n' "$name" > "$RUNNER_TEMP/pinto-fixture-name"
+          cleanup() {
+            timeout --signal=TERM --kill-after=5s 30s docker rm --force "$name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT INT TERM
+          node_root=$(dirname "$(dirname "$(command -v node)")")
+          docker create --name "$name" --init --ipc=host --workdir /work \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/app,dst=/work" \
+            --mount "type=bind,src=$node_root,dst=/node,readonly" --env "PATH=/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            mcr.microsoft.com/playwright:v1.64.1-noble \
+            bash -c 'set -euo pipefail
+              node -e "process.exit(/^v26[.]/.test(process.version)?0:1)"
+              npm ci >/tmp/install.log 2>&1
+              test "$(node -p "require(\"playwright/package.json\").version")" = 1.64.1
+              command -v timeout >/dev/null
+              timeout --signal=TERM --kill-after=5s 300s node test/measurement/fixtures/submit-navigation-only.mjs >/tmp/fixture.log 2>&1' \
+            >/dev/null 2>&1
+          set +e
+          timeout --signal=TERM --kill-after=5s 1200s docker start --attach "$name" >"$RUNNER_TEMP/pinto-fixture-host.log" 2>&1
+          status=$?
+          set -e
+          if [ "$status" = 0 ]; then printf '%s\n' 'fixture-pair=pass'; else printf '%s\n' 'fixture-pair=fail-or-timeout'; fi
+          exit "$status"
+      - name: Verify whole-container cleanup
+        if: ${{ always() }}
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$RUNNER_TEMP/pinto-fixture-name" ]; then
+            printf '%s\n' 'fixture-cleanup=not-created'
+            exit 0
+          fi
+          name=$(cat "$RUNNER_TEMP/pinto-fixture-name")
+          timeout --signal=TERM --kill-after=5s 30s docker rm --force "$name" >"$RUNNER_TEMP/pinto-fixture-cleanup.log" 2>&1 || true
+          if ! ids=$(timeout --signal=TERM --kill-after=5s 30s docker container ls --all --quiet --filter "name=^/${name}$" 2>"$RUNNER_TEMP/pinto-fixture-inspect.log"); then
+            printf '%s\n' 'fixture-cleanup=unverified'
+            exit 1
+          fi
+          if [ -n "$ids" ]; then
+            printf '%s\n' 'fixture-cleanup=failed'
+            exit 1
+          fi
+          printf '%s\n' 'fixture-cleanup=verified-absent'
