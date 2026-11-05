@@ -17,7 +17,7 @@ jobs:
           ref: ${{ github.sha }}
           path: fixture-source
           sparse-checkout: |
-            test/measurement/browser-preload.mjs
+            test/measurement/fixtures/controlled-preload.mjs
             test/measurement/fixtures/controlled-post-action.mjs
             test/measurement/fixtures/controlled-screen.mjs
             test/measurement/convert.mjs
@@ -31,14 +31,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C app rev-parse HEAD)" = 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
-          file=fixture-source/test/measurement/browser-preload.mjs
-          test "$(sha256sum "$file" | cut -d' ' -f1)" = a27ce1901217a266463ddc8501b4a70b6562d10d4172cbd48b775b3f657e726e
-          cp "$file" app/test/measurement/browser-preload.mjs
+          file=fixture-source/test/measurement/fixtures/controlled-preload.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 070762d24fc8f57147e6bfdb9cd5c4f263b8ab98366281e684328b79e20da4eb
+          cp "$file" app/test/measurement/fixtures/controlled-preload.mjs
           file=fixture-source/test/measurement/fixtures/controlled-post-action.mjs
-          test "$(sha256sum "$file" | cut -d' ' -f1)" = 8d14e802f0954120944266fdc506022676efabc79eb5a0d8d608d049edb924c8
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = cf6822930e4755d7c6c00cc0b6d2e0c719bced6cdfc456cae53d65ddcb2eb72e
           cp "$file" app/test/measurement/fixtures/controlled-post-action.mjs
           file=fixture-source/test/measurement/fixtures/controlled-screen.mjs
-          test "$(sha256sum "$file" | cut -d' ' -f1)" = 5416de79e5297c61568a8adba344129c617644eba2c11f2ad490925235508f95
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 8f0fc772b285763a0bb8115398bc07a1e23b2daf063075d7f8f1223d2b477d5a
           cp "$file" app/test/measurement/fixtures/controlled-screen.mjs
           file=fixture-source/test/measurement/convert.mjs
           test "$(sha256sum "$file" | cut -d' ' -f1)" = d29fc9f507b060b82f2e69cc3fa38bfe5f3ca9d189af75aa096a6f980a7e8de1
