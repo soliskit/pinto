@@ -32,6 +32,18 @@ jobs:
           npm ci > /tmp/pinto-install.log 2>&1
       - name: Verify the existing browser version
         run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
+      - name: Report screened bootstrap status
+        shell: bash
+        run: |
+          node --input-type=module 2>/tmp/pinto-bootstrap-diagnostic.log <<'DIAGNOSTIC' || printf '%s\n' 'bootstrap-diagnostic=unavailable'
+          import { spawnSync } from 'node:child_process'
+          import { statSync } from 'node:fs'
+          const result = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' })
+          console.log('bootstrap-git=' + (result.status === 0 ? 'ok' : result.error?.code === 'ENOENT' ? 'missing' : /dubious ownership|unsafe repository/.test(result.stderr || '') ? 'ownership-rejected' : 'failed-other'))
+          console.log('bootstrap-checkout=' + (result.status === 0 ? result.stdout.trim() === '8795333b5d22290d1c2601c6ef5283c9f5fcd7fd' ? 'expected' : 'unexpected' : 'unverified'))
+          try { console.log('bootstrap-owner=' + (statSync('.').uid === process.getuid() ? 'same-user' : 'different-user')) } catch { console.log('bootstrap-owner=unavailable') }
+          console.log('bootstrap-node=' + (/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(process.version) ? process.version : 'unrecognized'))
+          DIAGNOSTIC
       - name: Verify the canonical suite
         env:
           SUITE: ${{ matrix.suite }}
@@ -39,8 +51,34 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/pinto-measure
+          set +e
           if [ "$SUITE" = slow ]; then
             node test/measurement/run.mjs --slow --out /tmp/pinto-measure > /tmp/pinto-measure.log 2>&1
           else
             node test/measurement/run.mjs --out /tmp/pinto-measure > /tmp/pinto-measure.log 2>&1
           fi
+          suite_exit=$?
+          set -e
+          SUITE_EXIT="$suite_exit" node --input-type=module 2>/tmp/pinto-suite-diagnostic.log <<'DIAGNOSTIC' || printf '%s\n' 'suite-diagnostic=unavailable'
+          import { readFileSync, existsSync } from 'node:fs'
+          let log = ''
+          try { log = readFileSync('/tmp/pinto-measure.log', 'utf8') } catch { console.log('suite-log=unavailable') }
+          const categories = [
+            ['git-ownership', /dubious ownership|unsafe repository/],
+            ['git-missing', /spawnSync git ENOENT|spawn git ENOENT/],
+            ['module-resolution', /ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED/],
+            ['syntax', /SyntaxError:/],
+            ['filesystem-permission', /EACCES|EPERM/],
+            ['lock-integrity', /third-party package check failed:/],
+            ['source-binding', /application source differs from the pinned production commit|source conflict for|source changed during measurement/],
+            ['suite-timeout', /suite exceeded 20 minutes/],
+            ['suite-nonzero', /(?:fast|slow) suite exited/],
+            ['report-validation', /no server coverage reports|stale coverage report rejected|cut-off or unreadable coverage report|coverage report has no result array|served script differs|served script content could not be retrieved|verification server never started/]
+          ]
+          const matches = categories.filter(([, pattern]) => pattern.test(log)).map(([name]) => name)
+          console.log('suite-exit=' + (/^[0-9]{1,3}$/.test(process.env.SUITE_EXIT || '') ? process.env.SUITE_EXIT : 'unavailable'))
+          console.log('suite-start-marker=' + (/measuring (fast|slow) suite at 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd into/.test(log) ? 'present' : 'absent'))
+          console.log('suite-report-file=' + (existsSync('/tmp/pinto-measure/report.json') ? 'present-unvalidated' : 'absent'))
+          console.log('suite-log-categories=' + (matches.length ? matches.join(',') : 'no-allowlisted-match'))
+          DIAGNOSTIC
+          exit "$suite_exit"
