@@ -27,7 +27,7 @@ jobs:
           set -euo pipefail
           test "$(git -C app rev-parse HEAD)" = 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
           file=fixture-source/test/measurement/fixtures/submit-navigation-only.mjs
-          test "$(sha256sum "$file" | cut -d' ' -f1)" = 77074e41ebd52f63192b01d20a0ade7a77b349eafc1e63bf316b212fff985f2b
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = b67c6c8b313c1ba3071ff4c0adafdf4107d4b021454a1e968ae99a8595c457a3
           cp "$file" app/test/measurement/fixtures/submit-navigation-only.mjs
       - name: Run only the two isolated measurement fixtures
         shell: bash
@@ -44,17 +44,50 @@ jobs:
             --mount "type=bind,src=$GITHUB_WORKSPACE/app,dst=/work" \
             --mount "type=bind,src=$node_root,dst=/node,readonly" --env "PATH=/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             mcr.microsoft.com/playwright:v1.64.1-noble \
-            bash -c 'set -euo pipefail
-              node -e "process.exit(/^v26[.]/.test(process.version)?0:1)"
-              npm ci >/tmp/install.log 2>&1
-              test "$(node -p "require(\"playwright/package.json\").version")" = 1.64.1
-              command -v timeout >/dev/null
-              timeout --signal=TERM --kill-after=5s 300s node test/measurement/fixtures/submit-navigation-only.mjs >/tmp/fixture.log 2>&1' \
+            bash -c 'set -uo pipefail
+              printf "%s\n" "fixture-phase=container-start"
+              if ! node -e "process.exit(/^v26[.]/.test(process.version)?0:1)" >/tmp/node.log 2>&1; then printf "%s\n" "fixture-phase=node-failed"; exit 1; fi
+              if ! npm ci >/tmp/install.log 2>&1; then printf "%s\n" "fixture-phase=install-failed"; exit 1; fi
+              if ! test "$(node -p "require(\"playwright/package.json\").version" 2>/tmp/version.log)" = 1.64.1; then printf "%s\n" "fixture-phase=version-failed"; exit 1; fi
+              if ! command -v timeout >/dev/null; then printf "%s\n" "fixture-phase=timeout-missing"; exit 1; fi
+              printf "%s\n" "fixture-phase=fixtures-start"
+              timeout --signal=TERM --kill-after=5s 300s node test/measurement/fixtures/submit-navigation-only.mjs >/tmp/fixture.log 2>&1
+              code=$?
+              node --input-type=module -e "import {readFileSync} from \"node:fs\"; const lines=readFileSync(\"/tmp/fixture.log\",\"utf8\").split(/\\r?\\n/); const allowed=new Set([\"pass\",\"fail\",\"setup\",\"child\",\"capture-validation\",\"capture-present\",\"merge\",\"convert\",\"credit-line-2\",\"credit-line-5\",\"credit-line-6\",\"credit-line-7\",\"credit-function\",\"unavailable\",\"browser-launch\",\"page-create\",\"goto\",\"action\",\"destination\",\"page-close\",\"browser-close\",\"server-close\",\"done\",\"other\",\"child-deadline\",\"child-possible-timeout\",\"spawn-missing\",\"child-failed\"]); for(const mode of [\"click\",\"enter\"]) for(const suffix of [\"\",\"-phase\",\"-child-phase\",\"-failure\"]) { const key=mode+suffix+\"=\"; const hits=lines.filter(line=>line.startsWith(key)); console.log(key+(hits.length===1 && allowed.has(hits[0].slice(key.length)) ? hits[0].slice(key.length) : \"unavailable\")); }" 2>/tmp/summary.log || printf "%s\n" "fixture-phase=summary-failed"
+              if [ "$code" = 0 ]; then printf "%s\n" "fixture-phase=fixtures-pass"; elif [ "$code" = 124 ] || [ "$code" = 137 ]; then printf "%s\n" "fixture-phase=fixtures-timeout"; else printf "%s\n" "fixture-phase=fixtures-failed"; fi
+              exit "$code"' \
             >/dev/null 2>&1
           set +e
           timeout --signal=TERM --kill-after=5s 1200s docker start --attach "$name" >"$RUNNER_TEMP/pinto-fixture-host.log" 2>&1
           status=$?
           set -e
+          set +e
+          node --input-type=module <<'SCREEN'
+          import { readFileSync } from 'node:fs'
+          let lines = []
+          try { lines = readFileSync(process.env.RUNNER_TEMP + '/pinto-fixture-host.log', 'utf8').split(/\r?\n/) } catch {}
+          const phases = new Set(['container-start', 'node-failed', 'install-failed', 'version-failed', 'timeout-missing', 'fixtures-start', 'summary-failed', 'fixtures-pass', 'fixtures-timeout', 'fixtures-failed'])
+          const found = lines.filter(line => line.startsWith('fixture-phase=') && phases.has(line.slice(14)))
+          console.log('fixture-last-phase=' + (found.length ? found.at(-1).slice(14) : 'unavailable'))
+          const values = {
+            '': new Set(['pass', 'fail']),
+            '-phase': new Set(['pass', 'setup', 'child', 'capture-validation', 'capture-present', 'merge', 'convert', 'credit-line-2', 'credit-line-5', 'credit-line-6', 'credit-line-7', 'credit-function']),
+            '-child-phase': new Set(['setup', 'browser-launch', 'page-create', 'goto', 'action', 'destination', 'page-close', 'browser-close', 'server-close', 'done', 'unavailable']),
+            '-failure': new Set(['other', 'child-deadline', 'child-possible-timeout', 'spawn-missing', 'child-failed'])
+          }
+          let valid = found.length > 0 && found.at(-1) === 'fixture-phase=fixtures-pass'
+          for (const mode of ['click', 'enter']) for (const [suffix, allowed] of Object.entries(values)) {
+            const key = mode + suffix + '='
+            const hits = lines.filter(line => line.startsWith(key))
+            const value = hits.length === 1 && allowed.has(hits[0].slice(key.length)) ? hits[0].slice(key.length) : 'unavailable'
+            console.log(key + value)
+            if ((suffix === '' || suffix === '-phase') && value !== 'pass') valid = false
+          }
+          process.exitCode = valid ? 0 : 1
+          SCREEN
+          summary_status=$?
+          set -e
+          if [ "$status" = 0 ] && [ "$summary_status" != 0 ]; then status=1; fi
           if [ "$status" = 0 ]; then printf '%s\n' 'fixture-pair=pass'; else printf '%s\n' 'fixture-pair=fail-or-timeout'; fi
           exit "$status"
       - name: Verify whole-container cleanup

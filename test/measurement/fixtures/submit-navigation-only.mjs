@@ -2,7 +2,7 @@
 // Uses the pinned preload and converter, not production app scenarios.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,11 +12,38 @@ import { toFileCoverage } from '../convert.mjs'
 import { validateBrowserDir } from '../validate.mjs'
 const here = fileURLToPath(new URL('.', import.meta.url))
 const results = []
+let activeMode = 'unavailable'
+let phase = 'setup'
+let childPhaseFile
+let failureKind = 'other'
+const childPhases = new Set([
+  'setup',
+  'browser-launch',
+  'page-create',
+  'goto',
+  'action',
+  'destination',
+  'page-close',
+  'browser-close',
+  'server-close',
+  'done'
+])
 async function proof(name, fn) {
   try {
     await fn()
+    console.log(activeMode + '-phase=pass')
     results.push(`ok - ${name}`)
   } catch {
+    let childPhase = 'unavailable'
+    try {
+      const value = readFileSync(childPhaseFile, 'utf8')
+      if (childPhases.has(value)) childPhase = value
+    } catch {
+      /* Missing marker remains unavailable. */
+    }
+    console.log(activeMode + '-phase=' + phase)
+    console.log(activeMode + '-child-phase=' + childPhase)
+    console.log(activeMode + '-failure=' + failureKind)
     results.push(`FAIL - ${name}`)
     process.exitCode = 1
   }
@@ -34,7 +61,11 @@ for (const fixtureMode of ['click', 'enter'])
   await proof(
     `synchronous ${fixtureMode} submit navigation preserves callback and helper credit`,
     async () => {
+      activeMode = fixtureMode
+      phase = 'setup'
+      failureKind = 'other'
       const dir = mkdtempSync(join(tmpdir(), 'fx-submit-nav-'))
+      childPhaseFile = join(dir, 'child.phase')
       const child = join(here, '.child-submit-nav.mjs')
       const src = [
         'function submitted() {',
@@ -52,6 +83,9 @@ for (const fixtureMode of ['click', 'enter'])
         `
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
+import { writeFileSync } from 'node:fs'
+const mark = (value) => writeFileSync(process.env.PINTO_MEASURE_DIR + '/child.phase', value)
+mark('setup')
 import { chromium } from 'playwright'
 const src = ${JSON.stringify(src)}
 const server = createServer((req, res) => {
@@ -63,21 +97,28 @@ const server = createServer((req, res) => {
 })
 await new Promise((resolve) => server.listen(0, resolve))
 const base = 'http://localhost:' + server.address().port
+mark('browser-launch')
 const browser = await chromium.launch()
 try {
   for (const mode of [process.env.FIXTURE_MODE]) {
+    mark('page-create')
     const page = await browser.newPage()
     try {
+      mark('goto')
       await page.goto(base + '/p')
+      mark('action')
       if (mode === 'click') await page.click('button')
       else await page.press('input', 'Enter')
+      mark('destination')
       await page.waitForURL(base + '/next')
       assert.equal(page.url(), base + '/next')
-    } finally { await page.close() }
+    } finally { mark('page-close'); await page.close() }
   }
-} finally { await browser.close(); await new Promise((resolve) => server.close(resolve)) }
+} finally { mark('browser-close'); await browser.close(); mark('server-close'); await new Promise((resolve) => server.close(resolve)) }
+mark('done')
 `
       )
+      phase = 'child'
       try {
         await new Promise((resolve, reject) => {
           const proc = spawn(
@@ -114,8 +155,17 @@ try {
             } catch {
               // The process group may already be gone; the container receipt is authoritative.
             }
-            if (error) reject(error)
-            else resolve()
+            if (error) {
+              failureKind =
+                error.message === 'child cleanup deadline exceeded'
+                  ? 'child-deadline'
+                  : /child exited (124|137)/.test(error.message)
+                    ? 'child-possible-timeout'
+                    : error.code === 'ENOENT'
+                      ? 'spawn-missing'
+                      : 'child-failed'
+              reject(error)
+            } else resolve()
           }
           const watchdog = setTimeout(
             () => finish(new Error('child cleanup deadline exceeded')),
@@ -133,11 +183,14 @@ try {
       } finally {
         rmSync(child, { force: true })
       }
+      phase = 'capture-validation'
       const entries = validateBrowserDir(join(dir, 'browser')).filter(
         (entry) => new URL(entry.url).pathname === '/event.js'
       )
+      phase = 'capture-present'
       assert(entries.length > 0, 'event script was not captured')
       const abs = tempScript('event.js', src)
+      phase = 'merge'
       const merged = mergeV8Entries(
         entries.map((entry) => ({
           url: '/event.js',
@@ -145,24 +198,30 @@ try {
           functions: entry.functions
         }))
       )
+      phase = 'convert'
       const cov = await toFileCoverage(merged.get('/event.js'), abs)
       const lines = lineHits(cov)
+      phase = 'credit-line-2'
       assert(
         lines[2] > 0,
         'helper body must be credited after synchronous navigation'
       )
+      phase = 'credit-line-5'
       assert(
         lines[5] > 0,
         'submit callback must be credited after synchronous navigation'
       )
+      phase = 'credit-line-6'
       assert(
         lines[6] > 0,
         'helper call must be credited after synchronous navigation'
       )
+      phase = 'credit-line-7'
       assert(lines[7] > 0, 'navigation statement must be credited')
       const helper = Object.entries(cov.fnMap).find(
         ([, fn]) => fn.name === 'submitted'
       )
+      phase = 'credit-function'
       assert(
         helper && cov.f[helper[0]] > 0,
         'named helper function must be credited'
