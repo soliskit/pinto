@@ -16,7 +16,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: fixture-source
-          sparse-checkout: test/measurement/fixtures/submit-navigation-only.mjs
+          sparse-checkout: |
+            test/measurement/convert.mjs
+            test/measurement/fixtures/submit-navigation-only.mjs
+            test/measurement/fixtures/source-stage.mjs
+            test/measurement/fixtures/source-stage-controls.mjs
+            test/measurement/fixtures/screen-stage.mjs
+            test/measurement/fixtures/screen-stage-controls.mjs
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v7
         with:
@@ -26,9 +32,24 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C app rev-parse HEAD)" = 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
+          file=fixture-source/test/measurement/convert.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = d29fc9f507b060b82f2e69cc3fa38bfe5f3ca9d189af75aa096a6f980a7e8de1
+          cp "$file" app/test/measurement/convert.mjs
           file=fixture-source/test/measurement/fixtures/submit-navigation-only.mjs
-          test "$(sha256sum "$file" | cut -d' ' -f1)" = 305ddffca1b554456c2a65f1c832eadcd2b7b09c3b269992fca6bcc7b9faa10a
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 0cdafb3417e341c6cc81e05a1bf819407e3de0f80311ab87ed482b0f8b0d31ff
           cp "$file" app/test/measurement/fixtures/submit-navigation-only.mjs
+          file=fixture-source/test/measurement/fixtures/source-stage.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = e3c78baac9ef45599c147aa3f6817aceb7e2ffb690c3c6e7b8403e25e6ff1ce7
+          cp "$file" app/test/measurement/fixtures/source-stage.mjs
+          file=fixture-source/test/measurement/fixtures/source-stage-controls.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 93114488374f0730e9a62dfd4f72d7f9944fb364166e2d6efca14294d8d46c73
+          cp "$file" app/test/measurement/fixtures/source-stage-controls.mjs
+          file=fixture-source/test/measurement/fixtures/screen-stage.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 11ed835c64191559947987d9c15c69beb0487217a8db89d4d9565da4b7ecb3ad
+          cp "$file" app/test/measurement/fixtures/screen-stage.mjs
+          file=fixture-source/test/measurement/fixtures/screen-stage-controls.mjs
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = 89c358fbc36c3a6c7b615fc750aedd6581b90332d6bb57c436a8c55747eb4c3f
+          cp "$file" app/test/measurement/fixtures/screen-stage-controls.mjs
       - name: Run only the two isolated measurement fixtures
         shell: bash
         run: |
@@ -51,9 +72,14 @@ jobs:
               if ! test "$(node -p "require(\"playwright/package.json\").version" 2>/tmp/version.log)" = 1.64.1; then printf "%s\n" "fixture-phase=version-failed"; exit 1; fi
               if ! command -v timeout >/dev/null; then printf "%s\n" "fixture-phase=timeout-missing"; exit 1; fi
               printf "%s\n" "fixture-phase=fixtures-start"
+              timeout --signal=TERM --kill-after=5s 30s bash -c "node test/measurement/fixtures/source-stage-controls.mjs && node test/measurement/fixtures/screen-stage-controls.mjs" >/tmp/controls.log 2>&1
+              controls=$?
+              if [ "$controls" != 0 ]; then printf "%s\n" "fixture-phase=controls-failed"; exit "$controls"; fi
               timeout --signal=TERM --kill-after=5s 300s node test/measurement/fixtures/submit-navigation-only.mjs >/tmp/fixture.log 2>&1
               code=$?
-              node --input-type=module -e "import {readFileSync} from \"node:fs\"; const lines=readFileSync(\"/tmp/fixture.log\",\"utf8\").split(/\\r?\\n/); const allowed=new Set([\"pass\",\"fail\",\"setup\",\"child\",\"capture-validation\",\"capture-present\",\"merge\",\"convert\",\"credit-line-2\",\"credit-line-5\",\"credit-line-6\",\"credit-line-7\",\"credit-function\",\"unavailable\",\"browser-launch\",\"page-create\",\"goto\",\"action\",\"destination\",\"page-close\",\"browser-close\",\"server-close\",\"done\",\"other\",\"child-deadline\",\"child-possible-timeout\",\"spawn-missing\",\"child-failed\"]); for(const mode of [\"click\",\"enter\"]) for(const suffix of [\"\",\"-phase\",\"-child-phase\",\"-failure\"]) { const key=mode+suffix+\"=\"; const hits=lines.filter(line=>line.startsWith(key)); console.log(key+(hits.length===1 && allowed.has(hits[0].slice(key.length)) ? hits[0].slice(key.length) : \"unavailable\")); }" 2>/tmp/summary.log || printf "%s\n" "fixture-phase=summary-failed"
+              node test/measurement/fixtures/screen-stage.mjs container /tmp/fixture.log 2>/tmp/summary.log
+              screen=$?
+              if [ "$screen" != 0 ]; then printf "%s\n" "fixture-phase=summary-failed"; if [ "$code" = 0 ]; then code=1; fi; fi
               if [ "$code" = 0 ]; then printf "%s\n" "fixture-phase=fixtures-pass"; elif [ "$code" = 124 ] || [ "$code" = 137 ]; then printf "%s\n" "fixture-phase=fixtures-timeout"; else printf "%s\n" "fixture-phase=fixtures-failed"; fi
               exit "$code"' \
             >/dev/null 2>&1
@@ -62,29 +88,7 @@ jobs:
           status=$?
           set -e
           set +e
-          node --input-type=module <<'SCREEN'
-          import { readFileSync } from 'node:fs'
-          let lines = []
-          try { lines = readFileSync(process.env.RUNNER_TEMP + '/pinto-fixture-host.log', 'utf8').split(/\r?\n/) } catch {}
-          const phases = new Set(['container-start', 'node-failed', 'install-failed', 'version-failed', 'timeout-missing', 'fixtures-start', 'summary-failed', 'fixtures-pass', 'fixtures-timeout', 'fixtures-failed'])
-          const found = lines.filter(line => line.startsWith('fixture-phase=') && phases.has(line.slice(14)))
-          console.log('fixture-last-phase=' + (found.length ? found.at(-1).slice(14) : 'unavailable'))
-          const values = {
-            '': new Set(['pass', 'fail']),
-            '-phase': new Set(['pass', 'setup', 'child', 'capture-validation', 'capture-present', 'merge', 'convert', 'credit-line-2', 'credit-line-5', 'credit-line-6', 'credit-line-7', 'credit-function']),
-            '-child-phase': new Set(['setup', 'browser-launch', 'page-create', 'goto', 'action', 'destination', 'page-close', 'browser-close', 'server-close', 'done', 'unavailable']),
-            '-failure': new Set(['other', 'child-deadline', 'child-possible-timeout', 'spawn-missing', 'child-failed'])
-          }
-          let valid = found.length > 0 && found.at(-1) === 'fixture-phase=fixtures-pass'
-          for (const mode of ['click', 'enter']) for (const [suffix, allowed] of Object.entries(values)) {
-            const key = mode + suffix + '='
-            const hits = lines.filter(line => line.startsWith(key))
-            const value = hits.length === 1 && allowed.has(hits[0].slice(key.length)) ? hits[0].slice(key.length) : 'unavailable'
-            console.log(key + value)
-            if ((suffix === '' || suffix === '-phase') && value !== 'pass') valid = false
-          }
-          process.exitCode = valid ? 0 : 1
-          SCREEN
+          node fixture-source/test/measurement/fixtures/screen-stage.mjs host "$RUNNER_TEMP/pinto-fixture-host.log"
           summary_status=$?
           set -e
           if [ "$status" = 0 ] && [ "$summary_status" != 0 ]; then status=1; fi
