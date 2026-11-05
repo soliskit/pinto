@@ -16,18 +16,7 @@
 // instead of printing a valid-looking number.
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { performance } from 'node:perf_hooks'
 import { chromium } from 'playwright'
-
-const fixtureTakes = new WeakMap()
-export async function takeAfterFixtureAction(page) {
-  if (process.env.PINTO_FIXTURE_EXPLICIT_TAKE !== '1') throw new Error('fixture take disabled')
-  const take = fixtureTakes.get(page)
-  if (!take) throw new Error('fixture page not instrumented')
-  const receipt = await take('fixture:after-action')
-  if (!receipt?.saved) throw new Error('explicit fixture take not saved')
-  return receipt
-}
 
 if (process.env.PINTO_MEASURE === '1') {
   const dir = process.env.PINTO_MEASURE_DIR
@@ -47,7 +36,6 @@ if (process.env.PINTO_MEASURE === '1') {
     'press'
   ]
   let seq = 0
-  let sessionSeq = 0
 
   async function instrument(page, context) {
     const session = await context.newCDPSession(page)
@@ -78,18 +66,7 @@ if (process.env.PINTO_MEASURE === '1') {
       }
     }
 
-    let queue = Promise.resolve()
-    let pageOrdinal = 0
-    const sessionId = ++sessionSeq
-    function take(why) {
-      const queuedAt = performance.now()
-      const ordinal = ++pageOrdinal
-      const operation = queue.then(() => capture(why, { queuedAt, ordinal }))
-      queue = operation.catch(() => {})
-      return operation
-    }
-    async function capture(why, { queuedAt, ordinal }) {
-      const initiatedAt = performance.now()
+    async function take(why) {
       const at = Date.now()
       seq += 1
       const name = `${process.pid}-${seq}.json`
@@ -101,14 +78,14 @@ if (process.env.PINTO_MEASURE === '1') {
         // is not missing data. Anything else is a failed capture and fails
         // the run. A crashed test process fails the suite itself, so a
         // capture indexed only after success can never look valid.
-        if (/closed/i.test(String(error))) return { saved: false }
+        if (/closed/i.test(String(error))) return
         writeFileSync(
           join(captureDir, `${name}.failed`),
           `takePreciseCoverage threw during ${why}: ${error}\n`
         )
         return
       }
-      const respondedAt = performance.now()
+      appendFileSync(indexFile, `${name}\t${why}\n`)
       const entries = []
       for (const entry of result) {
         if (!entry.url) continue
@@ -118,25 +95,18 @@ if (process.env.PINTO_MEASURE === '1') {
           functions: entry.functions
         })
       }
-      const sourceFetchedAt = performance.now()
       writeFileSync(
         join(captureDir, name),
         JSON.stringify({
           pid: process.pid,
-          sessionId, ordinal, queuedAt, initiatedAt, respondedAt, sourceFetchedAt,
           why,
           at,
           navigations: navLog.slice(),
           entries
         })
       )
-      appendFileSync(indexFile, `${name}\t${why}\n`)
-      const receipt = { saved: true, name, sessionId, ordinal, queuedAt, initiatedAt, respondedAt, sourceFetchedAt, writtenAt: performance.now() }
-      appendFileSync(join(captureDir, 'writes.receipts'), JSON.stringify(receipt) + '\n')
-      return receipt
     }
 
-    fixtureTakes.set(page, take)
     const poll = setInterval(() => {
       if (!page.isClosed()) take('poll').catch(() => {})
     }, POLL_MS)
