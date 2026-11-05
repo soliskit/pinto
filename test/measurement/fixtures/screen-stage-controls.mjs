@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { takeKeys } from './take-stage.mjs'
 const dir = mkdtempSync(join(tmpdir(), 'pinto-screen-controls-'))
 const target = fileURLToPath(new URL('./screen-stage.mjs', import.meta.url))
 const marker = 'PRIVATE_SCREEN_SENTINEL_71dbe2'
@@ -15,7 +16,7 @@ const keys = [
   'direct-line2-positive',
   'wrapper-line2-positive'
 ]
-const base =
+const originalBase =
   modes
     .flatMap((mode) => [
       mode + '=pass',
@@ -25,6 +26,20 @@ const base =
       ...keys.map((key) => mode + '-' + key + '=yes')
     ])
     .join('\n') + '\n'
+const metadataBase =
+  modes
+    .flatMap((mode) =>
+      takeKeys.map(
+        (suffix) =>
+          mode +
+          '-' +
+          suffix +
+          '=' +
+          (['take-metadata', 'take-order'].includes(suffix) ? 'valid' : '0')
+      )
+    )
+    .join('\n') + '\n'
+const base = originalBase + metadataBase
 const key = 'click-source-match='
 const cases = [
   { name: 'valid', input: base, value: 'yes', code: 0 },

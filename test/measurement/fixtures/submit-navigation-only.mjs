@@ -14,6 +14,7 @@ import {
   directLine2Positive,
   wrapperLine2Positive
 } from './source-stage.mjs'
+import { emptyTakeSummary, readTakeSummary } from './take-stage.mjs'
 import { mergeV8Entries } from '../v8merge.mjs'
 import { toFileCoverage } from '../convert.mjs'
 import { validateBrowserDir } from '../validate.mjs'
@@ -26,7 +27,8 @@ const observations = Object.fromEntries(
       'source-match': 'inconclusive',
       'raw-helper-positive': 'inconclusive',
       'direct-line2-positive': 'inconclusive',
-      'wrapper-line2-positive': 'inconclusive'
+      'wrapper-line2-positive': 'inconclusive',
+      ...emptyTakeSummary()
     }
   ])
 )
@@ -208,6 +210,10 @@ mark('done')
       phase = 'capture-validation'
       const entries = validateBrowserDir(join(dir, 'browser')).filter(
         (entry) => new URL(entry.url).pathname === '/event.js'
+      )
+      Object.assign(
+        observations[fixtureMode],
+        readTakeSummary(join(dir, 'browser'), src, fixtureMode)
       )
       phase = 'capture-present'
       assert(entries.length > 0, 'event script was not captured')

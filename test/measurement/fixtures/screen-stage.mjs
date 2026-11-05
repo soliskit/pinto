@@ -1,6 +1,7 @@
 // Atomic finite output: raw input and caught error text are never returned.
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { takeKeys } from './take-stage.mjs'
 const modes = ['click', 'enter']
 const diagnostics = [
   'source-match',
@@ -98,6 +99,17 @@ export function screen(text, layer) {
       if (value === 'inconclusive') valid = false
     }
   }
+  // All metadata keys are finite and screen through both real layers.
+  for (const mode of modes)
+    for (const suffix of takeKeys) {
+      const key = mode + '-' + suffix + '='
+      const allowed = ['take-metadata', 'take-order'].includes(suffix)
+        ? ['valid', 'inconclusive']
+        : ['0', '1', '2plus', 'inconclusive']
+      const value = one(lines, key, allowed, 'inconclusive')
+      output.push(key + value)
+      if (value === 'inconclusive') valid = false
+    }
   return { stdout: output.join('\n') + '\n', code: valid ? 0 : 1 }
 }
 // The CLI is used by both real workflow screen layers.
