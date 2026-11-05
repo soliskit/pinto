@@ -13,8 +13,13 @@ import { validateBrowserDir } from '../validate.mjs'
 const here = fileURLToPath(new URL('.', import.meta.url))
 const results = []
 async function proof(name, fn) {
-  try { await fn(); results.push(`ok - ${name}`) }
-  catch { results.push(`FAIL - ${name}`); process.exitCode = 1 }
+  try {
+    await fn()
+    results.push(`ok - ${name}`)
+  } catch {
+    results.push(`FAIL - ${name}`)
+    process.exitCode = 1
+  }
 }
 const lineHits = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
 function tempScript(name, content) {
@@ -25,23 +30,26 @@ function tempScript(name, content) {
 
 // Regression proposal: exercise the real preload at the event that navigates.
 // This is deliberately not a production app scenario or a coverage exemption.
-for (const fixtureMode of ['click', 'enter']) await proof(
-  `synchronous ${fixtureMode} submit navigation preserves callback and helper credit`,
-  async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'fx-submit-nav-'))
-    const child = join(here, '.child-submit-nav.mjs')
-    const src = [
-      'function submitted() {',
-      '  window.__submitted = true',
-      '}',
-      'document.querySelector("form").addEventListener("submit", (event) => {',
-      '  event.preventDefault()',
-      '  submitted()',
-      '  location.assign("/next")',
-      '})',
-      ''
-    ].join('\n')
-    writeFileSync(child, `
+for (const fixtureMode of ['click', 'enter'])
+  await proof(
+    `synchronous ${fixtureMode} submit navigation preserves callback and helper credit`,
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'fx-submit-nav-'))
+      const child = join(here, '.child-submit-nav.mjs')
+      const src = [
+        'function submitted() {',
+        '  window.__submitted = true',
+        '}',
+        'document.querySelector("form").addEventListener("submit", (event) => {',
+        '  event.preventDefault()',
+        '  submitted()',
+        '  location.assign("/next")',
+        '})',
+        ''
+      ].join('\n')
+      writeFileSync(
+        child,
+        `
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { chromium } from 'playwright'
@@ -68,54 +76,103 @@ try {
     } finally { await page.close() }
   }
 } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)) }
-`)
-    try {
-      await new Promise((resolve, reject) => {
-        const proc = spawn('timeout', ['--signal=TERM', '--kill-after=5s', '90s', process.execPath, child], {
-          detached: true,
-          cwd: join(here, '..', '..'),
-          env: {
-            ...process.env,
-            PINTO_MEASURE: '1',
-            PINTO_MEASURE_DIR: dir,
-            FIXTURE_MODE: fixtureMode,
-            NODE_OPTIONS: `--import ${join(here, '..', 'browser-preload.mjs')}`
-          },
-          stdio: 'ignore'
+`
+      )
+      try {
+        await new Promise((resolve, reject) => {
+          const proc = spawn(
+            'timeout',
+            [
+              '--signal=TERM',
+              '--kill-after=5s',
+              '90s',
+              process.execPath,
+              child
+            ],
+            {
+              detached: true,
+              cwd: join(here, '..', '..'),
+              env: {
+                ...process.env,
+                PINTO_MEASURE: '1',
+                PINTO_MEASURE_DIR: dir,
+                FIXTURE_MODE: fixtureMode,
+                NODE_OPTIONS: `--import ${join(here, '..', 'browser-preload.mjs')}`
+              },
+              stdio: 'ignore'
+            }
+          )
+          let settled = false
+          function finish(error) {
+            if (settled) return
+            settled = true
+            clearTimeout(watchdog)
+            // Best effort on all outcomes. Host container teardown is the final
+            // authority for Chromium descendants that create their own groups.
+            try {
+              process.kill(-proc.pid, 'SIGKILL')
+            } catch {
+              // The process group may already be gone; the container receipt is authoritative.
+            }
+            if (error) reject(error)
+            else resolve()
+          }
+          const watchdog = setTimeout(
+            () => finish(new Error('child cleanup deadline exceeded')),
+            100_000
+          )
+          proc.once('exit', (code, signal) =>
+            finish(
+              code === 0
+                ? undefined
+                : new Error(`child exited ${code}/${signal}`)
+            )
+          )
+          proc.once('error', (error) => finish(error))
         })
-        let settled = false
-        function finish(error) {
-          if (settled) return
-          settled = true
-          clearTimeout(watchdog)
-          // Best effort on all outcomes. Host container teardown is the final
-          // authority for Chromium descendants that create their own groups.
-          try { process.kill(-proc.pid, 'SIGKILL') } catch {}
-          error ? reject(error) : resolve()
-        }
-        const watchdog = setTimeout(() => finish(new Error('child cleanup deadline exceeded')), 100_000)
-        proc.once('exit', (code, signal) => finish(code === 0 ? undefined : new Error(`child exited ${code}/${signal}`)))
-        proc.once('error', (error) => finish(error))
-      })
-    } finally { rmSync(child, { force: true }) }
-    const entries = validateBrowserDir(join(dir, 'browser'))
-      .filter((entry) => new URL(entry.url).pathname === '/event.js')
-    assert(entries.length > 0, 'event script was not captured')
-    const abs = tempScript('event.js', src)
-    const merged = mergeV8Entries(entries.map((entry) => ({
-      url: '/event.js', source: entry.source, functions: entry.functions
-    })))
-    const cov = await toFileCoverage(merged.get('/event.js'), abs)
-    const lines = lineHits(cov)
-    assert(lines[2] > 0, 'helper body must be credited after synchronous navigation')
-    assert(lines[5] > 0, 'submit callback must be credited after synchronous navigation')
-    assert(lines[6] > 0, 'helper call must be credited after synchronous navigation')
-    assert(lines[7] > 0, 'navigation statement must be credited')
-    const helper = Object.entries(cov.fnMap).find(([, fn]) => fn.name === 'submitted')
-    assert(helper && cov.f[helper[0]] > 0, 'named helper function must be credited')
-  }
-)
+      } finally {
+        rmSync(child, { force: true })
+      }
+      const entries = validateBrowserDir(join(dir, 'browser')).filter(
+        (entry) => new URL(entry.url).pathname === '/event.js'
+      )
+      assert(entries.length > 0, 'event script was not captured')
+      const abs = tempScript('event.js', src)
+      const merged = mergeV8Entries(
+        entries.map((entry) => ({
+          url: '/event.js',
+          source: entry.source,
+          functions: entry.functions
+        }))
+      )
+      const cov = await toFileCoverage(merged.get('/event.js'), abs)
+      const lines = lineHits(cov)
+      assert(
+        lines[2] > 0,
+        'helper body must be credited after synchronous navigation'
+      )
+      assert(
+        lines[5] > 0,
+        'submit callback must be credited after synchronous navigation'
+      )
+      assert(
+        lines[6] > 0,
+        'helper call must be credited after synchronous navigation'
+      )
+      assert(lines[7] > 0, 'navigation statement must be credited')
+      const helper = Object.entries(cov.fnMap).find(
+        ([, fn]) => fn.name === 'submitted'
+      )
+      assert(
+        helper && cov.f[helper[0]] > 0,
+        'named helper function must be credited'
+      )
+    }
+  )
 
-
-for (const [index, result] of results.entries()) console.log((index === 0 ? 'click=' : 'enter=') + (result.startsWith('ok -') ? 'pass' : 'fail'))
+for (const [index, result] of results.entries())
+  console.log(
+    (index === 0 ? 'click=' : 'enter=') +
+      (result.startsWith('ok -') ? 'pass' : 'fail')
+  )
 if (results.length !== 2) process.exitCode = 1
