@@ -73,12 +73,23 @@ export function completeFunctionLists(coverageList) {
 }
 
 export async function toFileCoverage(merged, path) {
+  if (typeof merged?.source !== 'string')
+    throw new Error('coverage conversion requires a defined source')
+  if (merged.source.length === 0) {
+    const lists = merged.coverageList || [merged.functions]
+    for (const functions of lists)
+      for (const fn of functions || [])
+        for (const range of fn.ranges || [])
+          if (range.startOffset !== 0 || range.endOffset !== 0)
+            throw new Error('coverage range exceeds empty source')
+    return createFileCoverage(path).toJSON()
+  }
   const coverages = []
   for (const functions of completeFunctionLists(
     merged.coverageList || [merged.functions]
   )) {
     const converter = new V8ToIstanbul(path, 0, {
-      sources: { '': merged.source }
+      source: merged.source
     })
     await converter.load()
     converter.applyCoverage(functions)
