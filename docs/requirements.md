@@ -17,6 +17,7 @@ The requirements below are numbered REQ 1 and up; the earlier decision-log numbe
 | REQ 7 | "Stop Video, Mute, and End each stop their camera or microphone capture. Capture starts only when joining." TARGET. The buttons now read Turn Off Camera, Mute, and Leave, so the rule reads: Turn Off Camera stops camera capture, Mute stops microphone capture, Leave stops both, and capture starts only at Join. |
 | REQ 8 | "Callers who are not in the room are blocked. Pretending to be another person can no longer end a call." TARGET. |
 | REQ 9 | Server behavior the README promises: it "serves plain HTML, CSS, and JavaScript, with no build step," "gives browsers connection settings, including Twilio relays when configured," and without Twilio credentials "browsers get a public STUN server only" [read: `README.md` lines 9, 12 and 70]. TODAY. |
+| REQ 10 | "A room link with only an added trailing slash opens the same room." [read: [issue #261](https://github.com/soliskit/pinto/issues/261), Expected; the issue identifies this as the existing room-link rule] TODAY. |
 
 ## Planned services, scoped line by line
 
