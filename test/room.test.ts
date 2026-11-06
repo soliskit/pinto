@@ -473,6 +473,10 @@ describe('before joining', () => {
     await eventually(audioStates(room.page), ['live'], 3_000)
     await room.page.click('#mute')
     await eventually(audioStates(room.page), ['ended'], 3_000)
+
+    // Unmute replaces the stopped microphone with a live track
+    await room.page.click('#mute')
+    await eventually(audioStates(room.page), ['ended', 'live'], 3_000)
   })
 
   test('Turn On Camera shows the camera, and Turn Off Camera the photo again', async () => {
