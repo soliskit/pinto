@@ -25,6 +25,11 @@ if (process.env.PINTO_MEASURE === '1') {
   mkdirSync(captureDir, { recursive: true })
   const indexFile = join(captureDir, 'captures.index')
   const POLL_MS = 250
+  // Off by default so the canonical measurement is unchanged. With
+  // PINTO_MEASURE_AFTER_ACTION=1 a capture is also taken right after each
+  // action API (click, dblclick, tap, press) returns.
+  const AFTER_ACTION = process.env.PINTO_MEASURE_AFTER_ACTION === '1'
+  const ACTION_APIS = new Set(['click', 'dblclick', 'tap', 'press'])
   const NAV_APIS = [
     'goto',
     'reload',
@@ -116,7 +121,26 @@ if (process.env.PINTO_MEASURE === '1') {
       const original = page[api].bind(page)
       page[api] = async (...args) => {
         await take(`before:${api}`)
-        return original(...args)
+        if (!AFTER_ACTION || !ACTION_APIS.has(api)) return original(...args)
+        const settled = await original(...args).then(
+          (value) => ({ value }),
+          (error) => ({ error })
+        )
+        if (!page.isClosed()) {
+          try {
+            await take(`after:${api}`)
+          } catch (error) {
+            // Never replace the action's own result or error; record the
+            // failed capture the same way take() does so the run fails.
+            seq += 1
+            writeFileSync(
+              join(captureDir, `${process.pid}-${seq}.json.failed`),
+              `after:${api} capture threw: ${error}\n`
+            )
+          }
+        }
+        if ('error' in settled) throw settled.error
+        return settled.value
       }
     }
 
