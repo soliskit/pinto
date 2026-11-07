@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd
+          ref: 7fbb6c26cd0d5cd053b2d6e50d9fd9fe47baac37
       - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
@@ -57,7 +57,7 @@ jobs:
           import { statSync } from 'node:fs'
           const result = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' })
           console.log('bootstrap-git=' + (result.status === 0 ? 'ok' : result.error?.code === 'ENOENT' ? 'missing' : /dubious ownership|unsafe repository/.test(result.stderr || '') ? 'ownership-rejected' : 'failed-other'))
-          console.log('bootstrap-checkout=' + (result.status === 0 ? result.stdout.trim() === '8795333b5d22290d1c2601c6ef5283c9f5fcd7fd' ? 'expected' : 'unexpected' : 'unverified'))
+          console.log('bootstrap-checkout=' + (result.status === 0 ? result.stdout.trim() === '7fbb6c26cd0d5cd053b2d6e50d9fd9fe47baac37' ? 'expected' : 'unexpected' : 'unverified'))
           try { console.log('bootstrap-owner=' + (statSync('.').uid === process.getuid() ? 'same-user' : 'different-user')) } catch { console.log('bootstrap-owner=unavailable') }
           console.log('bootstrap-node=' + (/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(process.version) ? process.version : 'unrecognized'))
           DIAGNOSTIC
@@ -71,7 +71,7 @@ jobs:
             printf '%s\n' 'checkout-pin=unverified'
             exit 1
           fi
-          if [ "$actual_commit" != 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd ]; then
+          if [ "$actual_commit" != 7fbb6c26cd0d5cd053b2d6e50d9fd9fe47baac37 ]; then
             printf '%s\n' 'checkout-pin=unexpected'
             exit 1
           fi
@@ -103,7 +103,7 @@ jobs:
           ]
           const matches = categories.filter(([, pattern]) => pattern.test(log)).map(([name]) => name)
           console.log('suite-exit=' + (/^[0-9]{1,3}$/.test(process.env.SUITE_EXIT || '') ? process.env.SUITE_EXIT : 'unavailable'))
-          console.log('suite-start-marker=' + (/measuring (fast|slow) suite at 8795333b5d22290d1c2601c6ef5283c9f5fcd7fd into/.test(log) ? 'present' : 'absent'))
+          console.log('suite-start-marker=' + (/measuring (fast|slow) suite at 7fbb6c26cd0d5cd053b2d6e50d9fd9fe47baac37 into/.test(log) ? 'present' : 'absent'))
           console.log('suite-report-file=' + (existsSync('/tmp/pinto-measure/report.json') ? 'present-unvalidated' : 'absent'))
           console.log('suite-log-categories=' + (matches.length ? matches.join(',') : 'no-allowlisted-match'))
           DIAGNOSTIC
