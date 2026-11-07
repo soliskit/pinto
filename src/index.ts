@@ -122,6 +122,24 @@ peerServer.on('disconnect', (client: IClient) => {
   console.log(`PeerClient disconnected: ${client.getId()}`)
 })
 
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EACCES') {
+    console.error(
+      `Pinto cannot listen on port ${PORT}: permission denied. ` +
+        `Set PORT to a port the server is permitted to use, for example PORT=3000.`
+    )
+    process.exit(1)
+  }
+  if (error.code === 'EADDRINUSE') {
+    console.error(
+      `Pinto cannot listen on port ${PORT}: the port is already in use. ` +
+        `Set PORT to a free port.`
+    )
+    process.exit(1)
+  }
+  throw error
+})
+
 server.listen(PORT, () => {
   console.log(`Pinto listening on http://localhost:${PORT}`)
 })
