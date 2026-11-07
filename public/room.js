@@ -426,7 +426,24 @@ socket.on('user-connected', (peerId) => {
   // stray membership can still announce joiners to it
   if (!joined) return
   roomPeers.add(peerId)
-  addCall(peer.call(peerId, outgoing))
+  // While the pairing connection is down, peer.call returns undefined and
+  // addCall would throw; say why the joiner is not being called instead.
+  if (peer.disconnected) {
+    showError(
+      'Connection problem',
+      'The connection to the server is down, so the person who just joined cannot be called.'
+    )
+    return
+  }
+  const call = peer.call(peerId, outgoing)
+  if (!call) {
+    showError(
+      'Connection problem',
+      'The call to the person who just joined could not be started.'
+    )
+    return
+  }
+  addCall(call)
 })
 socket.on('user-disconnected', (peerId) => {
   roomPeers.delete(peerId)
