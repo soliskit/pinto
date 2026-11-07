@@ -127,8 +127,14 @@ try {
       ]
     }
     for (const takes of [
-      [[module, zero], [module, called]],
-      [[module, called], [module, zero]]
+      [
+        [module, zero],
+        [module, called]
+      ],
+      [
+        [module, called],
+        [module, zero]
+      ]
     ]) {
       const cov = await toFileCoverage(
         { source: text, coverageList: takes },
