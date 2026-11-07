@@ -278,6 +278,12 @@ function render() {
 }
 
 photo.addEventListener('load', drawPhoto)
+photo.addEventListener('error', () => {
+  showError(
+    'Photo',
+    "Pinto can't show that photo: the file could not be decoded. The last photo shown stays on the call."
+  )
+})
 // A canvas only produces frames when painted, so keep painting for peers
 // who join later
 setInterval(drawPhoto, PHOTO_REDRAW_INTERVAL_MS)
