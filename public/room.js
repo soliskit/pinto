@@ -225,6 +225,7 @@ function addCall(call) {
   const video = document.createElement('video')
   video.autoplay = true
   video.playsInline = true
+  video.setAttribute('aria-label', 'Remote video')
   calls.set(call.peer, { call, video })
   call.on('stream', (stream) => {
     video.srcObject = stream
