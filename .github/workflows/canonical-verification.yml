@@ -10,7 +10,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
       options: --init --ipc=host
     timeout-minutes: 25
     strategy:
@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           npm ci > /tmp/pinto-install.log 2>&1
       - name: Verify the existing browser version
-        run: node -e "process.exit(require('playwright/package.json').version==='1.64.1'?0:1)"
+        run: node -e "process.exit(require('playwright/package.json').version==='1.65.0'?0:1)"
       - name: Trust only this ephemeral checkout for Git
         shell: bash
         run: |
