@@ -235,7 +235,12 @@ function controls(page: Page) {
       hint: byId('self-label').title,
       error: byId('error').hidden
         ? null
-        : `${byId('error-title').textContent}: ${byId('error-message').textContent}`
+        : [...byId('error').children]
+            .map((entry) => {
+              const [heading, message] = entry.children
+              return `${heading?.textContent ?? ''}: ${message?.textContent ?? ''}`
+            })
+            .join(' | ')
     }
   })
 }
