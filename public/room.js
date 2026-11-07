@@ -168,11 +168,6 @@ async function applyCamera() {
           media.getVideoTracks()[0].stop()
           return
         }
-        if (!cameraOn) {
-          // The choice changed while asking
-          media.getVideoTracks()[0].stop()
-          return
-        }
         cameraTrack = media.getVideoTracks()[0]
       } catch (error) {
         if (serial !== joinSerial || request !== cameraRequest) return
@@ -206,11 +201,6 @@ async function applyMic() {
       const media = await navigator.mediaDevices.getUserMedia({ audio: true })
       if (serial !== joinSerial || request !== micRequest) {
         // Leave, a new Join or a toggle retired this request
-        media.getAudioTracks()[0].stop()
-        return
-      }
-      if (muted) {
-        // The choice changed while asking
         media.getAudioTracks()[0].stop()
         return
       }
