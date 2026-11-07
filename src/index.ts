@@ -34,6 +34,24 @@ const peerServer = ExpressPeerServer(server, {
   }
 })
 
+app.use((req, res, next) => {
+  // Dot-only room names are invalid under the room-link rule; refuse them
+  // before path normalization, static file handling or the room route can
+  // redirect or serve anything for them
+  let pathname: string
+  try {
+    pathname = decodeURIComponent(req.originalUrl.split('?')[0])
+  } catch {
+    next()
+    return
+  }
+  const match = /^\/room\/(\.+)\/?$/.exec(pathname)
+  if (match) {
+    res.status(404).send(`"${match[1]}" is not a valid room name.`)
+    return
+  }
+  next()
+})
 app.use(express.static(publicDir))
 app.get('/vendor/peerjs.min.js', (_req, res) => {
   res.sendFile(peerjsClient)

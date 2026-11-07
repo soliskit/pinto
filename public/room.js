@@ -8,8 +8,6 @@ const DEFAULT_PHOTO = '/no-video.svg'
 const roomName = decodeURIComponent(location.pathname.slice('/room/'.length))
 
 const errorBox = element('error', HTMLDivElement)
-const errorTitle = element('error-title', HTMLHeadingElement)
-const errorMessage = element('error-message', HTMLHeadingElement)
 const title = element('title', HTMLHeadingElement)
 const status = element('status', HTMLHeadingElement)
 const attendees = element('attendees', HTMLDivElement)
@@ -248,13 +246,23 @@ function removeCall(peerId) {
   render()
 }
 
+// One entry per kind of problem, so concurrent problems all stay visible
+const errorEntries = new Map()
+
 /**
  * @param {string} heading
  * @param {string} message
  */
 function showError(heading, message) {
-  errorTitle.textContent = heading
-  errorMessage.textContent = message
+  let entry = errorEntries.get(heading)
+  if (!entry) {
+    entry = document.createElement('div')
+    entry.append(document.createElement('h1'), document.createElement('h2'))
+    errorBox.append(entry)
+    errorEntries.set(heading, entry)
+  }
+  entry.firstChild.textContent = heading
+  entry.lastChild.textContent = message
   errorBox.hidden = false
 }
 

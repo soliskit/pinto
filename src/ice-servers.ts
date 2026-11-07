@@ -40,6 +40,11 @@ export async function getIceServers(): Promise<IceServer[]> {
       username,
       credential
     }))
+    // An empty answer gives calls no relay candidates, so treat it as a
+    // failure and fall back instead of caching it as a good answer
+    if (servers.length === 0) {
+      throw Error('Twilio returned no ICE servers')
+    }
     // TURN credentials expire after `ttl` seconds, so refresh at half of it
     cache = { servers, expiresAt: Date.now() + Number(token.ttl) * 500 }
     return servers

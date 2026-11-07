@@ -17,14 +17,51 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/vendor/peerjs.min.js" defer></script>
+    <script>
+      // Reports page-level failures even when room.js never runs: every
+      // failure a person can hit names its cause instead of leaving Join
+      // disabled without a word. Capture phase catches resource load errors.
+      ;(() => {
+        const showPageError = (message) => {
+          const box = document.getElementById('error')
+          if (!box) return
+          let entry = document.getElementById('page-error')
+          if (!entry) {
+            entry = document.createElement('div')
+            entry.id = 'page-error'
+            entry.append(document.createElement('h1'), document.createElement('h2'))
+            box.append(entry)
+          }
+          entry.firstChild.textContent = 'Page error'
+          entry.lastChild.textContent = message
+          box.hidden = false
+        }
+        window.addEventListener(
+          'error',
+          (event) => {
+            if (event.target !== window && event.target?.src) {
+              showPageError(
+                `Part of the page did not load: ${new URL(event.target.src).pathname}`
+              )
+            } else if (event.message) {
+              showPageError(`Pinto hit an error: ${event.message}`)
+            }
+          },
+          true
+        )
+        window.addEventListener('unhandledrejection', (event) => {
+          const reason = event.reason
+          showPageError(
+            `Pinto hit an error: ${reason instanceof Error ? reason.message : String(reason)}`
+          )
+        })
+      })()
+    </script>
     <script src="/socket.io/socket.io.min.js" defer></script>
     <script type="module" src="/room.js"></script>
   </head>
   <body>
-    <div id="error" hidden>
-      <h1 id="error-title"></h1>
-      <h2 id="error-message"></h2>
-    </div>
+    <div id="error" hidden></div>
     <h1 id="title"></h1>
     <h2 id="status"></h2>
     <div class="attendees">
