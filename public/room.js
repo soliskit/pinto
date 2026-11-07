@@ -24,6 +24,9 @@ const PHOTO_CANVAS_HEIGHT = 300
 const PHOTO_MAX_SIDE = 288
 const PHOTO_REDRAW_INTERVAL_MS = 1000
 const PEER_RECONNECT_DELAY_MS = 5000
+// After a shown connection error the app retries on its own a bounded number
+// of times, then stops and keeps the error shown; recovery is then a reload
+const PEER_RECONNECT_MAX_ATTEMPTS = 3
 
 // While the camera is off, peers see a photo drawn on a canvas
 const canvas = document.createElement('canvas')
@@ -388,7 +391,11 @@ callButton.addEventListener('click', () => {
   render()
 })
 
-peer.on('open', render)
+let reconnectAttempts = 0
+peer.on('open', () => {
+  reconnectAttempts = 0
+  render()
+})
 /** Answers a call from a room member and closes any other */
 function answerIfMember(/** @type {MediaConnection} */ call) {
   if (!roomPeers.has(call.peer)) {
@@ -414,7 +421,10 @@ peer.on('call', (call) => {
 })
 peer.on('disconnected', () => {
   setTimeout(() => {
-    if (peer.disconnected && !peer.destroyed) peer.reconnect()
+    if (!peer.disconnected || peer.destroyed) return
+    if (reconnectAttempts >= PEER_RECONNECT_MAX_ATTEMPTS) return
+    reconnectAttempts += 1
+    peer.reconnect()
   }, PEER_RECONNECT_DELAY_MS)
 })
 peer.on('error', (error) =>
