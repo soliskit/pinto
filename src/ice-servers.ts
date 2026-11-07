@@ -9,17 +9,23 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
 
 let cache: { servers: IceServer[]; expiresAt: number } | undefined
+let inFlight: Promise<IceServer[]> | undefined
 
 /**
  * STUN and TURN servers for the browser's RTCPeerConnection. With Twilio
  * credentials set, returns Twilio's servers, which include TURN relays so
  * calls also connect on strict networks. Otherwise, or if Twilio fails,
- * falls back to a public STUN server.
+ * falls back to a public STUN server. Concurrent cold calls share one
+ * upstream fetch.
  */
 export async function getIceServers(): Promise<IceServer[]> {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return PUBLIC_STUN
   if (cache && cache.expiresAt > Date.now()) return cache.servers
+  inFlight ??= fetchIceServers().finally(() => (inFlight = undefined))
+  return inFlight
+}
 
+async function fetchIceServers(): Promise<IceServer[]> {
   try {
     const credentials = Buffer.from(
       `${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`
