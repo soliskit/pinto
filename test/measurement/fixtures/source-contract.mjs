@@ -99,6 +99,59 @@ try {
     assert.equal(lines(a)[2], 0)
     assert.deepEqual(shape(a), shape(b))
   })
+  await proof('uncalled-function-does-not-credit-child', async () => {
+    const text =
+      'function g(flag) {\n  if (flag) {\n    return 1\n  }\n  return 0\n}\ng(false)\n'
+    const end = text.indexOf('\n}\n') + 2
+    const start = text.indexOf('return 1')
+    const module = {
+      functionName: '',
+      isBlockCoverage: true,
+      ranges: [{ startOffset: 0, endOffset: text.length, count: 1 }]
+    }
+    const zero = {
+      functionName: 'g',
+      isBlockCoverage: false,
+      ranges: [{ startOffset: 0, endOffset: end, count: 0 }]
+    }
+    const called = {
+      functionName: 'g',
+      isBlockCoverage: true,
+      ranges: [
+        { startOffset: 0, endOffset: end, count: 1 },
+        {
+          startOffset: start,
+          endOffset: start + 'return 1'.length,
+          count: 0
+        }
+      ]
+    }
+    for (const takes of [
+      [
+        [module, zero],
+        [module, called]
+      ],
+      [
+        [module, called],
+        [module, zero]
+      ]
+    ]) {
+      const cov = await toFileCoverage(
+        { source: text, coverageList: takes },
+        path
+      )
+      const child = Object.entries(cov.branchMap).find(
+        ([, br]) => br.loc.start.line === 3 && br.loc.start.column === 4
+      )
+      assert(child, 'the zero child location remains in the report')
+      assert.equal(
+        cov.b[child[0]][0],
+        0,
+        'an uncalled take cannot credit the child'
+      )
+      assert(functionHit(cov, 'g') > 0, 'the other take did call g')
+    }
+  })
   await proof('empty-source', async () => {
     writeFileSync(path, diskOther)
     const cov = await toFileCoverage(
