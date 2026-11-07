@@ -107,4 +107,25 @@ jobs:
           console.log('suite-report-file=' + (existsSync('/tmp/pinto-measure/report.json') ? 'present-unvalidated' : 'absent'))
           console.log('suite-log-categories=' + (matches.length ? matches.join(',') : 'no-allowlisted-match'))
           DIAGNOSTIC
+          if [ "$suite_exit" = 0 ]; then
+            node --input-type=module 2>/dev/null <<'NUMBERS' || printf '%s\n' 'suite-numbers=unavailable'
+          import { readFileSync } from 'node:fs'
+          const allowed = ['src/index.ts', 'src/ice-servers.ts', 'public/element.js', 'public/home.js', 'public/ordinal.js', 'public/room.js']
+          const count = (v) => Number.isSafeInteger(v) && v >= 0
+          const pair = (p) => p && count(p.covered) && count(p.total) && p.covered <= p.total
+          const report = JSON.parse(readFileSync('/tmp/pinto-measure/report.json', 'utf8'))
+          const keys = Object.keys(report.files || {}).sort()
+          const valid = report.repo === 'pinto' && report.suite === process.env.SUITE && report.commit === '7fbb6c26cd0d5cd053b2d6e50d9fd9fe47baac37' && keys.join() === [...allowed].sort().join() && keys.every((k) => pair(report.files[k].lines) && pair(report.files[k].branches) && pair(report.files[k].functions) && (report.files[k].functions.measurable === false ? report.files[k].functions.total === 0 : report.files[k].functions.measurable === undefined && report.files[k].functions.total > 0))
+          if (!valid) {
+            console.log('suite-numbers=invalid-report')
+          } else {
+            console.log('suite-numbers=ok suite=' + report.suite)
+            for (const k of allowed) {
+              const f = report.files[k]
+              const fn = f.functions.measurable === false ? 'n/a' : f.functions.covered + '/' + f.functions.total
+              console.log('suite-numbers-file=' + k + ' lines ' + f.lines.covered + '/' + f.lines.total + ' branches ' + f.branches.covered + '/' + f.branches.total + ' functions ' + fn)
+            }
+          }
+          NUMBERS
+          fi
           exit "$suite_exit"
