@@ -354,9 +354,23 @@ callButton.addEventListener('click', () => {
           peer.id,
           (
             /** @type {Error | null} */ error,
-            /** @type {string[] | null} */ members
+            /** @type {string[] | string | null} */ members
           ) => {
             if (serial !== joinSerial) return
+            if (typeof members === 'string') {
+              // A refusal that carries a reason - the room name is
+              // outside the room-name rule - cannot succeed by retrying:
+              // show the reason, back to not joined, with Join available
+              joined = false
+              // Retire requests this attempt still has waiting
+              joinSerial++
+              // A join that never happened must not leave capture running
+              stopCapture()
+              for (const call of earlyCalls.splice(0)) call.close()
+              showError('Cannot join', members)
+              render()
+              return
+            }
             // A refusal or a lost answer usually means the room still has
             // our id from a previous connection; try again until it clears
             if (error || members === null) {

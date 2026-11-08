@@ -659,6 +659,27 @@ describe('in a call', () => {
     await server.waitForOutput(`user: ${room.peerId} - left: solo`, from)
   })
 
+  test('a room name outside the room-name rule is refused with a shown reason', async () => {
+    const room = await openRoom('bad/name')
+    await room.page.click('#call')
+    await room.page
+      .locator('#error', {
+        hasText:
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+      })
+      .waitFor()
+    // The reason-carrying refusal is not retried: one refusal, not a storm
+    await sleep(2_500)
+    const refusals = server.output().match(/refused: name outside the rule/g)
+    assert.equal(refusals?.length, 1)
+    // Back to not joined, with Join available and the reason shown
+    assert.deepEqual(await controls(room.page), {
+      ...beforeJoining('bad/name'),
+      error:
+        'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+    })
+  })
+
   test('everyone in the room sees and hears everyone else', async () => {
     const a = await openRoom('trio')
     const b = await openRoom('trio')
