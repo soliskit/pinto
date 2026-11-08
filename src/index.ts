@@ -6,7 +6,24 @@ import { Server as SocketServer, type Socket } from 'socket.io'
 import { WebSocketServer } from 'ws'
 import { getIceServers, missingTwilioSetting } from './ice-servers.ts'
 
-const PORT = Number(process.env.PORT) || 443
+function resolvePort(): number {
+  const configured = process.env.PORT
+  if (configured === undefined || configured === '') {
+    console.log('Pinto: PORT is not set, using the default port 443.')
+    return 443
+  }
+  const port = Number(configured)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(
+      `Pinto cannot start: PORT=${configured} is not a port number. ` +
+        `Set PORT to a whole number from 1 to 65535, for example PORT=3000.`
+    )
+    process.exit(1)
+  }
+  return port
+}
+
+const PORT = resolvePort()
 const KEY = process.env.KEY || 'pinto'
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url))
 const peerjsClient = fileURLToPath(
