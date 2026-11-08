@@ -18,6 +18,7 @@ The requirements below are numbered REQ 1 and up; the earlier decision-log numbe
 | REQ 8  | "Callers who are not in the room are blocked. Pretending to be another person can no longer end a call." TARGET.                                                                                                                                                                                                      |
 | REQ 9  | Server behavior the README promises: it "serves plain HTML, CSS, and JavaScript, with no build step," "gives browsers connection settings, including Twilio relays when configured," and without Twilio credentials "browsers get a public STUN server only" [read: `README.md` lines 9, 12 and 70]. TODAY.           |
 | REQ 11 | "Pages must enforce a content security policy, block framing and send the nosniff header." Adopted as a rule for the app's pages by owner decision on November 2, 2026. TODAY.                                                                                                                                        |
+| REQ 12 | "Page text meets WCAG 2.2 AA: 4.5:1 for normal text." Adopted as a rule for the app's pages by owner decision on October 20, 2026. TODAY.                                                                                                                                                                             |
 
 ## Planned services, scoped line by line
 

@@ -100,7 +100,7 @@ input {
 }
 
 input::placeholder {
-  color: #99a1af;
+  color: #bfc7d1;
 }
 
 .open-room {
@@ -152,7 +152,7 @@ input::placeholder {
 }
 
 .mute {
-  background: #d08700;
+  background: #a06300;
 }
 
 .camera,
