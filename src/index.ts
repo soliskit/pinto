@@ -13,6 +13,49 @@ const peerjsClient = fileURLToPath(
   import.meta.resolve('peerjs/dist/peerjs.min.js')
 )
 
+// The room page's one inline script, pinned by hash so the pages can send a
+// script policy without a blanket inline permission. The drift test in
+// test/server.test.ts rehashes the block out of the served page and fails
+// when the block changes without a matching policy hash update.
+const INLINE_ERROR_REPORTER_HASH =
+  'sha256-okU0uUUAylgFnnwitDCdtD9A+sDUUZtI9MtjMiLDsUQ='
+
+// Browsers that do not resolve 'self' to WebSocket schemes also get a socket
+// address derived only from authorized configuration: Render's own hostname
+// variable on the deployment (its external address is HTTPS), or the
+// server's own port locally (plain HTTP). The derived entry matches the
+// current deployment's origin; served under another name, the variable does
+// not follow it. Anything malformed is dropped: a bad value must never reach
+// the header.
+const HOSTNAME_SHAPE =
+  /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/
+function socketSources(): string[] {
+  const deployed = process.env.RENDER_EXTERNAL_HOSTNAME
+  if (deployed !== undefined) {
+    return HOSTNAME_SHAPE.test(deployed) ? [`wss://${deployed}`] : []
+  }
+  return [`ws://localhost:${PORT}`, `ws://127.0.0.1:${PORT}`]
+}
+
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'none'",
+  `script-src 'self' '${INLINE_ERROR_REPORTER_HASH}'`,
+  "style-src 'self'",
+  "img-src 'self' blob:",
+  ["connect-src 'self'", ...socketSources()].join(' '),
+  "media-src 'none'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'"
+].join('; ')
+
+const PAGE_HEADERS = {
+  'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY'
+}
+
 const app = express()
 const server = http.createServer(app)
 const io = new SocketServer(server)
@@ -52,11 +95,22 @@ app.use((req, res, next) => {
   }
   next()
 })
+app.get('/', (_req, res) => {
+  res.set(PAGE_HEADERS)
+  res.sendFile('index.html', { root: publicDir })
+})
+// The two pages are also reachable by their file names; they are the same
+// pages, so the same page policy applies. Other static assets stay outside it.
+app.get(['/index.html', '/room.html'], (req, res) => {
+  res.set(PAGE_HEADERS)
+  res.sendFile(req.path.slice(1), { root: publicDir })
+})
 app.use(express.static(publicDir))
 app.get('/vendor/peerjs.min.js', (_req, res) => {
   res.sendFile(peerjsClient)
 })
 app.get('/room/:roomId', (_req, res) => {
+  res.set(PAGE_HEADERS)
   res.sendFile('room.html', { root: publicDir })
 })
 app.get('/config', async (_req, res) => {
