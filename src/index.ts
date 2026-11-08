@@ -65,6 +65,9 @@ app.get('/config', async (_req, res) => {
 app.use(peerServer)
 
 // Who is in each room: roomId -> (userId -> socket id that joined with it)
+// The adapter keeps channels of its own in the same flat namespace, so the
+// app's room traffic is namespaced away from them.
+const appRoom = (name: string) => `room:${name}`
 const rooms = new Map<string, Map<string, string>>()
 
 // The room-name rule: names are trimmed and lowercased, then letters,
@@ -114,7 +117,7 @@ io.on('connection', (socket: Socket) => {
     if (firstJoin) {
       console.log(`${socket.id} - user: ${userId} - joined: ${room}`)
       members.set(userId, socket.id)
-      socket.join(room)
+      socket.join(appRoom(room))
     }
     // Every valid join, first or repeat, learns who is in the room, so
     // every member id a page calls or answers comes from the server
@@ -122,7 +125,7 @@ io.on('connection', (socket: Socket) => {
       reply([...members.keys()].filter((id) => id !== userId))
     }
     if (firstJoin) {
-      socket.to(room).emit('user-connected', userId)
+      socket.to(appRoom(room)).emit('user-connected', userId)
     }
   })
 
@@ -134,7 +137,7 @@ io.on('connection', (socket: Socket) => {
             `${socket.id} - user: ${userId} - left: ${roomId} (${reason})`
           )
           members.delete(userId)
-          socket.to(roomId).emit('user-disconnected', userId)
+          socket.to(appRoom(roomId)).emit('user-disconnected', userId)
         }
       }
       if (members.size === 0) rooms.delete(roomId)

@@ -388,6 +388,23 @@ describe('with the default settings', () => {
       assert.deepEqual(a.events.connected, ['peer-b', 'peer-c'])
     })
 
+    test('the current room call sites name the app room-key helper', async () => {
+      // A source-shape guard over the current socket.join / socket.to lines:
+      // each must name appRoom. It does not check the helper's
+      // implementation, other emit forms, or delivery behavior.
+      const source = await readFile(
+        fileURLToPath(new URL('../src/index.ts', import.meta.url)),
+        'utf8'
+      )
+      const bare = source
+        .split('\n')
+        .filter(
+          (line) =>
+            /socket\.(join|to)\(/.test(line) && !line.includes('appRoom(')
+        )
+      assert.deepEqual(bare, [])
+    })
+
     test('only one of two connections racing for the same id is let in', async () => {
       const [a, r1, r2, late] = await Promise.all(
         Array.from({ length: 4 }, connect)
