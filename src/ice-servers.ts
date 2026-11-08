@@ -59,3 +59,14 @@ async function fetchIceServers(): Promise<IceServer[]> {
     return PUBLIC_STUN
   }
 }
+
+/**
+ * The missing setting's name when exactly one Twilio variable is set, so
+ * startup can refuse a half-configured deployment instead of silently
+ * behaving as if no Twilio configuration existed.
+ */
+export function missingTwilioSetting(): string | undefined {
+  if (TWILIO_ACCOUNT_SID && !TWILIO_AUTH_TOKEN) return 'TWILIO_AUTH_TOKEN'
+  if (TWILIO_AUTH_TOKEN && !TWILIO_ACCOUNT_SID) return 'TWILIO_ACCOUNT_SID'
+  return undefined
+}
