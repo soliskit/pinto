@@ -123,6 +123,10 @@ input::placeholder {
   align-items: center;
 }
 
+.attendee-grid video {
+  max-width: 100%;
+}
+
 .presenter {
   display: flex;
   justify-content: center;
