@@ -4,7 +4,7 @@ import express from 'express'
 import { ExpressPeerServer, type IClient } from 'peer'
 import { Server as SocketServer, type Socket } from 'socket.io'
 import { WebSocketServer } from 'ws'
-import { getIceServers } from './ice-servers.ts'
+import { getIceServers, missingTwilioSetting } from './ice-servers.ts'
 
 const PORT = Number(process.env.PORT) || 443
 const KEY = process.env.KEY || 'pinto'
@@ -157,6 +157,16 @@ server.on('error', (error: NodeJS.ErrnoException) => {
   }
   throw error
 })
+
+const missingTwilio = missingTwilioSetting()
+if (missingTwilio) {
+  console.error(
+    `Pinto cannot start: ${missingTwilio} is not set. ` +
+      `Set both TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN, or unset both ` +
+      `to use the public STUN server.`
+  )
+  process.exit(1)
+}
 
 server.listen(PORT, () => {
   console.log(`Pinto listening on http://localhost:${PORT}`)

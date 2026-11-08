@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import { after, before, describe, test } from 'node:test'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { io, type Socket } from 'socket.io-client'
 import WebSocket from 'ws'
-import { eventually, startServer, type Server } from './helpers.ts'
+import { eventually, freePort, startServer, type Server } from './helpers.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -395,3 +397,68 @@ async function nextMessage(socket: WebSocket) {
   })
   return JSON.parse(String(data))
 }
+
+describe('with a partial Twilio configuration', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url))
+
+  async function boot(env: Record<string, string>) {
+    const child = spawn(process.execPath, ['src/index.ts'], {
+      cwd: root,
+      env: { ...process.env, KEY: '', PORT: String(await freePort()), ...env },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let output = ''
+    child.stdout.setEncoding('utf8').on('data', (data) => (output += data))
+    child.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+    // 'close' fires after the stdio streams close, so output is complete
+    const closed = once(child, 'close')
+    const spawnFailed = once(child, 'error').then(([error]) => {
+      throw error
+    })
+    const controller = new AbortController()
+    const deadline = sleep(10_000, undefined, {
+      signal: controller.signal
+    }).then(
+      () => 'timed out' as const,
+      () => 'aborted' as const
+    )
+    try {
+      const result = await Promise.race([
+        closed.then(([code]) => ({ code, output, timedOut: false })),
+        spawnFailed,
+        deadline.then(async (state) => {
+          if (state === 'timed out') child.kill('SIGKILL')
+          return { code: null, output, timedOut: state === 'timed out' }
+        })
+      ])
+      if (result.timedOut) {
+        await closed
+        assert.fail(`server did not exit within 10s. Output:\n${output}`)
+      }
+      return result
+    } finally {
+      controller.abort()
+      if (child.exitCode === null && !child.killed) child.kill('SIGKILL')
+    }
+  }
+
+  test('refuses to start with only TWILIO_ACCOUNT_SID set', async () => {
+    const { code, output } = await boot({
+      TWILIO_ACCOUNT_SID: 'AC' + '0'.repeat(32),
+      TWILIO_AUTH_TOKEN: ''
+    })
+    assert.equal(code, 1)
+    assert.match(output, /TWILIO_AUTH_TOKEN is not set/)
+    assert.doesNotMatch(output, /Pinto listening/)
+  })
+
+  test('refuses to start with only TWILIO_AUTH_TOKEN set', async () => {
+    const { code, output } = await boot({
+      TWILIO_ACCOUNT_SID: '',
+      TWILIO_AUTH_TOKEN: 'secret'
+    })
+    assert.equal(code, 1)
+    assert.match(output, /TWILIO_ACCOUNT_SID is not set/)
+    assert.doesNotMatch(output, /Pinto listening/)
+  })
+})
