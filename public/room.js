@@ -5,7 +5,11 @@ import { ordinal } from './ordinal.js'
 /** @typedef {import('peerjs').MediaConnection} MediaConnection */
 
 const DEFAULT_PHOTO = '/no-video.svg'
-const roomName = decodeURIComponent(location.pathname.slice('/room/'.length))
+// One final literal slash in the address is link formatting, not part of
+// the name; an encoded slash (%2F) is not stripped and stays invalid
+const roomName = decodeURIComponent(
+  location.pathname.slice('/room/'.length).replace(/\/$/, '')
+)
 
 const errorBox = element('error', HTMLDivElement)
 const title = element('title', HTMLHeadingElement)
