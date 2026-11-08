@@ -680,6 +680,46 @@ describe('in a call', () => {
     })
   })
 
+  test('a trailing slash in the room address opens the same room', async () => {
+    // A copied link can carry one final slash; openRoom cannot navigate
+    // to one (it encodes the whole name), so this test navigates directly
+    const page = await newPage()
+    const idResponse = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/pinto/id'
+    )
+    await page.goto('/room/garden/')
+    const peerId = await (await idResponse).text()
+    await page.locator('#call:enabled').waitFor()
+
+    // The final slash is link formatting, not part of the name
+    assert.deepEqual(await controls(page), beforeJoining('garden'))
+
+    const from = server.output().length
+    await page.click('#call')
+    await server.waitForOutput(`user: ${peerId} - joined: garden`, from)
+    assert.deepEqual(await controls(page), inCall('garden', '1st in the room'))
+  })
+
+  test('an encoded slash at the end of the address is still refused with a shown reason', async () => {
+    // %2F is not link formatting: the name 'garden/' breaks the rule
+    const page = await newPage()
+    await page.goto('/room/garden%2F')
+    await page.locator('#call:enabled').waitFor()
+
+    await page.click('#call')
+    await page
+      .locator('#error', {
+        hasText:
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+      })
+      .waitFor()
+    assert.deepEqual(await controls(page), {
+      ...beforeJoining('garden/'),
+      error:
+        'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+    })
+  })
+
   test('everyone in the room sees and hears everyone else', async () => {
     const a = await openRoom('trio')
     const b = await openRoom('trio')
