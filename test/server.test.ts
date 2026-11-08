@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
@@ -76,6 +77,99 @@ describe('with the default settings', () => {
 
     test('answers other paths with 404', async () => {
       assert.equal((await get('/nothing-here')).status, 404)
+    })
+
+    test('the pages send the security headers', async () => {
+      for (const path of ['/', '/index.html', '/room/lobby', '/room.html']) {
+        const response = await get(path)
+        const csp = response.headers.get('content-security-policy') ?? ''
+        assert.match(csp, /default-src 'none'/, path)
+        assert.match(csp, /script-src 'self' 'sha256-/, path)
+        assert.match(csp, /frame-ancestors 'none'/, path)
+        assert.match(csp, /connect-src 'self'/, path)
+        assert.equal(
+          response.headers.get('x-content-type-options'),
+          'nosniff',
+          path
+        )
+        assert.equal(response.headers.get('x-frame-options'), 'DENY', path)
+      }
+    })
+
+    test('the script policy pins the served inline script by hash', async () => {
+      const response = await get('/room/lobby')
+      const html = await response.text()
+      const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+      assert.equal(
+        inline.length,
+        1,
+        'the served room page has exactly one inline script'
+      )
+      const hash = createHash('sha256').update(inline[0][1]).digest('base64')
+      const csp = response.headers.get('content-security-policy') ?? ''
+      assert.ok(
+        csp.includes(`'sha256-${hash}'`),
+        'the served policy carries the hash of the served block'
+      )
+    })
+
+    test('other responses stay outside the page policy', async () => {
+      for (const path of ['/style.css', '/config']) {
+        const response = await get(path)
+        assert.equal(
+          response.headers.get('content-security-policy'),
+          null,
+          path
+        )
+      }
+      // Error answers keep the framework's own minimal policy, unchanged
+      const missing = await get('/nothing-here')
+      assert.equal(
+        missing.headers.get('content-security-policy'),
+        "default-src 'none'"
+      )
+    })
+
+    test('the socket sources come from authorized configuration', async () => {
+      const port = new URL(server.url).port
+      if (process.env.RENDER_EXTERNAL_HOSTNAME === undefined) {
+        const csp =
+          (await get('/')).headers.get('content-security-policy') ?? ''
+        assert.ok(csp.includes(`ws://localhost:${port}`), csp)
+        assert.ok(csp.includes(`ws://127.0.0.1:${port}`), csp)
+        assert.ok(!csp.includes('wss://'), csp)
+      }
+      const deployed = await startServer({
+        RENDER_EXTERNAL_HOSTNAME: 'pinto.onrender.com'
+      })
+      try {
+        const csp =
+          (await fetch(deployed.url + '/')).headers.get(
+            'content-security-policy'
+          ) ?? ''
+        assert.ok(
+          csp.includes("connect-src 'self' wss://pinto.onrender.com"),
+          csp
+        )
+        assert.ok(!csp.includes('ws://localhost'), csp)
+      } finally {
+        await deployed.stop()
+      }
+      const malformed = await startServer({
+        RENDER_EXTERNAL_HOSTNAME: 'bad"; drop'
+      })
+      try {
+        const csp =
+          (await fetch(malformed.url + '/')).headers.get(
+            'content-security-policy'
+          ) ?? ''
+        const directive = csp
+          .split('; ')
+          .find((part) => part.startsWith('connect-src'))
+        assert.equal(directive, "connect-src 'self'", csp)
+      } finally {
+        await malformed.stop()
+      }
     })
   })
 
