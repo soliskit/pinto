@@ -67,20 +67,35 @@ app.use(peerServer)
 // Who is in each room: roomId -> (userId -> socket id that joined with it)
 const rooms = new Map<string, Map<string, string>>()
 
+// The room-name rule: names are trimmed and lowercased, then letters,
+// numbers, spaces and dashes, up to 40 characters; anything else is
+// refused with a shown reason. The home page applies the same trim and
+// lowercase before navigating; enforcing the rule here holds raw
+// Socket.IO clients to it too.
+const ROOM_NAME_RULE = /^[a-z0-9 -]{1,40}$/
+const ROOM_NAME_REASON =
+  'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+
 io.on('connection', (socket: Socket) => {
   console.log(`${socket.id} - connected`)
 
   socket.on('join-room', (roomId: unknown, userId: unknown, reply: unknown) => {
-    if (
-      typeof roomId !== 'string' ||
-      typeof userId !== 'string' ||
-      !roomId ||
-      !userId
-    ) {
+    // Malformed requests (a non-string name or a missing id) get no answer;
+    // a well-formed name outside the rule is refused with its reason below.
+    if (typeof roomId !== 'string' || typeof userId !== 'string' || !userId) {
       console.error(`${socket.id} - join-room needs a roomId and userId`)
       return
     }
-    let members = rooms.get(roomId)
+    const room = roomId.trim().toLowerCase()
+    if (!ROOM_NAME_RULE.test(room)) {
+      // The refusal carries the reason so a client can show it. The same
+      // name can never join, but the answered refusal keeps the
+      // acknowledgement contract the duplicate-id refusal uses.
+      console.error(`${socket.id} - join-room refused: name outside the rule`)
+      if (typeof reply === 'function') reply(ROOM_NAME_REASON)
+      return
+    }
+    let members = rooms.get(room)
     const owner = members?.get(userId)
     if (owner && owner !== socket.id) {
       // The id is in the room under another connection: joining with it
@@ -93,13 +108,13 @@ io.on('connection', (socket: Socket) => {
     }
     if (!members) {
       members = new Map()
-      rooms.set(roomId, members)
+      rooms.set(room, members)
     }
     const firstJoin = !members.has(userId)
     if (firstJoin) {
-      console.log(`${socket.id} - user: ${userId} - joined: ${roomId}`)
+      console.log(`${socket.id} - user: ${userId} - joined: ${room}`)
       members.set(userId, socket.id)
-      socket.join(roomId)
+      socket.join(room)
     }
     // Every valid join, first or repeat, learns who is in the room, so
     // every member id a page calls or answers comes from the server
@@ -107,7 +122,7 @@ io.on('connection', (socket: Socket) => {
       reply([...members.keys()].filter((id) => id !== userId))
     }
     if (firstJoin) {
-      socket.to(roomId).emit('user-connected', userId)
+      socket.to(room).emit('user-connected', userId)
     }
   })
 

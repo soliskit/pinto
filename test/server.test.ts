@@ -298,6 +298,69 @@ describe('with the default settings', () => {
       assert.deepEqual(a.events.disconnected, ['peer-b'])
     })
 
+    test('join-room holds raw clients to the room-name rule', async () => {
+      const [a, b, c] = await Promise.all(Array.from({ length: 3 }, connect))
+      await join(a.socket, 'validroom', 'peer-a')
+      // Spaces are inside the rule: the boundary case stays accepted
+      const roster = await b.socket.emitWithAck(
+        'join-room',
+        'bad name',
+        'peer-b'
+      )
+      assert.deepEqual(roster, [])
+      // Exactly 40 characters is inside the rule
+      assert.deepEqual(
+        await b.socket.emitWithAck('join-room', 'a'.repeat(40), 'peer-b40'),
+        []
+      )
+      const heard = next(a.socket, 'user-connected')
+      await join(b.socket, 'validroom', 'peer-b2')
+      assert.equal(await heard, 'peer-b2')
+
+      const refused: [string, string][] = [
+        ['a'.repeat(41), 'peer-long'], // over the 40-character rule
+        ['bad/name', 'peer-slash'], // slash, outside the alphabet
+        ['room\u{1F389}', 'peer-emoji'], // emoji, outside the alphabet
+        ['line\nbreak', 'peer-newline'], // newline, outside the alphabet
+        ['caf\u00e9', 'peer-accent'], // accented letter: ASCII letters only
+        ['\u65e5\u672c\u8a9e', 'peer-nonlatin'], // non-Latin: ASCII only
+        ['   ', 'peer-spaces'], // trims to empty
+        ['', 'peer-empty'] // empty: refused with the reason like any other
+      ]
+      for (const [name, id] of refused) {
+        const answer = await c.socket.emitWithAck('join-room', name, id)
+        assert.equal(
+          answer,
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.',
+          name
+        )
+      }
+      await server.waitForOutput('join-room refused: name outside the rule')
+      // None of the refused names reached a room
+      assert.deepEqual(a.events.connected, ['peer-b2'])
+      assert.deepEqual(a.events.disconnected, [])
+    })
+
+    test('join-room trims and lowercases names before applying the rule', async () => {
+      const [a, b] = await Promise.all([connect(), connect()])
+      const roster = await a.socket.emitWithAck(
+        'join-room',
+        '  UPPER Case-1  ',
+        'peer-a'
+      )
+      assert.deepEqual(roster, [])
+      await server.waitForOutput('user: peer-a - joined: upper case-1')
+      // The normalized name is the room: the next page joins the same one
+      const heard = next(a.socket, 'user-connected')
+      const roster2 = await b.socket.emitWithAck(
+        'join-room',
+        'upper case-1',
+        'peer-b'
+      )
+      assert.deepEqual(roster2, ['peer-a'])
+      assert.equal(await heard, 'peer-b')
+    })
+
     test('a repeat join on the same connection changes nothing', async () => {
       const [a, b] = await Promise.all([connect(), connect()])
       await join(a.socket, 'rejoin', 'peer-a')
