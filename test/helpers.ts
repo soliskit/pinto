@@ -71,7 +71,7 @@ export async function startServer(
   return server
 }
 
-function freePort(): Promise<number> {
+export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = net.createServer()
     probe.on('error', reject)

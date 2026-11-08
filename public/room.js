@@ -5,11 +5,13 @@ import { ordinal } from './ordinal.js'
 /** @typedef {import('peerjs').MediaConnection} MediaConnection */
 
 const DEFAULT_PHOTO = '/no-video.svg'
-const roomName = decodeURIComponent(location.pathname.slice('/room/'.length))
+// One final literal slash in the address is link formatting, not part of
+// the name; an encoded slash (%2F) is not stripped and stays invalid
+const roomName = decodeURIComponent(
+  location.pathname.slice('/room/'.length).replace(/\/$/, '')
+)
 
 const errorBox = element('error', HTMLDivElement)
-const errorTitle = element('error-title', HTMLHeadingElement)
-const errorMessage = element('error-message', HTMLHeadingElement)
 const title = element('title', HTMLHeadingElement)
 const status = element('status', HTMLHeadingElement)
 const attendees = element('attendees', HTMLDivElement)
@@ -26,6 +28,9 @@ const PHOTO_CANVAS_HEIGHT = 300
 const PHOTO_MAX_SIDE = 288
 const PHOTO_REDRAW_INTERVAL_MS = 1000
 const PEER_RECONNECT_DELAY_MS = 5000
+// After a shown connection error the app retries on its own a bounded number
+// of times, then stops and keeps the error shown; recovery is then a reload
+const PEER_RECONNECT_MAX_ATTEMPTS = 3
 
 // While the camera is off, peers see a photo drawn on a canvas
 const canvas = document.createElement('canvas')
@@ -225,6 +230,7 @@ function addCall(call) {
   const video = document.createElement('video')
   video.autoplay = true
   video.playsInline = true
+  video.setAttribute('aria-label', 'Remote video')
   calls.set(call.peer, { call, video })
   call.on('stream', (stream) => {
     video.srcObject = stream
@@ -247,13 +253,23 @@ function removeCall(peerId) {
   render()
 }
 
+// One entry per kind of problem, so concurrent problems all stay visible
+const errorEntries = new Map()
+
 /**
  * @param {string} heading
  * @param {string} message
  */
 function showError(heading, message) {
-  errorTitle.textContent = heading
-  errorMessage.textContent = message
+  let entry = errorEntries.get(heading)
+  if (!entry) {
+    entry = document.createElement('div')
+    entry.append(document.createElement('h1'), document.createElement('h2'))
+    errorBox.append(entry)
+    errorEntries.set(heading, entry)
+  }
+  entry.firstChild.textContent = heading
+  entry.lastChild.textContent = message
   errorBox.hidden = false
 }
 
@@ -277,6 +293,12 @@ function render() {
 }
 
 photo.addEventListener('load', drawPhoto)
+photo.addEventListener('error', () => {
+  showError(
+    'Photo',
+    "Pinto can't show that photo: the file could not be decoded. The last photo shown stays on the call."
+  )
+})
 // A canvas only produces frames when painted, so keep painting for peers
 // who join later
 setInterval(drawPhoto, PHOTO_REDRAW_INTERVAL_MS)
@@ -336,9 +358,23 @@ callButton.addEventListener('click', () => {
           peer.id,
           (
             /** @type {Error | null} */ error,
-            /** @type {string[] | null} */ members
+            /** @type {string[] | string | null} */ members
           ) => {
             if (serial !== joinSerial) return
+            if (typeof members === 'string') {
+              // A refusal that carries a reason - the room name is
+              // outside the room-name rule - cannot succeed by retrying:
+              // show the reason, back to not joined, with Join available
+              joined = false
+              // Retire requests this attempt still has waiting
+              joinSerial++
+              // A join that never happened must not leave capture running
+              stopCapture()
+              for (const call of earlyCalls.splice(0)) call.close()
+              showError('Cannot join', members)
+              render()
+              return
+            }
             // A refusal or a lost answer usually means the room still has
             // our id from a previous connection; try again until it clears
             if (error || members === null) {
@@ -373,7 +409,11 @@ callButton.addEventListener('click', () => {
   render()
 })
 
-peer.on('open', render)
+let reconnectAttempts = 0
+peer.on('open', () => {
+  reconnectAttempts = 0
+  render()
+})
 /** Answers a call from a room member and closes any other */
 function answerIfMember(/** @type {MediaConnection} */ call) {
   if (!roomPeers.has(call.peer)) {
@@ -399,7 +439,10 @@ peer.on('call', (call) => {
 })
 peer.on('disconnected', () => {
   setTimeout(() => {
-    if (peer.disconnected && !peer.destroyed) peer.reconnect()
+    if (!peer.disconnected || peer.destroyed) return
+    if (reconnectAttempts >= PEER_RECONNECT_MAX_ATTEMPTS) return
+    reconnectAttempts += 1
+    peer.reconnect()
   }, PEER_RECONNECT_DELAY_MS)
 })
 peer.on('error', (error) =>
@@ -411,7 +454,24 @@ socket.on('user-connected', (peerId) => {
   // stray membership can still announce joiners to it
   if (!joined) return
   roomPeers.add(peerId)
-  addCall(peer.call(peerId, outgoing))
+  // While the pairing connection is down, peer.call returns undefined and
+  // addCall would throw; say why the joiner is not being called instead.
+  if (peer.disconnected) {
+    showError(
+      'Connection problem',
+      'The connection to the server is down, so the person who just joined cannot be called.'
+    )
+    return
+  }
+  const call = peer.call(peerId, outgoing)
+  if (!call) {
+    showError(
+      'Connection problem',
+      'The call to the person who just joined could not be started.'
+    )
+    return
+  }
+  addCall(call)
 })
 socket.on('user-disconnected', (peerId) => {
   roomPeers.delete(peerId)

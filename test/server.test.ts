@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import { after, before, describe, test } from 'node:test'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { io, type Socket } from 'socket.io-client'
 import WebSocket from 'ws'
-import { eventually, startServer, type Server } from './helpers.ts'
+import { eventually, freePort, startServer, type Server } from './helpers.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -74,6 +77,99 @@ describe('with the default settings', () => {
 
     test('answers other paths with 404', async () => {
       assert.equal((await get('/nothing-here')).status, 404)
+    })
+
+    test('the pages send the security headers', async () => {
+      for (const path of ['/', '/index.html', '/room/lobby', '/room.html']) {
+        const response = await get(path)
+        const csp = response.headers.get('content-security-policy') ?? ''
+        assert.match(csp, /default-src 'none'/, path)
+        assert.match(csp, /script-src 'self' 'sha256-/, path)
+        assert.match(csp, /frame-ancestors 'none'/, path)
+        assert.match(csp, /connect-src 'self'/, path)
+        assert.equal(
+          response.headers.get('x-content-type-options'),
+          'nosniff',
+          path
+        )
+        assert.equal(response.headers.get('x-frame-options'), 'DENY', path)
+      }
+    })
+
+    test('the script policy pins the served inline script by hash', async () => {
+      const response = await get('/room/lobby')
+      const html = await response.text()
+      const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+      assert.equal(
+        inline.length,
+        1,
+        'the served room page has exactly one inline script'
+      )
+      const hash = createHash('sha256').update(inline[0][1]).digest('base64')
+      const csp = response.headers.get('content-security-policy') ?? ''
+      assert.ok(
+        csp.includes(`'sha256-${hash}'`),
+        'the served policy carries the hash of the served block'
+      )
+    })
+
+    test('other responses stay outside the page policy', async () => {
+      for (const path of ['/style.css', '/config']) {
+        const response = await get(path)
+        assert.equal(
+          response.headers.get('content-security-policy'),
+          null,
+          path
+        )
+      }
+      // Error answers keep the framework's own minimal policy, unchanged
+      const missing = await get('/nothing-here')
+      assert.equal(
+        missing.headers.get('content-security-policy'),
+        "default-src 'none'"
+      )
+    })
+
+    test('the socket sources come from authorized configuration', async () => {
+      const port = new URL(server.url).port
+      if (process.env.RENDER_EXTERNAL_HOSTNAME === undefined) {
+        const csp =
+          (await get('/')).headers.get('content-security-policy') ?? ''
+        assert.ok(csp.includes(`ws://localhost:${port}`), csp)
+        assert.ok(csp.includes(`ws://127.0.0.1:${port}`), csp)
+        assert.ok(!csp.includes('wss://'), csp)
+      }
+      const deployed = await startServer({
+        RENDER_EXTERNAL_HOSTNAME: 'pinto.onrender.com'
+      })
+      try {
+        const csp =
+          (await fetch(deployed.url + '/')).headers.get(
+            'content-security-policy'
+          ) ?? ''
+        assert.ok(
+          csp.includes("connect-src 'self' wss://pinto.onrender.com"),
+          csp
+        )
+        assert.ok(!csp.includes('ws://localhost'), csp)
+      } finally {
+        await deployed.stop()
+      }
+      const malformed = await startServer({
+        RENDER_EXTERNAL_HOSTNAME: 'bad"; drop'
+      })
+      try {
+        const csp =
+          (await fetch(malformed.url + '/')).headers.get(
+            'content-security-policy'
+          ) ?? ''
+        const directive = csp
+          .split('; ')
+          .find((part) => part.startsWith('connect-src'))
+        assert.equal(directive, "connect-src 'self'", csp)
+      } finally {
+        await malformed.stop()
+      }
     })
   })
 
@@ -296,6 +392,69 @@ describe('with the default settings', () => {
       assert.deepEqual(a.events.disconnected, ['peer-b'])
     })
 
+    test('join-room holds raw clients to the room-name rule', async () => {
+      const [a, b, c] = await Promise.all(Array.from({ length: 3 }, connect))
+      await join(a.socket, 'validroom', 'peer-a')
+      // Spaces are inside the rule: the boundary case stays accepted
+      const roster = await b.socket.emitWithAck(
+        'join-room',
+        'bad name',
+        'peer-b'
+      )
+      assert.deepEqual(roster, [])
+      // Exactly 40 characters is inside the rule
+      assert.deepEqual(
+        await b.socket.emitWithAck('join-room', 'a'.repeat(40), 'peer-b40'),
+        []
+      )
+      const heard = next(a.socket, 'user-connected')
+      await join(b.socket, 'validroom', 'peer-b2')
+      assert.equal(await heard, 'peer-b2')
+
+      const refused: [string, string][] = [
+        ['a'.repeat(41), 'peer-long'], // over the 40-character rule
+        ['bad/name', 'peer-slash'], // slash, outside the alphabet
+        ['room\u{1F389}', 'peer-emoji'], // emoji, outside the alphabet
+        ['line\nbreak', 'peer-newline'], // newline, outside the alphabet
+        ['caf\u00e9', 'peer-accent'], // accented letter: ASCII letters only
+        ['\u65e5\u672c\u8a9e', 'peer-nonlatin'], // non-Latin: ASCII only
+        ['   ', 'peer-spaces'], // trims to empty
+        ['', 'peer-empty'] // empty: refused with the reason like any other
+      ]
+      for (const [name, id] of refused) {
+        const answer = await c.socket.emitWithAck('join-room', name, id)
+        assert.equal(
+          answer,
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.',
+          name
+        )
+      }
+      await server.waitForOutput('join-room refused: name outside the rule')
+      // None of the refused names reached a room
+      assert.deepEqual(a.events.connected, ['peer-b2'])
+      assert.deepEqual(a.events.disconnected, [])
+    })
+
+    test('join-room trims and lowercases names before applying the rule', async () => {
+      const [a, b] = await Promise.all([connect(), connect()])
+      const roster = await a.socket.emitWithAck(
+        'join-room',
+        '  UPPER Case-1  ',
+        'peer-a'
+      )
+      assert.deepEqual(roster, [])
+      await server.waitForOutput('user: peer-a - joined: upper case-1')
+      // The normalized name is the room: the next page joins the same one
+      const heard = next(a.socket, 'user-connected')
+      const roster2 = await b.socket.emitWithAck(
+        'join-room',
+        'upper case-1',
+        'peer-b'
+      )
+      assert.deepEqual(roster2, ['peer-a'])
+      assert.equal(await heard, 'peer-b')
+    })
+
     test('a repeat join on the same connection changes nothing', async () => {
       const [a, b] = await Promise.all([connect(), connect()])
       await join(a.socket, 'rejoin', 'peer-a')
@@ -321,6 +480,23 @@ describe('with the default settings', () => {
       // And the room still hears about the newcomer itself
       await eventually(async () => a.events.connected.length, 2)
       assert.deepEqual(a.events.connected, ['peer-b', 'peer-c'])
+    })
+
+    test('the current room call sites name the app room-key helper', async () => {
+      // A source-shape guard over the current socket.join / socket.to lines:
+      // each must name appRoom. It does not check the helper's
+      // implementation, other emit forms, or delivery behavior.
+      const source = await readFile(
+        fileURLToPath(new URL('../src/index.ts', import.meta.url)),
+        'utf8'
+      )
+      const bare = source
+        .split('\n')
+        .filter(
+          (line) =>
+            /socket\.(join|to)\(/.test(line) && !line.includes('appRoom(')
+        )
+      assert.deepEqual(bare, [])
     })
 
     test('only one of two connections racing for the same id is let in', async () => {
@@ -395,3 +571,68 @@ async function nextMessage(socket: WebSocket) {
   })
   return JSON.parse(String(data))
 }
+
+describe('with a partial Twilio configuration', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url))
+
+  async function boot(env: Record<string, string>) {
+    const child = spawn(process.execPath, ['src/index.ts'], {
+      cwd: root,
+      env: { ...process.env, KEY: '', PORT: String(await freePort()), ...env },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let output = ''
+    child.stdout.setEncoding('utf8').on('data', (data) => (output += data))
+    child.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+    // 'close' fires after the stdio streams close, so output is complete
+    const closed = once(child, 'close')
+    const spawnFailed = once(child, 'error').then(([error]) => {
+      throw error
+    })
+    const controller = new AbortController()
+    const deadline = sleep(10_000, undefined, {
+      signal: controller.signal
+    }).then(
+      () => 'timed out' as const,
+      () => 'aborted' as const
+    )
+    try {
+      const result = await Promise.race([
+        closed.then(([code]) => ({ code, output, timedOut: false })),
+        spawnFailed,
+        deadline.then(async (state) => {
+          if (state === 'timed out') child.kill('SIGKILL')
+          return { code: null, output, timedOut: state === 'timed out' }
+        })
+      ])
+      if (result.timedOut) {
+        await closed
+        assert.fail(`server did not exit within 10s. Output:\n${output}`)
+      }
+      return result
+    } finally {
+      controller.abort()
+      if (child.exitCode === null && !child.killed) child.kill('SIGKILL')
+    }
+  }
+
+  test('refuses to start with only TWILIO_ACCOUNT_SID set', async () => {
+    const { code, output } = await boot({
+      TWILIO_ACCOUNT_SID: 'AC' + '0'.repeat(32),
+      TWILIO_AUTH_TOKEN: ''
+    })
+    assert.equal(code, 1)
+    assert.match(output, /TWILIO_AUTH_TOKEN is not set/)
+    assert.doesNotMatch(output, /Pinto listening/)
+  })
+
+  test('refuses to start with only TWILIO_AUTH_TOKEN set', async () => {
+    const { code, output } = await boot({
+      TWILIO_ACCOUNT_SID: '',
+      TWILIO_AUTH_TOKEN: 'secret'
+    })
+    assert.equal(code, 1)
+    assert.match(output, /TWILIO_ACCOUNT_SID is not set/)
+    assert.doesNotMatch(output, /Pinto listening/)
+  })
+})

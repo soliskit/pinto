@@ -1,0 +1,10 @@
+glob_matcher: doublestar
+pre-commit:
+  parallel: true
+  commands:
+    eslint:
+      glob: "**/*.{js,mjs,cjs,ts,mts,cts,tsx}"
+      run: ./node_modules/.bin/eslint -- {staged_files}
+    prettier:
+      glob: "**/*.{css,html,js,json,md,mjs,ts,yaml,yml}"
+      run: ./node_modules/.bin/prettier --check -- {staged_files}

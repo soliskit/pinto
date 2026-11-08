@@ -235,7 +235,12 @@ function controls(page: Page) {
       hint: byId('self-label').title,
       error: byId('error').hidden
         ? null
-        : `${byId('error-title').textContent}: ${byId('error-message').textContent}`
+        : [...byId('error').children]
+            .map((entry) => {
+              const [heading, message] = entry.children
+              return `${heading?.textContent ?? ''}: ${message?.textContent ?? ''}`
+            })
+            .join(' | ')
     }
   })
 }
@@ -652,6 +657,67 @@ describe('in a call', () => {
     await room.page.click('#call')
     assert.deepEqual(await controls(room.page), beforeJoining('solo'))
     await server.waitForOutput(`user: ${room.peerId} - left: solo`, from)
+  })
+
+  test('a room name outside the room-name rule is refused with a shown reason', async () => {
+    const room = await openRoom('bad/name')
+    await room.page.click('#call')
+    await room.page
+      .locator('#error', {
+        hasText:
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+      })
+      .waitFor()
+    // The reason-carrying refusal is not retried: one refusal, not a storm
+    await sleep(2_500)
+    const refusals = server.output().match(/refused: name outside the rule/g)
+    assert.equal(refusals?.length, 1)
+    // Back to not joined, with Join available and the reason shown
+    assert.deepEqual(await controls(room.page), {
+      ...beforeJoining('bad/name'),
+      error:
+        'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+    })
+  })
+
+  test('a trailing slash in the room address opens the same room', async () => {
+    // A copied link can carry one final slash; openRoom cannot navigate
+    // to one (it encodes the whole name), so this test navigates directly
+    const page = await newPage()
+    const idResponse = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/pinto/id'
+    )
+    await page.goto('/room/garden/')
+    const peerId = await (await idResponse).text()
+    await page.locator('#call:enabled').waitFor()
+
+    // The final slash is link formatting, not part of the name
+    assert.deepEqual(await controls(page), beforeJoining('garden'))
+
+    const from = server.output().length
+    await page.click('#call')
+    await server.waitForOutput(`user: ${peerId} - joined: garden`, from)
+    assert.deepEqual(await controls(page), inCall('garden', '1st in the room'))
+  })
+
+  test('an encoded slash at the end of the address is still refused with a shown reason', async () => {
+    // %2F is not link formatting: the name 'garden/' breaks the rule
+    const page = await newPage()
+    await page.goto('/room/garden%2F')
+    await page.locator('#call:enabled').waitFor()
+
+    await page.click('#call')
+    await page
+      .locator('#error', {
+        hasText:
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+      })
+      .waitFor()
+    assert.deepEqual(await controls(page), {
+      ...beforeJoining('garden/'),
+      error:
+        'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+    })
   })
 
   test('everyone in the room sees and hears everyone else', async () => {
