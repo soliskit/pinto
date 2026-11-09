@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { after, before, describe, test } from 'node:test'
-import type { Browser, BrowserContext, Page } from 'playwright'
+import type {
+  Browser,
+  BrowserContext,
+  ConsoleMessage,
+  Page,
+  Request
+} from 'playwright'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { launchBrowser, startServer, type Server } from './helpers.ts'
@@ -204,10 +210,21 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
     try {
       const page = await openRoom(context, 'keyboard-mobile')
       await tabTrail(page, 4)
-      const outline = await page.evaluate(
-        () => getComputedStyle(document.getElementById('self-label')!).outline
-      )
-      assert.equal(outline, 'rgb(254, 252, 232) solid 3px')
+      // Engines serialize the outline shorthand differently; compare the
+      // longhands, whose contract is the ring itself
+      const outline = await page.evaluate(() => {
+        const style = getComputedStyle(document.getElementById('self-label')!)
+        return {
+          style: style.outlineStyle,
+          width: style.outlineWidth,
+          color: style.outlineColor
+        }
+      })
+      assert.deepEqual(outline, {
+        style: 'solid',
+        width: '3px',
+        color: 'rgb(254, 252, 232)'
+      })
     } finally {
       await context.close()
     }
@@ -229,48 +246,249 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       assert.ok(video, 'preview video has no layout box')
       return { label, video }
     }
+    // Failure facts up front: the failing phase and engine, page error
+    // category counts, failed request categories, route hits and fetch
+    // statuses, and the Join button state - bounded categories only, no
+    // URLs, console text, error text, or page source. Facts print only
+    // when a phase fails, each snapshot holds only what was collected up
+    // to that phase, and logging itself can never replace the original
+    // error, which always rethrows. Nothing retries, waits longer, or
+    // changes readiness.
+    const engine = process.env.PINTO_BROWSER ?? 'chromium'
+    const KNOWN_FAILURES = [
+      'net::ERR_ABORTED',
+      'net::ERR_FAILED',
+      'net::ERR_CONNECTION_REFUSED',
+      'net::ERR_CONNECTION_RESET',
+      'net::ERR_CONNECTION_CLOSED',
+      'net::ERR_TIMED_OUT',
+      'net::ERR_NAME_NOT_RESOLVED',
+      'net::ERR_INTERNET_DISCONNECTED',
+      'net::ERR_SSL_PROTOCOL_ERROR',
+      'net::ERR_CERT_AUTHORITY_INVALID'
+    ]
+    const ERROR_NAMES = [
+      'Error',
+      'TypeError',
+      'RangeError',
+      'ReferenceError',
+      'SyntaxError'
+    ]
+    const watch = (page: Page) => {
+      const seen = {
+        pageErrors: { other: 0 } as Record<string, number>,
+        consoleErrors: 0,
+        failedRequests: 0,
+        failedResourceSamples: [] as string[]
+      }
+      for (const name of ERROR_NAMES) seen.pageErrors[name] = 0
+      const onPageError = (error: Error) => {
+        const name = ERROR_NAMES.includes(error.name) ? error.name : 'other'
+        seen.pageErrors[name]++
+      }
+      const onConsole = (message: ConsoleMessage) => {
+        if (message.type() === 'error') seen.consoleErrors++
+      }
+      const onRequestFailed = (request: Request) => {
+        seen.failedRequests++
+        if (seen.failedResourceSamples.length < 5) {
+          const text = request.failure()?.errorText ?? ''
+          const kind = KNOWN_FAILURES.includes(text) ? text : 'other'
+          seen.failedResourceSamples.push(`${request.resourceType()}: ${kind}`)
+        }
+      }
+      page.on('pageerror', onPageError)
+      page.on('console', onConsole)
+      page.on('requestfailed', onRequestFailed)
+      const dispose = () => {
+        page.off('pageerror', onPageError)
+        page.off('console', onConsole)
+        page.off('requestfailed', onRequestFailed)
+      }
+      return { seen, dispose }
+    }
+    const field = async (read: () => Promise<unknown>) => {
+      try {
+        return await read()
+      } catch {
+        return 'uncollected'
+      }
+    }
+    const joinState = async (page: Page) => {
+      const button = page.locator('#call')
+      const exists = await field(async () => (await button.count()) > 0)
+      if (exists !== true) return { exists }
+      return {
+        exists,
+        enabled: await field(() => button.isEnabled()),
+        visible: await field(() => button.isVisible())
+      }
+    }
+    const phase = async <T>(
+      name: string,
+      work: () => Promise<T>,
+      snapshot?: () => Promise<unknown>
+    ) => {
+      try {
+        return await work()
+      } catch (error) {
+        let facts: unknown = 'uncollected'
+        if (snapshot) {
+          try {
+            facts = await snapshot()
+          } catch {
+            facts = 'uncollected'
+          }
+        }
+        try {
+          console.error(
+            `layout-baseline ${engine} phase "${name}" failed`,
+            facts
+          )
+        } catch {
+          // logging must never replace the original error
+        }
+        throw error
+      }
+    }
     const baselineContext = await newContext(390, 700)
     try {
-      let cssHits = 0
+      // Per-route, differentiated facts: hit counts, fetch outcome (the
+      // server's status or 'failed'), and whether fulfill completed.
+      const routes = {
+        roomHits: 0,
+        cssHits: 0,
+        roomFetch: 'none' as number | 'failed' | 'none',
+        cssFetch: 'none' as number | 'failed' | 'none',
+        roomFulfilled: false,
+        cssFulfilled: false
+      }
       await baselineContext.route('**/room/**', async (route) => {
         if (!route.request().isNavigationRequest()) {
           return route.continue()
         }
+        routes.roomHits++
+        let response
+        try {
+          response = await route.fetch()
+          routes.roomFetch = response.status()
+        } catch (error) {
+          routes.roomFetch = 'failed'
+          throw error
+        }
         await route.fulfill({
-          response: await route.fetch(),
+          response,
           path: fixture('pre-change-room.html')
         })
+        routes.roomFulfilled = true
       })
       await baselineContext.route('**/style.css', async (route) => {
-        cssHits++
+        routes.cssHits++
+        let response
+        try {
+          response = await route.fetch()
+          routes.cssFetch = response.status()
+        } catch (error) {
+          routes.cssFetch = 'failed'
+          throw error
+        }
         await route.fulfill({
-          response: await route.fetch(),
+          response,
           path: fixture('pre-change-style.css'),
           contentType: 'text/css'
         })
+        routes.cssFulfilled = true
       })
-      const baseline = await openRoom(baselineContext, 'keyboard-mobile')
-      // The baseline must really be the pinned pre-change bytes: the served
-      // stylesheet is byte-identical to the fixture, and the rendered
-      // document carries the pre-change hidden input.
-      assert.ok(cssHits > 0, 'the stylesheet was never requested')
-      const servedCss = await baseline.evaluate(() =>
-        fetch('/style.css').then((response) => response.text())
-      )
-      assert.equal(
-        servedCss,
-        await readFile(fixture('pre-change-style.css'), 'utf8')
-      )
-      assert.equal(await baseline.locator('#photo[hidden]').count(), 1)
-      const before = await boxes(baseline)
-
-      const patchedContext = await newContext(390, 700)
+      const baseline = await baselineContext.newPage()
+      const base = watch(baseline)
       try {
-        const patched = await openRoom(patchedContext, 'keyboard-mobile')
-        const after = await boxes(patched)
-        assert.deepEqual(after, before)
+        await phase(
+          'baseline goto',
+          () => baseline.goto('/room/keyboard-mobile'),
+          async () => ({ routes: { ...routes }, ...base.seen })
+        )
+        await phase(
+          'baseline ready',
+          () => baseline.locator('#call:enabled').waitFor(),
+          async () => ({
+            join: await joinState(baseline),
+            routes: { ...routes },
+            ...base.seen
+          })
+        )
+        // The baseline must really be the pinned pre-change bytes: the
+        // served stylesheet is byte-identical to the fixture, and the
+        // rendered document carries the pre-change hidden input.
+        let servedCssChars: number | 'uncollected' = 'uncollected'
+        let hiddenInputs: number | 'uncollected' = 'uncollected'
+        await phase(
+          'baseline identity',
+          async () => {
+            assert.ok(
+              routes.roomHits > 0,
+              'the room document was never requested'
+            )
+            assert.ok(routes.cssHits > 0, 'the stylesheet was never requested')
+            const servedCss = await baseline.evaluate(() =>
+              fetch('/style.css').then((response) => response.text())
+            )
+            servedCssChars = servedCss.length
+            assert.equal(
+              servedCss,
+              await readFile(fixture('pre-change-style.css'), 'utf8')
+            )
+            hiddenInputs = await baseline.locator('#photo[hidden]').count()
+            assert.equal(hiddenInputs, 1)
+          },
+          async () => ({
+            routes: { ...routes },
+            servedCssChars,
+            hiddenInputs,
+            ...base.seen
+          })
+        )
+        const before = await phase(
+          'baseline measure',
+          () => boxes(baseline),
+          async () => ({ ...base.seen })
+        )
+
+        const patchedContext = await newContext(390, 700)
+        try {
+          const patched = await patchedContext.newPage()
+          const patch = watch(patched)
+          try {
+            await phase(
+              'patched goto',
+              () => patched.goto('/room/keyboard-mobile'),
+              async () => ({ ...patch.seen })
+            )
+            await phase(
+              'patched ready',
+              () => patched.locator('#call:enabled').waitFor(),
+              async () => ({
+                join: await joinState(patched),
+                ...patch.seen
+              })
+            )
+            const after = await phase(
+              'patched measure',
+              () => boxes(patched),
+              async () => ({ ...patch.seen })
+            )
+            await phase(
+              'compare',
+              async () => assert.deepEqual(after, before),
+              async () => ({ before, after })
+            )
+          } finally {
+            patch.dispose()
+          }
+        } finally {
+          await patchedContext.close()
+        }
       } finally {
-        await patchedContext.close()
+        base.dispose()
       }
     } finally {
       await baselineContext.close()
