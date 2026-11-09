@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { after, before, describe, test } from 'node:test'
 import type { Browser, BrowserContext, Page } from 'playwright'
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 import { launchBrowser, startServer, type Server } from './helpers.ts'
 
 // REQ 14: the photo picker works by keyboard alone. Tab reaches the picker,
@@ -171,7 +173,7 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
     }
   })
 
-  test('the picker stays invisible and the page does not widen at 390px', async () => {
+  test('the picker stays invisible at 390px', async () => {
     const context = await newContext(390, 700)
     try {
       const page = await openRoom(context, 'keyboard-mobile')
@@ -179,21 +181,28 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       // Visually hidden: a clipped 1px box, not a layout shift
       const box = await page.locator('#photo').boundingBox()
       assert.ok(box && box.width <= 1 && box.height <= 1)
+    } finally {
+      await context.close()
+    }
+  })
 
-      // The preview keeps its size and place (pre-fix measurements)
-      const [label, video] = await Promise.all([
-        page.locator('#self-label').boundingBox(),
-        page.locator('#self').boundingBox()
-      ])
-      assert.deepEqual(label, { x: 174, y: 534, width: 160, height: 166 })
-      assert.deepEqual(video, { x: 174, y: 534, width: 160, height: 160 })
-
+  test('the page does not widen at 390px', async () => {
+    const context = await newContext(390, 700)
+    try {
+      const page = await openRoom(context, 'keyboard-mobile')
       const scrollWidth = await page.evaluate(
         () => document.documentElement.scrollWidth
       )
       assert.ok(scrollWidth <= 390, `page widened to ${scrollWidth}px`)
+    } finally {
+      await context.close()
+    }
+  })
 
-      // The ring still appears on keyboard focus at phone width
+  test('the ring appears on keyboard focus at 390px', async () => {
+    const context = await newContext(390, 700)
+    try {
+      const page = await openRoom(context, 'keyboard-mobile')
       await tabTrail(page, 4)
       const outline = await page.evaluate(
         () => getComputedStyle(document.getElementById('self-label')!).outline
@@ -201,6 +210,70 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       assert.equal(outline, 'rgb(254, 252, 232) solid 3px')
     } finally {
       await context.close()
+    }
+  })
+
+  test('the keyboard fix does not shift the layout at 390px', async () => {
+    // Baseline: the room and stylesheet bytes from before this fix, pinned
+    // as fixtures. Routes keep the server's status and headers and replace
+    // only the body, so the comparison is pre-change vs patched bytes in
+    // the same engine and viewport.
+    const fixture = (name: string) =>
+      fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
+    const boxes = async (page: Page) => {
+      const [label, video] = await Promise.all([
+        page.locator('#self-label').boundingBox(),
+        page.locator('#self').boundingBox()
+      ])
+      assert.ok(label, 'preview label has no layout box')
+      assert.ok(video, 'preview video has no layout box')
+      return { label, video }
+    }
+    const baselineContext = await newContext(390, 700)
+    try {
+      let cssHits = 0
+      await baselineContext.route('**/room/**', async (route) => {
+        if (!route.request().isNavigationRequest()) {
+          return route.continue()
+        }
+        await route.fulfill({
+          response: await route.fetch(),
+          path: fixture('pre-change-room.html')
+        })
+      })
+      await baselineContext.route('**/style.css', async (route) => {
+        cssHits++
+        await route.fulfill({
+          response: await route.fetch(),
+          path: fixture('pre-change-style.css'),
+          contentType: 'text/css'
+        })
+      })
+      const baseline = await openRoom(baselineContext, 'keyboard-mobile')
+      // The baseline must really be the pinned pre-change bytes: the served
+      // stylesheet is byte-identical to the fixture, and the rendered
+      // document carries the pre-change hidden input.
+      assert.ok(cssHits > 0, 'the stylesheet was never requested')
+      const servedCss = await baseline.evaluate(() =>
+        fetch('/style.css').then((response) => response.text())
+      )
+      assert.equal(
+        servedCss,
+        await readFile(fixture('pre-change-style.css'), 'utf8')
+      )
+      assert.equal(await baseline.locator('#photo[hidden]').count(), 1)
+      const before = await boxes(baseline)
+
+      const patchedContext = await newContext(390, 700)
+      try {
+        const patched = await openRoom(patchedContext, 'keyboard-mobile')
+        const after = await boxes(patched)
+        assert.deepEqual(after, before)
+      } finally {
+        await patchedContext.close()
+      }
+    } finally {
+      await baselineContext.close()
     }
   })
 })

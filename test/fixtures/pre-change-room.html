@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1.0, user-scalable=no, width=device-width"
+    />
+    <title>Pinto</title>
+    <meta property="og:title" content="Video calls with nothing to install" />
+    <meta
+      property="og:description"
+      content="Join the room and start talking."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/room_thumbnail.png" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/vendor/peerjs.min.js" defer></script>
+    <script>
+      // Reports page-level failures even when room.js never runs: every
+      // failure a person can hit names its cause instead of leaving Join
+      // disabled without a word. Capture phase catches resource load errors.
+      ;(() => {
+        const showPageError = (message) => {
+          const box = document.getElementById('error')
+          if (!box) return
+          let entry = document.getElementById('page-error')
+          if (!entry) {
+            entry = document.createElement('div')
+            entry.id = 'page-error'
+            entry.append(document.createElement('h1'), document.createElement('h2'))
+            box.append(entry)
+          }
+          entry.firstChild.textContent = 'Page error'
+          entry.lastChild.textContent = message
+          box.hidden = false
+        }
+        window.addEventListener(
+          'error',
+          (event) => {
+            if (event.target !== window && event.target?.src) {
+              showPageError(
+                `Part of the page did not load: ${new URL(event.target.src).pathname}`
+              )
+            } else if (event.message) {
+              showPageError(`Pinto hit an error: ${event.message}`)
+            }
+          },
+          true
+        )
+        window.addEventListener('unhandledrejection', (event) => {
+          const reason = event.reason
+          showPageError(
+            `Pinto hit an error: ${reason instanceof Error ? reason.message : String(reason)}`
+          )
+        })
+      })()
+    </script>
+    <script src="/socket.io/socket.io.min.js" defer></script>
+    <script type="module" src="/room.js"></script>
+  </head>
+  <body>
+    <div id="error" hidden></div>
+    <h1 id="title"></h1>
+    <h2 id="status"></h2>
+    <div class="attendees">
+      <div id="attendees" class="attendee-grid"></div>
+    </div>
+
+    <div class="presenter">
+      <div class="controls">
+        <button id="mute" class="mute">Mute</button>
+        <button id="camera" class="camera" disabled>Turn On Camera</button>
+        <button id="remove-photo" class="remove-photo" hidden>
+          Remove Photo
+        </button>
+        <button id="call" class="call" disabled>Join</button>
+      </div>
+      <label for="photo" id="self-label">
+        <video id="self" muted playsinline autoplay></video>
+      </label>
+      <input id="photo" type="file" accept="image/*" hidden />
+    </div>
+  </body>
+</html>
