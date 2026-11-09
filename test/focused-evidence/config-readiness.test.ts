@@ -58,21 +58,23 @@ for (const format of ['json', 'html']) {
           route.fulfill({
             status: 500,
             contentType: format === 'json' ? 'application/json' : 'text/html',
-            body: format === 'json'
-              ? '{"iceServers":[]}'
-              : '<!doctype html><title>Controlled error</title><p>Unavailable</p>'
+            body:
+              format === 'json'
+                ? '{"iceServers":[]}'
+                : '<!doctype html><title>Controlled error</title><p>Unavailable</p>'
           })
         )
         await page.goto('/room/config-error')
         // Observe an actual terminal initialization signal on either arm.
-        await page.waitForFunction(() =>
-          document.querySelector('#page-error') ||
-          document.querySelector('#error:not([hidden])') ||
-          document.querySelector('#call:not([disabled])')
+        await page.waitForFunction(
+          () =>
+            document.querySelector('#page-error') ||
+            document.querySelector('#error:not([hidden])') ||
+            document.querySelector('#call:not([disabled])')
         )
         const evidence = {
           format,
-          message: await page.locator('#page-error').count()
+          message: (await page.locator('#page-error').count())
             ? await page.locator('#page-error').textContent()
             : null,
           muteDisabled: await page.locator('#mute').isDisabled(),
