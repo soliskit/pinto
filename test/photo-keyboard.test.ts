@@ -115,7 +115,12 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       // is rethrown as-is; the observer still adds listener and
       // evaluate work, and the finally's context.close() can still mask
       // it. Counts are cumulative from attach to the snapshot taken
-      // after a failed attempt.
+      // after a failed attempt. For each event type, 'prevented' counts
+      // how many of the events these listeners observed carried the
+      // default-prevented flag on arrival at the listener. The counts
+      // cover only events that reached these listeners: an upstream
+      // handler could stop an event from reaching them at all, so the
+      // counts describe what was observed, never what was dispatched.
       const safeLog = (label: string, record?: unknown) => {
         try {
           if (record === undefined) console.log(label)
@@ -127,9 +132,18 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       try {
         await page.evaluate(() => {
           const w = window as unknown as {
-            __photoProbe?: Record<string, number>
+            __photoProbe?: {
+              counts: Record<string, number>
+              prevented: Record<string, number>
+            }
           }
           const counts: Record<string, number> = {
+            keydown: 0,
+            keypress: 0,
+            keyup: 0,
+            click: 0
+          }
+          const prevented: Record<string, number> = {
             keydown: 0,
             keypress: 0,
             keyup: 0,
@@ -138,14 +152,17 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
           const photo = document.getElementById('photo')
           if (!photo) return
           for (const type of ['keydown', 'keypress', 'keyup', 'click']) {
-            photo.addEventListener(type, () => {
+            photo.addEventListener(type, (event) => {
               counts[type] = (counts[type] ?? 0) + 1
+              if (event.defaultPrevented) {
+                prevented[type] = (prevented[type] ?? 0) + 1
+              }
             })
           }
           // Published only after every listener is attached, so null
           // at read time means no COMPLETE set was published - a
           // partial registration can then exist but is never published.
-          w.__photoProbe = counts
+          w.__photoProbe = { counts, prevented }
         })
       } catch {
         safeLog('native-activation probe attach unavailable')
@@ -155,7 +172,10 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
         try {
           const record = await page.evaluate(() => {
             const w = window as unknown as {
-              __photoProbe?: Record<string, number>
+              __photoProbe?: {
+                counts: Record<string, number>
+                prevented: Record<string, number>
+              }
             }
             const photo = document.getElementById('photo')
             const style = photo ? getComputedStyle(photo) : null
@@ -182,16 +202,25 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
             const stored = w.__photoProbe
             const counts = stored
               ? {
-                  keydown: stored.keydown ?? 0,
-                  keypress: stored.keypress ?? 0,
-                  keyup: stored.keyup ?? 0,
-                  click: stored.click ?? 0
+                  keydown: stored.counts.keydown ?? 0,
+                  keypress: stored.counts.keypress ?? 0,
+                  keyup: stored.counts.keyup ?? 0,
+                  click: stored.counts.click ?? 0
+                }
+              : null
+            const prevented = stored
+              ? {
+                  keydown: stored.prevented.keydown ?? 0,
+                  keypress: stored.prevented.keypress ?? 0,
+                  keyup: stored.prevented.keyup ?? 0,
+                  click: stored.prevented.click ?? 0
                 }
               : null
             return {
               activeElement: activeBucket,
               probeAttach: stored ? 'complete' : 'unavailable',
               counts,
+              prevented,
               inputPresent: photo !== null,
               inputDisabled,
               offsetParentNonNull: photo ? photo.offsetParent !== null : null,
@@ -625,6 +654,43 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
         visible: await field(() => button.isVisible())
       }
     }
+    // The peer error entry the page currently holds, if any, bucketed
+    // to the PeerJS error-type enum (verified against the served
+    // bundle) with 'other' and 'absent' fallbacks. The page keeps one
+    // entry per heading (room.js showError overwrites it), so this is
+    // whatever the current matching entry holds, not a chronology.
+    // The entry's text is read in the page only for the enum prefix
+    // match and is never output. The hidden-flag check reads one
+    // attribute; it is not a full visibility proof.
+    const PEER_ERROR_TYPES = [
+      'browser-incompatible',
+      'disconnected',
+      'invalid-id',
+      'invalid-key',
+      'network',
+      'peer-unavailable',
+      'server-error',
+      'socket-closed',
+      'socket-error',
+      'ssl-unavailable',
+      'unavailable-id',
+      'webrtc'
+    ]
+    const peerErrorState = async (page: Page) => {
+      return await field(async () =>
+        page.evaluate((types: string[]) => {
+          const box = document.getElementById('error')
+          const entries = box && !box.hidden ? [...box.children] : []
+          const entry = entries.find(
+            (e) => e.firstChild?.textContent === 'Connection problem'
+          )
+          if (!entry) return { shown: false, typeClass: 'absent' }
+          const text = entry.lastChild?.textContent ?? ''
+          const hit = types.find((t) => text.startsWith(`${t}:`))
+          return { shown: true, typeClass: hit ?? 'other' }
+        }, PEER_ERROR_TYPES)
+      )
+    }
     const phase = async <T>(
       name: string,
       work: () => Promise<T>,
@@ -713,6 +779,7 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
           () => baseline.locator('#call:enabled').waitFor(),
           async () => ({
             join: await joinState(baseline),
+            peerError: await peerErrorState(baseline),
             routes: { ...routes },
             ...base.seen
           })
