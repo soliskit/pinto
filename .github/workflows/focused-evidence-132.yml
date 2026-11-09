@@ -1,0 +1,111 @@
+# Private proposal only. Not placed in .github/workflows or approved to publish.
+name: Pinto focused evidence (not a qualification verdict)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+concurrency:
+  group: pinto-focused-132-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  evidence:
+    if: github.head_ref == 'prep/pinto-focused-132'
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
+      options: --init --ipc=host
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        phase: [baseline, candidate]
+        browser: [server-only]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: evidence-source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.phase == 'baseline' && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: app/package.json
+      - name: Verify and copy identical isolated test bytes
+        env:
+          EXPECTED_BASE: a4d943626c62cb1ed86c96de7a9757f2ef5ffcdb
+          ACTUAL_BASE: ${{ github.event.pull_request.base.sha }}
+          CANDIDATE: ${{ github.event.pull_request.head.sha }}
+          PHASE: ${{ matrix.phase }}
+          BROWSER: ${{ matrix.browser }}
+          SCOPE: 132
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p receipts
+          test "$ACTUAL_BASE" = "$EXPECTED_BASE"
+          test "$(git -C evidence-source rev-parse HEAD)" = "$CANDIDATE"
+          if [ "$PHASE" = baseline ]; then ref=$ACTUAL_BASE; else ref=$CANDIDATE; fi
+          test "$(git -C app rev-parse HEAD)" = "$ref"
+          # Bundle contents and embedded hash map are fixed in the reviewed workflow.
+          printf '%s  %s\n' '3539c69052fc5db68f033d9f7dd38ea55c2e50343c7680c2454ed7d96d1304ca' evidence-source/test/focused-evidence/prepare.py | sha256sum --check --strict
+          printf '%s  %s\n' '4dbbeaee37d1948567ad4a3e0f7c8ccd1f42b8aabfefc9c40a0079d5f563bc54' evidence-source/test/focused-evidence/inspect-evidence.py | sha256sum --check --strict
+          python3 evidence-source/test/focused-evidence/prepare.py app evidence-source
+          printf 'phase=%s\nbrowser=%s\nbase=%s\nhead=%s\n' "$PHASE" "$BROWSER" "$ACTUAL_BASE" "$CANDIDATE" > receipts/identity.txt
+          git -C app diff --binary > receipts/fixture-overlay.diff
+          node --version > receipts/node.txt
+          npm --version > receipts/npm.txt
+      - name: Install locked dependencies once
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          timeout --signal=TERM --kill-after=5s 180s npm ci > ../receipts/install.log 2>&1
+          node -e "process.exit(require('playwright/package.json').version==='1.65.0'?0:1)"
+      - name: Capture one native focused run (no automatic defect classifier)
+        env:
+          PINTO_BROWSER: ${{ matrix.browser }}
+          PHASE: ${{ matrix.phase }}
+          SCOPE: 132
+          TWILIO_ACCOUNT_SID: ''
+          TWILIO_AUTH_TOKEN: ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          export PINTO_PEER_LOG_RECEIPT="$(realpath ../receipts)/peer-sinks.jsonl"
+          export PINTO_RESOURCE_RECEIPT="$(realpath ../receipts)/resources.jsonl"
+          testfile=$(cat ../receipts/testfile.txt)
+          set +e
+          timeout --signal=TERM --kill-after=5s 150s node --test --test-reporter=tap --test-timeout=120000 "$testfile" > ../receipts/test.tap 2> ../receipts/test.stderr
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > ../receipts/native-status.txt
+          # Neither rc1 nor a completed job proves an intended baseline defect.
+          printf '%s\n' 'NOT_QUALIFIED: raw evidence requires source-attributed oracle and cleanup review;260 additionally requires pixel review' > ../receipts/verdict.txt
+          # Keep images even on an intended baseline assertion failure.
+          find . -maxdepth 1 -name 'target-*.png' -type f -exec cp '{}' ../receipts/ \;
+          sha256sum "$testfile" test/proposal-resources.ts test/resource-receipt.ts test/helpers.ts > ../receipts/executed-inputs.sha256
+          python3 ../evidence-source/test/focused-evidence/inspect-evidence.py ../receipts "$PHASE" "$SCOPE" "$PINTO_BROWSER"
+      - name: Upload raw evidence, including failure and setup logs
+        if: always()
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: pinto-focused-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.phase }}-${{ matrix.browser }}
+          path: receipts/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Record actual artifact link
+        if: always() && steps.upload.outcome == 'success'
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        shell: bash
+        run: |
+          printf '%s\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"

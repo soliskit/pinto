@@ -220,7 +220,7 @@ io.on('connection', (socket: Socket) => {
 })
 
 peerServer.on('connection', (client: IClient) => {
-  console.log(`PeerClient connected: ${client.getId()}`)
+  console.log(`PeerClient connected: ${escapeLogId(client.getId())}`)
 })
 
 peerServer.on('error', (error: Error) => {
@@ -229,7 +229,7 @@ peerServer.on('error', (error: Error) => {
 })
 
 peerServer.on('disconnect', (client: IClient) => {
-  console.log(`PeerClient disconnected: ${client.getId()}`)
+  console.log(`PeerClient disconnected: ${escapeLogId(client.getId())}`)
 })
 
 server.on('error', (error: NodeJS.ErrnoException) => {
