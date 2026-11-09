@@ -448,7 +448,10 @@ peer.on('disconnected', () => {
   }, PEER_RECONNECT_DELAY_MS)
 })
 peer.on('error', (error) =>
-  showError('Connection problem', `${error.type}: ${error.message}`)
+  showError(
+    'Connection problem',
+    `${error.type}: ${error.message || 'No further error details are available.'}`
+  )
 )
 
 socket.on('user-connected', (peerId) => {
