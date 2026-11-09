@@ -1,0 +1,134 @@
+name: Manual chooser arm diagnostic (D1)
+
+# One-off, manual-only diagnostic. Never runs on push, PR, or schedule.
+# Runs exactly one spec file, pinned by hash so the exact reviewed bytes
+# are the only bytes that can run. Modeled on the house diagnostic
+# workflow template (controlled-post-action.yml) without its container
+# stage: this diagnostic needs only the same runner setup as the Test
+# workflow, and its two setup-parity lines are copied from test.yml so
+# the run's setup steps match the Test workflow's. Whether the runner
+# environment matches that of the five observed runs is not established
+# (runner images drift); no environment reproduction is claimed.
+# GitHub requires a manually dispatched workflow to exist on the default
+# branch: this file lands on main via a reviewed PR (David merges it).
+# The checkout and verification below are pinned to the approved
+# part-1 commit 439b28bc9ff04c9cbd8b5d0a092b357752a71a4b on
+# fix/photo-keyboard, which carries the reviewed spec bytes; the
+# committed file gets a post-merge sha256 readback.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 439b28bc9ff04c9cbd8b5d0a092b357752a71a4b
+      - name: Verify the checked-out content SHA
+        run: test "$(git rev-parse HEAD)" = "439b28bc9ff04c9cbd8b5d0a092b357752a71a4b"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      # Setup parity with the Test workflow on main (test.yml): the apt
+      # mirror workaround and the low-port bind allowance are copied so
+      # this run's setup steps match that workflow's. These setup step
+      # logs are ordinary public workflow logs.
+      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+      - run: npx playwright install --with-deps chromium
+      - name: Allow unprivileged low-port binds (setup parity)
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+      - name: Check Playwright package version
+        run: node -e "process.exit(require('playwright/package.json').version==='1.65.0'?0:1)"
+      - name: Verify the pinned diagnostic bytes
+        run: |
+          set -euo pipefail
+          file=test/diagnostics/chooser-arm.spec.ts
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "50ca962883fd0ec8bd687aaa69571bd34b55737babdd2da88b25d3c8800d444f"
+      - name: Run the diagnostic once
+        shell: bash
+        run: |
+          # Raw node output stays a private, job-local file: it can
+          # carry arbitrary node errors and paths, so it is never
+          # printed to the public log and never uploaded (no artifact
+          # step exists). The reporter is pinned explicitly
+          # (--test-reporter=spec) so the console-line shape is a
+          # reviewed choice, not a default. Run 42553274112 ran under
+          # the npm-test default; whether that default was this same
+          # reporter is not established, and no identity is claimed.
+          # 'shell: bash' implies -e: neutralized around the run so a
+          # nonzero node exit still reaches the exit-code capture.
+          set +e
+          timeout --signal=TERM --kill-after=5s 150s \
+            node --test --test-reporter=spec --test-timeout=120000 \
+            test/diagnostics/chooser-arm.spec.ts > d1-output.txt 2>&1
+          code=$?
+          set -e
+          echo "node_exit=$code" > d1-exit.txt
+      - name: Classify the observation (exact fixed classes only)
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          # Prints only bounded fixed-class lines, counts, and the
+          # native exit code. Raw line content is never printed:
+          # precondition and cleanup failures appear as counts only.
+          node_exit=$(cut -d= -f2 d1-exit.txt 2>/dev/null || true)
+          [ -n "$node_exit" ] || node_exit=unknown
+          raw_present=1
+          if [ ! -f d1-output.txt ]; then
+            raw_present=0
+          fi
+          norm() { sed 's/^# //' d1-output.txt 2>/dev/null; }
+          outcome=$(norm | grep -cE "^D1 armed-enter outcome \{ outcome: '(arrived|not-observed)' \}$" || true)
+          raw_outcome=$(norm | grep -c '^D1 armed-enter outcome' || true)
+          pre=$(norm | grep -c '^D1 precondition failed ' || true)
+          clf=$(norm | grep -c '^D1 cleanup failed' || true)
+          : "${outcome:=0}" "${raw_outcome:=0}" "${pre:=0}" "${clf:=0}"
+          echo "node_exit=$node_exit outcome_lines=$outcome malformed_outcome_lines=$((raw_outcome - outcome)) precondition_lines=$pre cleanup_failed_lines=$clf"
+          ok=1
+          if [ "$node_exit" != 0 ]; then
+            ok=0
+            if [ "$node_exit" = 124 ]; then
+              echo 'class: outer timeout fired (124)'
+            fi
+          fi
+          if [ "$raw_present" != 1 ]; then
+            ok=0
+          fi
+          if [ "$raw_outcome" != 1 ]; then
+            ok=0
+          fi
+          if [ "$outcome" != 1 ]; then
+            ok=0
+          fi
+          if [ "$pre" != 0 ]; then
+            ok=0
+          fi
+          if [ "$clf" != 0 ]; then
+            ok=0
+          fi
+          if [ "$ok" = 1 ]; then
+            norm | grep -E "^D1 armed-enter outcome \{ outcome: '(arrived|not-observed)' \}$"
+          else
+            if [ "$raw_present" != 1 ]; then
+              echo 'INCOMPLETE: raw output file missing; cause unknown'
+            else
+              echo 'INCOMPLETE: no single well-formed observation; cause unknown (precondition framing, logging, timeout, or other)'
+            fi
+          fi
+          if [ "$ok" = 1 ]; then
+            exit 0
+          else
+            exit 1
+          fi
