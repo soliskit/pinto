@@ -10,8 +10,7 @@ for (const mode of ['500', 'abort']) {
         const page = await context.newPage()
         let idRequests = 0
         page.on('request', (request) => {
-          if (new URL(request.url()).pathname === '/pinto/id')
-            idRequests++
+          if (new URL(request.url()).pathname === '/pinto/id') idRequests++
         })
         await page.route('**/pinto/id*', (route) =>
           mode === 'abort'
@@ -23,12 +22,14 @@ for (const mode of ['500', 'abort']) {
         // Span the app's 5000ms reconnect delay, without authorizing retries.
         const started = Date.now()
         await new Promise((resolve) => setTimeout(resolve, 5500))
-        const entries = await page.locator('#error > div').evaluateAll((nodes) =>
-          nodes.map((node) => ({
-            heading: node.querySelector('h1')?.textContent,
-            detail: node.querySelector('h2')?.textContent
-          }))
-        )
+        const entries = await page
+          .locator('#error > div')
+          .evaluateAll((nodes) =>
+            nodes.map((node) => ({
+              heading: node.querySelector('h1')?.textContent,
+              detail: node.querySelector('h2')?.textContent
+            }))
+          )
         const evidence = {
           mode,
           observationMs: Date.now() - started,
