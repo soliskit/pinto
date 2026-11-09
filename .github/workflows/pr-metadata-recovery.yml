@@ -1,0 +1,164 @@
+name: PR metadata recovery
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number to recheck (canonical positive decimal, e.g. 507)'
+        required: true
+        type: string
+      expected_head_sha:
+        description: 'Expected full 40-character head SHA of that pull request'
+        required: true
+        type: string
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+jobs:
+  title:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: pr-title-${{ github.event.inputs.pr_number }}
+      cancel-in-progress: false
+    steps:
+      - name: Validate inputs and run trusted base title checker
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPO: soliskit/pinto
+          INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          INPUT_EXPECTED_HEAD: ${{ github.event.inputs.expected_head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, runpy, sys, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != os.environ['EXPECTED_REPO']:
+              raise ValueError('Repository identity outside approved scope')
+          raw_number = os.environ['INPUT_PR_NUMBER']
+          if not raw_number.isdigit() or int(raw_number) <= 0 or str(int(raw_number)) != raw_number:
+              raise ValueError('PR number must be canonical positive decimal')
+          expected = os.environ['INPUT_EXPECTED_HEAD']
+          if len(expected) != 40 or any(c not in '0123456789abcdef' for c in expected):
+              raise ValueError('Invalid expected SHA')
+          event = {'pull_request': {'number': int(os.environ['INPUT_PR_NUMBER']),
+                                    'head': {'sha': expected},
+                                    'base': {'ref': 'main', 'repo': {'full_name': repo}}}}
+          pathlib.Path('recovery_event.json').write_text(json.dumps(event))
+          os.environ['GITHUB_EVENT_PATH'] = 'recovery_event.json'
+          os.environ['RECOVERY_EXPECTED_SHA'] = expected
+          def post_status(state, description):
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/statuses/{expected}',
+                  data=json.dumps({'state': state, 'context': 'PR title',
+                                   'description': description}).encode(),
+                  method='POST',
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  response.read()
+          post_status('pending', 'Checking the current title.')
+          try:
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/git/ref/heads/main',
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  base = json.load(response)['object']['sha']
+              if len(base) != 40 or any(c not in '0123456789abcdef' for c in base):
+                  raise ValueError('Invalid base SHA')
+              files = {
+                  '.github/scripts/check_pr_title.py': 'check_pr_title.py',
+                  '.github/scripts/run_title_check.py': 'run_title_check.py',
+                  '.github/title_config.json': 'title_config.json',
+              }
+              for source, destination in files.items():
+                  request = urllib.request.Request(
+                      f'https://api.github.com/repos/{repo}/contents/{source}?ref={base}',
+                      headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                               'Accept': 'application/vnd.github.raw+json'})
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      pathlib.Path(destination).write_bytes(response.read())
+              result = runpy.run_path('run_title_check.py')['main']()
+          except Exception:
+              post_status('error', 'Title could not be verified.')
+              raise
+          sys.exit(result)
+          PY
+  description:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: pr-description-${{ github.event.inputs.pr_number }}
+      cancel-in-progress: false
+    steps:
+      - name: Validate inputs and run trusted base description checker
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPO: soliskit/pinto
+          INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          INPUT_EXPECTED_HEAD: ${{ github.event.inputs.expected_head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, runpy, sys, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != os.environ['EXPECTED_REPO']:
+              raise ValueError('Repository identity outside approved scope')
+          raw_number = os.environ['INPUT_PR_NUMBER']
+          if not raw_number.isdigit() or int(raw_number) <= 0 or str(int(raw_number)) != raw_number:
+              raise ValueError('PR number must be canonical positive decimal')
+          expected = os.environ['INPUT_EXPECTED_HEAD']
+          if len(expected) != 40 or any(c not in '0123456789abcdef' for c in expected):
+              raise ValueError('Invalid expected SHA')
+          event = {'pull_request': {'number': int(os.environ['INPUT_PR_NUMBER']),
+                                    'head': {'sha': expected},
+                                    'base': {'ref': 'main', 'repo': {'full_name': repo}}}}
+          pathlib.Path('recovery_event.json').write_text(json.dumps(event))
+          os.environ['GITHUB_EVENT_PATH'] = 'recovery_event.json'
+          os.environ['RECOVERY_EXPECTED_SHA'] = expected
+          def post_status(state, description):
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/statuses/{expected}',
+                  data=json.dumps({'state': state, 'context': 'PR description',
+                                   'description': description}).encode(),
+                  method='POST',
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  response.read()
+          post_status('pending', 'Checking the current description.')
+          try:
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/git/ref/heads/main',
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  base = json.load(response)['object']['sha']
+              if len(base) != 40 or any(c not in '0123456789abcdef' for c in base):
+                  raise ValueError('Invalid base SHA')
+              files = {
+                  '.github/scripts/check_pr_description.py': 'check_pr_description.py',
+                  '.github/scripts/run_check.py': 'run_check.py',
+                  '.github/pull_request_template.md': 'pull_request_template.md',
+                  '.github/description_config.json': 'description_config.json',
+              }
+              for source, destination in files.items():
+                  request = urllib.request.Request(
+                      f'https://api.github.com/repos/{repo}/contents/{source}?ref={base}',
+                      headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                               'Accept': 'application/vnd.github.raw+json'})
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      pathlib.Path(destination).write_bytes(response.read())
+              result = runpy.run_path('run_check.py')['main']()
+          except Exception:
+              post_status('error', 'Description could not be verified.')
+              raise
+          sys.exit(result)
+          PY
