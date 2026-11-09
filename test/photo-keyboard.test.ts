@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { after, before, describe, test } from 'node:test'
-import type {
-  Browser,
-  BrowserContext,
-  ConsoleMessage,
-  Page,
-  Request,
-  WebSocket
+import {
+  type Browser,
+  type BrowserContext,
+  type ConsoleMessage,
+  errors,
+  type Page,
+  type Request,
+  type WebSocket
 } from 'playwright'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -107,19 +108,125 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
         await page.evaluate(() => document.activeElement?.id),
         'photo'
       )
+      // Bounded activation-path observation: fixed counters and fixed
+      // category buckets only, no event payloads, no element ids, no raw
+      // style text. Attach and read are guarded so a probe failure is
+      // logged best-effort instead of replacing the caught error, which
+      // is rethrown as-is; the observer still adds listener and
+      // evaluate work, and the finally's context.close() can still mask
+      // it. Counts are cumulative from attach to the snapshot taken
+      // after a failed attempt.
+      const safeLog = (label: string, record?: unknown) => {
+        try {
+          if (record === undefined) console.log(label)
+          else console.log(label, record)
+        } catch {
+          // intentionally nothing
+        }
+      }
+      try {
+        await page.evaluate(() => {
+          const w = window as unknown as {
+            __photoProbe?: Record<string, number>
+          }
+          const counts: Record<string, number> = {
+            keydown: 0,
+            keypress: 0,
+            keyup: 0,
+            click: 0
+          }
+          const photo = document.getElementById('photo')
+          if (!photo) return
+          for (const type of ['keydown', 'keypress', 'keyup', 'click']) {
+            photo.addEventListener(type, () => {
+              counts[type] = (counts[type] ?? 0) + 1
+            })
+          }
+          // Published only after every listener is attached, so null
+          // at read time means no COMPLETE set was published - a
+          // partial registration can then exist but is never published.
+          w.__photoProbe = counts
+        })
+      } catch {
+        safeLog('native-activation probe attach unavailable')
+      }
+      const probe = async (key: string) => {
+        const label = `native-activation ${key} attempt failed`
+        try {
+          const record = await page.evaluate(() => {
+            const w = window as unknown as {
+              __photoProbe?: Record<string, number>
+            }
+            const photo = document.getElementById('photo')
+            const style = photo ? getComputedStyle(photo) : null
+            const active = document.activeElement
+            const VISIBILITY_BUCKETS = ['visible', 'hidden', 'collapse']
+            let activeBucket = 'none'
+            if (active) {
+              activeBucket = active.id === 'photo' ? 'photo' : 'other'
+            }
+            let inputDisabled: boolean | null = null
+            if (photo instanceof HTMLInputElement) {
+              inputDisabled = photo.disabled
+            }
+            let pointerBucket: string | null = null
+            if (style) {
+              pointerBucket = style.pointerEvents === 'none' ? 'none' : 'other'
+            }
+            let visibilityBucket: string | null = null
+            if (style) {
+              visibilityBucket = VISIBILITY_BUCKETS.includes(style.visibility)
+                ? style.visibility
+                : 'other'
+            }
+            const stored = w.__photoProbe
+            const counts = stored
+              ? {
+                  keydown: stored.keydown ?? 0,
+                  keypress: stored.keypress ?? 0,
+                  keyup: stored.keyup ?? 0,
+                  click: stored.click ?? 0
+                }
+              : null
+            return {
+              activeElement: activeBucket,
+              probeAttach: stored ? 'complete' : 'unavailable',
+              counts,
+              inputPresent: photo !== null,
+              inputDisabled,
+              offsetParentNonNull: photo ? photo.offsetParent !== null : null,
+              pointerEvents: pointerBucket,
+              visibility: visibilityBucket
+            }
+          })
+          safeLog(label, record)
+        } catch {
+          safeLog(label, { probeUnavailable: true })
+        }
+      }
       // One press per key: a key that does not open the chooser fails the
       // test, whatever the cause. Unrolled so each press has its own line:
       // Enter first, then Space, in this same context
-      const [enterChooser] = await Promise.all([
-        page.waitForEvent('filechooser'),
-        page.keyboard.press('Enter')
-      ])
-      assert.ok(enterChooser)
-      const [spaceChooser] = await Promise.all([
-        page.waitForEvent('filechooser'),
-        page.keyboard.press('Space')
-      ])
-      assert.ok(spaceChooser)
+      try {
+        const [enterChooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          page.keyboard.press('Enter')
+        ])
+        assert.ok(enterChooser)
+      } catch (error) {
+        if (error instanceof errors.TimeoutError) await probe('enter')
+        throw error
+      }
+      try {
+        const [spaceChooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          page.keyboard.press('Space')
+        ])
+        assert.ok(spaceChooser)
+      } catch (error) {
+        if (error instanceof errors.TimeoutError) await probe('space')
+        throw error
+      }
     } finally {
       await context.close()
     }
