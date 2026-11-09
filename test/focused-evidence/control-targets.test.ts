@@ -51,8 +51,12 @@ test('real photo controls retain minimum height and layout', async () => {
               (draw) => draw.complete && draw.width === 2 && draw.height === 2
                 && draw.canvasWidth > 0 && draw.canvasHeight > 0
             )`)
-            console.log(JSON.stringify({ width, photoDraws:
-              await page.evaluate('window.proposalPhotoDraws') }))
+            console.log(
+              JSON.stringify({
+                width,
+                photoDraws: await page.evaluate('window.proposalPhotoDraws')
+              })
+            )
           }
           const evidence = await page.evaluate(() => {
             const rect = (node: Element) =>
@@ -71,25 +75,41 @@ test('real photo controls retain minimum height and layout', async () => {
             path: `target-${width}-${state}.png`,
             fullPage: true
           })
-          const expected = state === 'with-photo'
-            ? ['mute', 'camera', 'remove-photo', 'call']
-            : ['mute', 'camera', 'call']
-          if (JSON.stringify(evidence.controls.map((x) => x.id).sort()) !==
-              JSON.stringify(expected.sort()))
+          const expected =
+            state === 'with-photo'
+              ? ['mute', 'camera', 'remove-photo', 'call']
+              : ['mute', 'camera', 'call']
+          if (
+            JSON.stringify(evidence.controls.map((x) => x.id).sort()) !==
+            JSON.stringify(expected.sort())
+          )
             failures.push(`inventory:${width}/${state}`)
           for (const { id, rect } of evidence.controls) {
             if (rect.height < 44)
-              failures.push(`height-rule:${width}/${state}/${id}:${rect.height}`)
+              failures.push(
+                `height-rule:${width}/${state}/${id}:${rect.height}`
+              )
             if (rect.width < 44)
-              failures.push(`width-control:${width}/${state}/${id}:${rect.width}`)
-            if (rect.left < 0 || rect.right > width ||
-                rect.top < 0 || rect.bottom > height)
+              failures.push(
+                `width-control:${width}/${state}/${id}:${rect.width}`
+              )
+            if (
+              rect.left < 0 ||
+              rect.right > width ||
+              rect.top < 0 ||
+              rect.bottom > height
+            )
               failures.push(`offscreen:${width}/${state}/${id}`)
             for (const [name, heading] of [
-              ['title', evidence.title], ['status', evidence.status]
+              ['title', evidence.title],
+              ['status', evidence.status]
             ] as const) {
-              if (rect.left < heading.right && rect.right > heading.left &&
-                  rect.top < heading.bottom && rect.bottom > heading.top)
+              if (
+                rect.left < heading.right &&
+                rect.right > heading.left &&
+                rect.top < heading.bottom &&
+                rect.bottom > heading.top
+              )
                 failures.push(`overlap:${width}/${state}/${id}/${name}`)
             }
           }
@@ -97,13 +117,20 @@ test('real photo controls retain minimum height and layout', async () => {
         await page.goto('/')
         const open = await page.locator('.open-room').boundingBox()
         console.log(JSON.stringify({ width, height, state: 'lobby', open }))
-        await page.screenshot({ path: `target-${width}-lobby.png`, fullPage: true })
+        await page.screenshot({
+          path: `target-${width}-lobby.png`,
+          fullPage: true
+        })
         if (!open) failures.push(`missing-lobby:${width}`)
         else {
           if (open.height < 44) failures.push(`height-rule:lobby/${width}`)
           if (open.width < 44) failures.push(`width-control:lobby/${width}`)
-          if (open.x < 0 || open.x + open.width > width ||
-              open.y < 0 || open.y + open.height > height)
+          if (
+            open.x < 0 ||
+            open.x + open.width > width ||
+            open.y < 0 ||
+            open.y + open.height > height
+          )
             failures.push(`offscreen:lobby/${width}`)
         }
       } finally {

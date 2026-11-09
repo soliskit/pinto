@@ -54,7 +54,7 @@ jobs:
           if [ "$PHASE" = baseline ]; then ref=$ACTUAL_BASE; else ref=$CANDIDATE; fi
           test "$(git -C app rev-parse HEAD)" = "$ref"
           # Bundle contents and embedded hash map are fixed in the reviewed workflow.
-          printf '%s  %s\n' '178aaa1278b6441ef7dac53e95723780677c28ff985f414548c909c32a04c046' evidence-source/test/focused-evidence/prepare.py | sha256sum --check --strict
+          printf '%s  %s\n' 'c886e41772ee3c24717f7e50294ccae79e956a86923acdf6d8ec73f4aee41261' evidence-source/test/focused-evidence/prepare.py | sha256sum --check --strict
           printf '%s  %s\n' 'bdef027b52630add819c913c2add8195c29644ca443c92d7c79d6fa02c947092' evidence-source/test/focused-evidence/inspect-evidence.py | sha256sum --check --strict
           python3 evidence-source/test/focused-evidence/prepare.py app evidence-source
           printf 'phase=%s\nbrowser=%s\nbase=%s\nhead=%s\n' "$PHASE" "$BROWSER" "$ACTUAL_BASE" "$CANDIDATE" > receipts/identity.txt
