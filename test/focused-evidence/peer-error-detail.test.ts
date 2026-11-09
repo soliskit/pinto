@@ -49,14 +49,12 @@ test('nonempty peer error detail is preserved exactly', async () => {
       await page.evaluate(
         "window.proposalPeer.emit('error', { type: 'server-error', message: 'Controlled detailed reason' })"
       )
-      const entry = page
-        .locator('#error > div')
-        .filter({
-          has: page.getByRole('heading', {
-            name: 'Connection problem',
-            exact: true
-          })
+      const entry = page.locator('#error > div').filter({
+        has: page.getByRole('heading', {
+          name: 'Connection problem',
+          exact: true
         })
+      })
       assert.equal(
         await entry.locator('h2').textContent(),
         'server-error: Controlled detailed reason'

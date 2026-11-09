@@ -118,7 +118,8 @@ export async function startServer(
     } catch (cleanupError) {
       throw new AggregateError(
         [startupError, cleanupError],
-        'Server startup failed and cleanup did not finish normally'
+        'Server startup failed and cleanup did not finish normally',
+        { cause: cleanupError }
       )
     }
     throw startupError

@@ -3,7 +3,7 @@ from pathlib import Path
 import hashlib, json, sys
 app, source = map(lambda x: Path(x).resolve(), sys.argv[1:])
 bundle = source / 'test/focused-evidence'
-EXPECTED = {'proposal-resources.ts': '2ac1d2b46700dba078e56923eb35ae4e06a62a278fa7a5a346462b58f174949d', 'resource-receipt.ts': '1025239889050c084f583e30ce415688e3843e8de698171c54d953db87ff238b', 'control-targets.test.ts': 'dfff55902a7aed797a68c97e1c4bb28422639cf4ee72256f6c87b9e231c979dc', 'peer-log-lines.test.ts': 'eba7389707eadd61603dd67af865c6660b7c1a3025855176eb826ce70e46323a', 'peer-error-detail.test.ts': '542569559c244b5236d99f3ab2064c728f132de7a77e63ca9e6145e8c4065253', 'config-readiness.test.ts': '9a04d16b352876d9b2a62ce068c659f11091c30853a26312e8cc791d2b201a5d', 'helpers.ts': 'f037a329260a70c12aeb50f0018fb1f3ddd49980e1edce6cf87325a93a01fded'}
+EXPECTED = {'proposal-resources.ts': '2ac1d2b46700dba078e56923eb35ae4e06a62a278fa7a5a346462b58f174949d', 'resource-receipt.ts': '1025239889050c084f583e30ce415688e3843e8de698171c54d953db87ff238b', 'control-targets.test.ts': 'dfff55902a7aed797a68c97e1c4bb28422639cf4ee72256f6c87b9e231c979dc', 'peer-log-lines.test.ts': '60d44afd38b311e61c16784c86932cb84d91c23f804c9641cea53fe3f4ec77b3', 'peer-error-detail.test.ts': 'a40a451497b4d71e3ce176d1b4f604fd7913ceec75d3053f9fcb6fb13bf2449a', 'config-readiness.test.ts': '9a04d16b352876d9b2a62ce068c659f11091c30853a26312e8cc791d2b201a5d', 'helpers.ts': 'd4c5e3d496cb3cc56f115fcae6d7dc01fd19a5d1bdedbcc2be0df86634b338fa'}
 # Scope is a publication parameter, not selected by untrusted message content.
 # Only one is supplied per independent candidate; whitespace is rejected.
 scope = (bundle / 'scope.txt').read_text()

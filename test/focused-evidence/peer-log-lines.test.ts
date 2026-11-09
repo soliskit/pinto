@@ -4,8 +4,29 @@ import WebSocket from 'ws'
 import { appendFileSync } from 'node:fs'
 import { startServer } from './helpers.ts'
 
+function writePeerSink(
+  server: Awaited<ReturnType<typeof startServer>>,
+  from: number,
+  id: string,
+  expected: string
+) {
+  const sink = process.env.PINTO_PEER_LOG_RECEIPT
+  if (!sink) throw Error('Missing peer sink transcript path')
+  const raw = server.output().slice(from)
+  if (raw.length > 65536)
+    throw Error('Peer sink transcript exceeds bounded receipt')
+  appendFileSync(sink, JSON.stringify({ id, expected, raw }) + '\n')
+}
+
+function throwFailures(errors: unknown[], message: string) {
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1)
+    throw new AggregateError(errors, message, { cause: errors[0] })
+}
+
 test('peer connection and disconnect IDs cannot add log lines', async () => {
   const server = await startServer()
+  const failures: unknown[] = []
   try {
     for (const [id, expected] of [
       ['plain-id', 'plain-id'],
@@ -17,6 +38,7 @@ test('peer connection and disconnect IDs cannot add log lines', async () => {
       url.searchParams.set('id', id)
       url.searchParams.set('token', 'controlled-test-token')
       const ws = new WebSocket(url)
+      const attemptFailures: unknown[] = []
       try {
         await new Promise<void>((resolve, reject) => {
           const opened = () => {
@@ -59,21 +81,29 @@ test('peer connection and disconnect IDs cannot add log lines', async () => {
           1
         )
         assert.ok(!lines.some((line) => line.startsWith('MARKER')))
-      } finally {
-        // Persist actual emitted bytes independently of assertion outcome.
-        try {
-          const sink = process.env.PINTO_PEER_LOG_RECEIPT
-          if (!sink) throw Error('Missing peer sink transcript path')
-          const raw = server.output().slice(from)
-          if (raw.length > 65536)
-            throw Error('Peer sink transcript exceeds bounded receipt')
-          appendFileSync(sink, JSON.stringify({ id, expected, raw }) + '\n')
-        } finally {
-          ws.terminate()
-        }
+      } catch (operationError) {
+        attemptFailures.push(operationError)
       }
+      // Persist actual emitted bytes independently of assertion outcome.
+      try {
+        writePeerSink(server, from, id, expected)
+      } catch (receiptError) {
+        attemptFailures.push(receiptError)
+      }
+      try {
+        ws.terminate()
+      } catch (terminationError) {
+        attemptFailures.push(terminationError)
+      }
+      throwFailures(attemptFailures, 'Peer operation or receipt cleanup failed')
     }
-  } finally {
-    await server.stop()
+  } catch (operationError) {
+    failures.push(operationError)
   }
+  try {
+    await server.stop()
+  } catch (stopError) {
+    failures.push(stopError)
+  }
+  throwFailures(failures, 'Peer test or server cleanup failed')
 })
