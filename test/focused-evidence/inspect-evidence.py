@@ -4,7 +4,7 @@ import hashlib, json, re, sys
 r = Path(sys.argv[1]).resolve()
 phase, scope, browser = sys.argv[2:]
 wanted = {
- '260': ['selected44px targets retain narrow and large layouts'],
+ '260': ['real photo controls retain minimum height and layout'],
  '132': ['peer connection and disconnect IDs cannot add log lines'],
  '188': ['failed ID request shows honest nonempty error detail', 'nonempty peer error detail is preserved exactly'],
  '168': ['pending config disables Mute until its handler is installed', 'HTTP error config is rejected even when its JSON looks valid', 'aborted and unreadable config retains existing visible failure reporting'],
@@ -58,8 +58,8 @@ if scope=='132':
  if not sinks or any(not isinstance(x,dict) or set(x)!= {'id','expected','raw'} or not all(isinstance(x[k],str) for k in ['id','expected','raw']) for x in sinks): stop('missing/invalid emitted sink bytes')
  if phase=='candidate' and len(sinks)!=2: stop('incomplete peer ID transcript inventory')
 if phase=='candidate' and (rc!='0' or counts['pass']!=len(seen)): stop('candidate not fully passing')
-if scope=='260' and phase=='candidate':
- images=[f'target-{w}-{state}.png' for w in [320,390,414,568,768,1280] for state in ['join-no-photo','leave-with-photo','lobby']]
+if scope=='260':
+ images=[f'target-{w}-{state}.png' for w in [320,360,390,414,600,767,768,1280] for state in ['no-photo','with-photo','lobby']]
  for name in images:
   if not (r/name).is_file() or (r/name).stat().st_size==0: stop('missing image '+name)
 (r/'capture-status.txt').write_text('CAPTURE_COMPLETE_NOT_QUALIFIED\nBaseline defect attribution, graceful cleanup limits and260pixel review remain human review.\n')
