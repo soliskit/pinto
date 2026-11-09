@@ -39,7 +39,7 @@ jobs:
           node-version-file: app/package.json
       - name: Verify and copy identical isolated test bytes
         env:
-          EXPECTED_BASE: a4d943626c62cb1ed86c96de7a9757f2ef5ffcdb
+          EXPECTED_BASE: cdc7e812f9d93ac8a7c43585682cfabc605cb956
           ACTUAL_BASE: ${{ github.event.pull_request.base.sha }}
           CANDIDATE: ${{ github.event.pull_request.head.sha }}
           PHASE: ${{ matrix.phase }}

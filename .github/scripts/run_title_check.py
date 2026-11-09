@@ -44,6 +44,8 @@ def run(api, repo, number, event_sha):
         if snapshot() != (head, title):
             raise ValueError('PR changed before status publication.')
         api('POST', target, {'state': 'failure' if errors else 'success', 'context': 'PR title', 'description': 'Title starts with a bracketed tag.' if errors else 'Title starts without a bracketed tag.'})
+        if snapshot() != (head, title):
+            raise ValueError('PR changed after status publication.')
         return errors
     except Exception:
         api('POST', target, {'state': 'error', 'context': 'PR title', 'description': 'Title could not be verified.'})
@@ -72,3 +74,4 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
