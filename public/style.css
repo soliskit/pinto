@@ -100,7 +100,7 @@ input {
 }
 
 input::placeholder {
-  color: #99a1af;
+  color: #bfc7d1;
 }
 
 .open-room {
@@ -121,6 +121,10 @@ input::placeholder {
   gap: 0.25rem;
   justify-items: center;
   align-items: center;
+}
+
+.attendee-grid video {
+  max-width: 100%;
 }
 
 .presenter {
@@ -152,7 +156,7 @@ input::placeholder {
 }
 
 .mute {
-  background: #d08700;
+  background: #a06300;
 }
 
 .camera,

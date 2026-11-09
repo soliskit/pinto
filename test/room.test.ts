@@ -1411,6 +1411,21 @@ test('after losing the PeerJS server, says so and reconnects with the same id', 
   await eventually(status(b.page), '2nd in the room')
 })
 
+test('a rerender during a pairing outage keeps Leave enabled', async () => {
+  const room = await openRoom('leave-in-outage')
+  await join(room)
+  await room.page.evaluate(() => window.recorded.peerSockets[0].close())
+  await eventually(
+    async () => (await controls(room.page)).error,
+    'Connection problem: network: Lost connection to server.'
+  )
+
+  // Mute re-renders; leaving does not require an open pairing
+  // connection, so the outage must not disable Leave
+  await room.page.click('#mute')
+  assert.equal((await controls(room.page)).call, 'Leave')
+})
+
 test('a roster answer that arrives after Leave is ignored', async () => {
   const room = await openRoom('stale-roster', [heldJoinAnswer, recordRoomCalls])
   await room.page.click('#call') // First Join; its empty roster answer is held
