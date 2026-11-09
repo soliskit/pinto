@@ -6,7 +6,8 @@ import type {
   BrowserContext,
   ConsoleMessage,
   Page,
-  Request
+  Request,
+  WebSocket
 } from 'playwright'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -311,6 +312,7 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       'ReferenceError',
       'SyntaxError'
     ]
+    const WS_TARGETS = ['peer-ws', 'socketio-ws', 'other-ws'] as const
     const watch = (page: Page) => {
       const seen = {
         pageErrors: { other: 0 } as Record<string, number>,
@@ -319,13 +321,18 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
         failedRequests: 0,
         failedResourceSamples: [] as string[],
         responses: {} as Record<string, Record<string, number>>,
-        responsesUnavailable: 0
+        responsesUnavailable: 0,
+        ws: {} as Record<string, Record<string, number>>,
+        wsUnavailable: 0
       }
       for (const name of ERROR_NAMES) seen.pageErrors[name] = 0
       for (const bucket of CONSOLE_BUCKETS) seen.consoleSources[bucket] = 0
       for (const target of RESPONSE_TARGETS) {
         seen.responses[target] = { other: 0 }
         for (const cls of STATUS_CLASSES) seen.responses[target][cls] = 0
+      }
+      for (const target of WS_TARGETS) {
+        seen.ws[target] = { created: 0, traffic: 0, closed: 0, errored: 0 }
       }
       // Bucketing uses each message/response URL in memory only; only the
       // fixed category is ever recorded. A bucket names the REPORTED
@@ -401,15 +408,96 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
           seen.responsesUnavailable++
         }
       }
+      // WebSocket URLs carry a ws/wss scheme, so their origin string
+      // never equals the page's http(s) origin; classify by canonical
+      // host:port against the fixture server with ws/wss accepted as
+      // the counterpart schemes. The URL is used in memory only; only
+      // the fixed target and flags are recorded. 'created' counts the
+      // page's websocket event, which fires at socket creation, NOT at
+      // handshake completion; 'traffic' flips once per socket on the
+      // first frame in either direction; 'closed' and 'errored' are
+      // EVENT counts and may fire more than once per socket; an
+      // all-zero target means no creation event was observed for it
+      // (handler failures land in wsUnavailable), never that the app
+      // did not try. No frames, payloads, close codes, reasons, or
+      // error text recorded.
+      const expectedHost = new URL(server.url).host
+      const socketDisposers: Array<() => void> = []
+      const wsTargetOf = (rawUrl: string) => {
+        try {
+          const url = new URL(rawUrl)
+          if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+            return 'other-ws'
+          }
+          if (url.host !== expectedHost) return 'other-ws'
+          if (url.pathname === '/peerjs') return 'peer-ws'
+          if (url.pathname === '/socket.io/') return 'socketio-ws'
+          return 'other-ws'
+        } catch {
+          return 'other-ws'
+        }
+      }
+      const onWebSocket = (socket: WebSocket) => {
+        try {
+          const target = wsTargetOf(socket.url())
+          seen.ws[target].created++
+          let sawTraffic = false
+          const onTraffic = () => {
+            try {
+              if (sawTraffic) return
+              sawTraffic = true
+              seen.ws[target].traffic++
+            } catch {
+              seen.wsUnavailable++
+            }
+          }
+          const onSocketClose = () => {
+            try {
+              seen.ws[target].closed++
+            } catch {
+              seen.wsUnavailable++
+            }
+          }
+          const onSocketError = () => {
+            try {
+              seen.ws[target].errored++
+            } catch {
+              seen.wsUnavailable++
+            }
+          }
+          // Each disposer is registered BEFORE its listener (off of a
+          // never-added listener is a no-op), so a throw during
+          // registration cannot leak an untracked listener.
+          socketDisposers.push(() => socket.off('framereceived', onTraffic))
+          socket.on('framereceived', onTraffic)
+          socketDisposers.push(() => socket.off('framesent', onTraffic))
+          socket.on('framesent', onTraffic)
+          socketDisposers.push(() => socket.off('close', onSocketClose))
+          socket.on('close', onSocketClose)
+          socketDisposers.push(() => socket.off('socketerror', onSocketError))
+          socket.on('socketerror', onSocketError)
+        } catch {
+          seen.wsUnavailable++
+        }
+      }
       page.on('pageerror', onPageError)
       page.on('console', onConsole)
       page.on('requestfailed', onRequestFailed)
       page.on('response', onResponse)
+      page.on('websocket', onWebSocket)
       const dispose = () => {
         page.off('pageerror', onPageError)
         page.off('console', onConsole)
         page.off('requestfailed', onRequestFailed)
         page.off('response', onResponse)
+        page.off('websocket', onWebSocket)
+        for (const removeSocketListeners of socketDisposers) {
+          try {
+            removeSocketListeners()
+          } catch {
+            seen.wsUnavailable++
+          }
+        }
       }
       return { seen, dispose }
     }
