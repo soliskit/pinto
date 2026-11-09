@@ -17,7 +17,7 @@ for name, expected in EXPECTED.items():
 # App-source diff must be reviewed separately; this is not implementation-authority proof.
 import subprocess
 for name in ['package.json', 'package-lock.json']:
-    pinned = subprocess.check_output(['git', '-C', str(source), 'show', 'a4d943626c62cb1ed86c96de7a9757f2ef5ffcdb:' + name])
+    pinned = subprocess.check_output(['git', '-C', str(source), 'show', 'cdc7e812f9d93ac8a7c43585682cfabc605cb956:' + name])
     if (app / name).read_bytes() != pinned: raise SystemExit('Dependency drift: ' + name)
 for name in [choices[scope], 'proposal-resources.ts', 'resource-receipt.ts', 'helpers.ts']:
     target = app / 'test' / name
