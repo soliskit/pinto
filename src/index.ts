@@ -5,6 +5,7 @@ import { ExpressPeerServer, type IClient } from 'peer'
 import { Server as SocketServer, type Socket } from 'socket.io'
 import { WebSocketServer } from 'ws'
 import { getIceServers, missingTwilioSetting } from './ice-servers.ts'
+import { escapeLogId } from './escape-log-id.ts'
 
 function resolvePort(): number {
   const configured = process.env.PORT
@@ -186,7 +187,9 @@ io.on('connection', (socket: Socket) => {
     }
     const firstJoin = !members.has(userId)
     if (firstJoin) {
-      console.log(`${socket.id} - user: ${userId} - joined: ${room}`)
+      console.log(
+        `${socket.id} - user: ${escapeLogId(userId)} - joined: ${room}`
+      )
       members.set(userId, socket.id)
       socket.join(appRoom(room))
     }
@@ -205,7 +208,7 @@ io.on('connection', (socket: Socket) => {
       for (const [userId, socketId] of members) {
         if (socketId === socket.id) {
           console.log(
-            `${socket.id} - user: ${userId} - left: ${roomId} (${reason})`
+            `${socket.id} - user: ${escapeLogId(userId)} - left: ${roomId} (${reason})`
           )
           members.delete(userId)
           socket.to(appRoom(roomId)).emit('user-disconnected', userId)
