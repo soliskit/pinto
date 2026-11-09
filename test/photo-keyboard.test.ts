@@ -44,6 +44,11 @@ async function newContext(width: number, height: number) {
     viewport: { width, height }
   })
   context.setDefaultTimeout(10_000)
+  // WebKit has no fake-media flags; its mock capture stream is gated on
+  // granted camera/microphone permissions
+  if (process.env.PINTO_BROWSER === 'webkit') {
+    await context.grantPermissions(['camera', 'microphone'])
+  }
   return context
 }
 

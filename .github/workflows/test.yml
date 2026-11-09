@@ -87,4 +87,4 @@ jobs:
       - run: npm ci
       - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
       - run: npx playwright install --with-deps webkit
-      - run: PINTO_BROWSER=webkit node --test --test-timeout=120000 test/home.test.ts test/element.test.ts
+      - run: PINTO_BROWSER=webkit node --test --test-timeout=120000 test/home.test.ts test/element.test.ts test/photo-keyboard.test.ts
