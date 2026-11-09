@@ -23,6 +23,7 @@ The requirements below are numbered REQ 1 and up; the earlier decision-log numbe
 | REQ 14 | "A caller's name or ID must not be able to add, fake or change lines in the server log." Proposed scope: the two Socket.IO join and leave log lines. The proposed behavior is unverified until implemented and checked; the caller-chosen peer-id log lines remain a gap. TODAY.                                                                                         |
 | REQ 15 | "Leave must stay usable whenever a call is up, including during a signaling outage." TODAY.                                                                                                                                                                                                                                                                              |
 | REQ 16 | "Both pages can be pinch-zoomed." TODAY.                                                                                                                                                                                                                                                                                                                                 |
+| REQ 19 | "Room initialization rejects an unsuccessful HTTP configuration response before using its JSON. Mute stays disabled until its control handler is installed. Existing page-level failure reporting shows initialization errors." TARGET. Implementation and verification pending. |
 
 ## Planned services, scoped line by line
 

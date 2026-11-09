@@ -70,8 +70,14 @@ let joinSerial = 0
 /** Calls that arrived while the roster answer was still on its way */
 const earlyCalls = /** @type {MediaConnection[]} */ ([])
 
+const configResponse = await fetch('/config')
+if (!configResponse.ok) {
+  throw Error(
+    `Connection settings could not be loaded (${configResponse.status}).`
+  )
+}
 /** @type {{ key: string, iceServers: RTCIceServer[] }} */
-const config = await (await fetch('/config')).json()
+const config = await configResponse.json()
 const secure = location.protocol === 'https:'
 const peer = new Peer({
   host: location.hostname,
@@ -280,6 +286,7 @@ function render() {
     ? `${ordinal(attendees.childElementCount + 1)} in the room`
     : 'Press Join to start the call'
   muteButton.textContent = muted ? 'Unmute' : 'Mute'
+  muteButton.disabled = false
   cameraButton.textContent = cameraOn ? 'Turn Off Camera' : 'Turn On Camera'
   cameraButton.disabled = false
   photoInput.disabled = cameraOn
