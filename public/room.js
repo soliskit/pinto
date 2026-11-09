@@ -289,7 +289,9 @@ function render() {
   removePhotoButton.hidden = cameraOn || !photo.src.startsWith('blob:')
   callButton.textContent = joined ? 'Leave' : 'Join'
   callButton.classList.toggle('end', joined)
-  callButton.disabled = !peer.open
+  // Leaving does not require an open pairing connection,
+  // so Leave stays usable while pairing is down
+  callButton.disabled = !joined && !peer.open
 }
 
 photo.addEventListener('load', drawPhoto)
