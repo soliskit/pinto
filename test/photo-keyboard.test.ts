@@ -230,6 +230,8 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
     }
   })
 
+  const roomPath = '/room/keyboard-mobile'
+
   test('the keyboard fix does not shift the layout at 390px', async () => {
     // Baseline: the room and stylesheet bytes from before this fix, pinned
     // as fixtures. Routes keep the server's status and headers and replace
@@ -267,6 +269,41 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       'net::ERR_SSL_PROTOCOL_ERROR',
       'net::ERR_CERT_AUTHORITY_INVALID'
     ]
+    const CONSOLE_BUCKETS = [
+      'room.js',
+      'peerjs-client',
+      'socketio-client',
+      'room-document',
+      'no-location',
+      'other'
+    ]
+    const CONSOLE_SOURCE_PATHS = new Map([
+      ['/room.js', 'room.js'],
+      ['/vendor/peerjs.min.js', 'peerjs-client'],
+      ['/socket.io/socket.io.min.js', 'socketio-client']
+    ])
+    const STATUS_CLASSES = ['2xx', '3xx', '4xx', '5xx'] as const
+    const RESPONSE_TARGETS = [
+      'room-doc',
+      'style',
+      'room-js',
+      'peerjs-client',
+      'socketio-client',
+      'favicon',
+      'config',
+      'socketio-transport',
+      'peer-http',
+      'external',
+      'other'
+    ]
+    const RESPONSE_PATHS = new Map([
+      ['/style.css', 'style'],
+      ['/room.js', 'room-js'],
+      ['/vendor/peerjs.min.js', 'peerjs-client'],
+      ['/socket.io/socket.io.min.js', 'socketio-client'],
+      ['/favicon.ico', 'favicon'],
+      ['/config', 'config']
+    ])
     const ERROR_NAMES = [
       'Error',
       'TypeError',
@@ -278,16 +315,69 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       const seen = {
         pageErrors: { other: 0 } as Record<string, number>,
         consoleErrors: 0,
+        consoleSources: {} as Record<string, number>,
         failedRequests: 0,
-        failedResourceSamples: [] as string[]
+        failedResourceSamples: [] as string[],
+        responses: {} as Record<string, Record<string, number>>,
+        responsesUnavailable: 0
       }
       for (const name of ERROR_NAMES) seen.pageErrors[name] = 0
+      for (const bucket of CONSOLE_BUCKETS) seen.consoleSources[bucket] = 0
+      for (const target of RESPONSE_TARGETS) {
+        seen.responses[target] = { other: 0 }
+        for (const cls of STATUS_CLASSES) seen.responses[target][cls] = 0
+      }
+      // Bucketing uses each message/response URL in memory only; only the
+      // fixed category is ever recorded. A bucket names the REPORTED
+      // location, never a cause. The response listener does not measure
+      // WebSocket handshakes (peer server, socket.io upgrade). A zero
+      // count means no matching response event was observed; it says
+      // nothing about requests that received no response. The expected
+      // origin is the fixture server's, fixed before navigation.
+      const expectedOrigin = new URL(server.url).origin
+      const bucketConsole = (message: ConsoleMessage) => {
+        const raw = message.location()?.url ?? ''
+        if (!raw) return 'no-location'
+        try {
+          const url = new URL(raw)
+          if (url.origin !== expectedOrigin) return 'other'
+          if (url.pathname === roomPath) return 'room-document'
+          return CONSOLE_SOURCE_PATHS.get(url.pathname) ?? 'other'
+        } catch {
+          return 'other'
+        }
+      }
+      const statusClass = (status: number) => {
+        const cls = `${Math.floor(status / 100)}xx`
+        return (STATUS_CLASSES as readonly string[]).includes(cls)
+          ? cls
+          : 'other'
+      }
+      // Exact named paths win over prefix rules, so the socket.io
+      // client bundle is 'socketio-client', not transport. '/pinto/' is
+      // the PeerJS HTTP API: the helpers start the server with KEY ''
+      // (test/helpers.ts :30), so the default 'pinto' applies
+      // (src/index.ts :27); the peer server mounts at the root (:136),
+      // the client uses path '/' (room.js :80), and server.test.ts :184
+      // names '/pinto/id'.
+      const targetOf = (url: URL) => {
+        if (url.origin !== expectedOrigin) return 'external'
+        const p = url.pathname
+        if (p === roomPath) return 'room-doc'
+        const named = RESPONSE_PATHS.get(p)
+        if (named) return named
+        if (p.startsWith('/socket.io/')) return 'socketio-transport'
+        if (p.startsWith('/pinto/')) return 'peer-http'
+        return 'other'
+      }
       const onPageError = (error: Error) => {
         const name = ERROR_NAMES.includes(error.name) ? error.name : 'other'
         seen.pageErrors[name]++
       }
       const onConsole = (message: ConsoleMessage) => {
-        if (message.type() === 'error') seen.consoleErrors++
+        if (message.type() !== 'error') return
+        seen.consoleErrors++
+        seen.consoleSources[bucketConsole(message)]++
       }
       const onRequestFailed = (request: Request) => {
         seen.failedRequests++
@@ -297,13 +387,29 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
           seen.failedResourceSamples.push(`${request.resourceType()}: ${kind}`)
         }
       }
+      // The whole listener body is guarded: a throwing accessor must
+      // not escape the phase, and a miss increments the initialized
+      // responsesUnavailable counter rather than reading as a real zero.
+      const onResponse = (response: {
+        status: () => number
+        url: () => string
+      }) => {
+        try {
+          const target = targetOf(new URL(response.url()))
+          seen.responses[target][statusClass(response.status())]++
+        } catch {
+          seen.responsesUnavailable++
+        }
+      }
       page.on('pageerror', onPageError)
       page.on('console', onConsole)
       page.on('requestfailed', onRequestFailed)
+      page.on('response', onResponse)
       const dispose = () => {
         page.off('pageerror', onPageError)
         page.off('console', onConsole)
         page.off('requestfailed', onRequestFailed)
+        page.off('response', onResponse)
       }
       return { seen, dispose }
     }
@@ -404,7 +510,7 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
       try {
         await phase(
           'baseline goto',
-          () => baseline.goto('/room/keyboard-mobile'),
+          () => baseline.goto(roomPath),
           async () => ({ routes: { ...routes }, ...base.seen })
         )
         await phase(
@@ -460,7 +566,7 @@ describe('Photo picker keyboard operation (REQ 14)', () => {
           try {
             await phase(
               'patched goto',
-              () => patched.goto('/room/keyboard-mobile'),
+              () => patched.goto(roomPath),
               async () => ({ ...patch.seen })
             )
             await phase(
