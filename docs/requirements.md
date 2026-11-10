@@ -25,6 +25,7 @@ The requirements below are numbered REQ 1 and up; the earlier decision-log numbe
 | REQ 16 | "Both pages can be pinch-zoomed." TODAY.                                                                                                                                                                                                                                                                                                                                 |
 | REQ 18 | "A peer connection error shows its error type and available nonempty detail. If the detail is empty, it says 'No further error details are available.' without guessing a cause." TARGET. Implementation and verification pending. |
 | REQ 17 | "Buttons use a minimum height of 44 CSS pixels. A natural height greater than 44 CSS pixels is not reduced." TARGET. Implementation and verification pending. |
+| REQ 19 | "Room initialization rejects an unsuccessful HTTP configuration response before using its JSON. Mute stays disabled until its control handler is installed. Existing page-level failure reporting shows initialization errors." TARGET. Implementation and verification pending. |
 
 ## Planned services, scoped line by line
 
