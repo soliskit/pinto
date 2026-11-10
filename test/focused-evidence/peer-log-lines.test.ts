@@ -24,14 +24,23 @@ function throwFailures(errors: unknown[], message: string) {
     throw new AggregateError(errors, message, { cause: errors[0] })
 }
 
-test('peer connection and disconnect IDs cannot add log lines', async () => {
-  const server = await startServer()
-  const failures: unknown[] = []
-  try {
-    for (const [id, expected] of [
-      ['plain-id', 'plain-id'],
-      ['line\nMARKER\r\\', 'line\\nMARKER\\r\\\\']
-    ]) {
+for (const [name, id, expected] of [
+  ['plain peer ID is byte-identical in both log sinks', 'plain-id', 'plain-id'],
+  [
+    'peer line breaks cannot forge log lines',
+    'line\nMARKER\r\\',
+    'line\\nMARKER\\r\\\\'
+  ],
+  [
+    'peer Arabic letter mark is escaped in both log sinks',
+    'left\u061cright',
+    'left\\u061cright'
+  ]
+]) {
+  test(name, async () => {
+    const server = await startServer()
+    const failures: unknown[] = []
+    try {
       const from = server.output().length
       const url = new URL(server.url.replace('http:', 'ws:') + '/peerjs')
       url.searchParams.set('key', 'pinto')
@@ -52,7 +61,7 @@ test('peer connection and disconnect IDs cannot add log lines', async () => {
           ws.once('open', opened)
           ws.once('error', failed)
         })
-        await server.waitForOutput(`PeerClient connected: ${expected}`, from)
+        await server.waitForOutput('PeerClient connected:', from)
         const disconnected = new Promise<void>((resolve, reject) => {
           const closed = () => {
             ws.off('error', failed)
@@ -67,7 +76,7 @@ test('peer connection and disconnect IDs cannot add log lines', async () => {
         })
         ws.close()
         await disconnected
-        await server.waitForOutput(`PeerClient disconnected: ${expected}`, from)
+        await server.waitForOutput('PeerClient disconnected:', from)
         const lines = server.output().slice(from).split('\n')
         assert.equal(
           lines.filter((line) => line === `PeerClient connected: ${expected}`)
@@ -96,14 +105,14 @@ test('peer connection and disconnect IDs cannot add log lines', async () => {
         attemptFailures.push(terminationError)
       }
       throwFailures(attemptFailures, 'Peer operation or receipt cleanup failed')
+    } catch (operationError) {
+      failures.push(operationError)
     }
-  } catch (operationError) {
-    failures.push(operationError)
-  }
-  try {
-    await server.stop()
-  } catch (stopError) {
-    failures.push(stopError)
-  }
-  throwFailures(failures, 'Peer test or server cleanup failed')
-})
+    try {
+      await server.stop()
+    } catch (stopError) {
+      failures.push(stopError)
+    }
+    throwFailures(failures, 'Peer test or server cleanup failed')
+  })
+}

@@ -33,9 +33,6 @@ export async function withBrowser(
       errors.push(error)
     }
   }
-  if (errors.length === 1) throw errors[0]
-  if (errors.length > 1)
-    throw new AggregateError(errors, 'Fixture operation or cleanup failed', {
-      cause: errors[0]
-    })
+  if (errors.length)
+    throw new AggregateError(errors, 'Fixture operation or cleanup failed')
 }

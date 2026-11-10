@@ -18,6 +18,7 @@ export function escapeLogId(id: string): string {
       cp < 0x20 ||
       cp === 0x7f ||
       (cp >= 0x80 && cp <= 0x9f) ||
+      cp === 0x061c ||
       cp === 0x200e ||
       cp === 0x200f ||
       cp === 0x2028 ||
