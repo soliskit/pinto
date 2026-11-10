@@ -3,7 +3,7 @@ from pathlib import Path
 import hashlib, json, sys
 app, source = map(lambda x: Path(x).resolve(), sys.argv[1:])
 bundle = source / 'test/focused-evidence'
-EXPECTED = {'proposal-resources.ts': '2ac1d2b46700dba078e56923eb35ae4e06a62a278fa7a5a346462b58f174949d', 'resource-receipt.ts': '1025239889050c084f583e30ce415688e3843e8de698171c54d953db87ff238b', 'control-targets.test.ts': 'dfff55902a7aed797a68c97e1c4bb28422639cf4ee72256f6c87b9e231c979dc', 'peer-log-lines.test.ts': '60d44afd38b311e61c16784c86932cb84d91c23f804c9641cea53fe3f4ec77b3', 'peer-error-detail.test.ts': '39cec57c74a32f09123458a53cb2ff61e8c77d16619b3620b0c4fca9f6d625b6', 'config-readiness.test.ts': '9a04d16b352876d9b2a62ce068c659f11091c30853a26312e8cc791d2b201a5d', 'helpers.ts': 'd4c5e3d496cb3cc56f115fcae6d7dc01fd19a5d1bdedbcc2be0df86634b338fa'}
+EXPECTED = {'proposal-resources.ts': '2ac1d2b46700dba078e56923eb35ae4e06a62a278fa7a5a346462b58f174949d', 'resource-receipt.ts': '1025239889050c084f583e30ce415688e3843e8de698171c54d953db87ff238b', 'control-targets.test.ts': 'dfff55902a7aed797a68c97e1c4bb28422639cf4ee72256f6c87b9e231c979dc', 'peer-log-lines.test.ts': 'aa3648ee83909b2af88558f919f3038f219154d56abb45b05e8eedc1428f5a7d', 'peer-error-detail.test.ts': 'a40a451497b4d71e3ce176d1b4f604fd7913ceec75d3053f9fcb6fb13bf2449a', 'config-readiness.test.ts': '9a04d16b352876d9b2a62ce068c659f11091c30853a26312e8cc791d2b201a5d', 'helpers.ts': 'd4c5e3d496cb3cc56f115fcae6d7dc01fd19a5d1bdedbcc2be0df86634b338fa'}
 # Scope is a publication parameter, not selected by untrusted message content.
 # Only one is supplied per independent candidate; whitespace is rejected.
 scope = (bundle / 'scope.txt').read_text()
@@ -17,7 +17,7 @@ for name, expected in EXPECTED.items():
 # App-source diff must be reviewed separately; this is not implementation-authority proof.
 import subprocess
 for name in ['package.json', 'package-lock.json']:
-    pinned = subprocess.check_output(['git', '-C', str(source), 'show', 'a4d943626c62cb1ed86c96de7a9757f2ef5ffcdb:' + name])
+    pinned = subprocess.check_output(['git', '-C', str(source), 'show', 'cdc7e812f9d93ac8a7c43585682cfabc605cb956:' + name])
     if (app / name).read_bytes() != pinned: raise SystemExit('Dependency drift: ' + name)
 for name in [choices[scope], 'proposal-resources.ts', 'resource-receipt.ts', 'helpers.ts']:
     target = app / 'test' / name

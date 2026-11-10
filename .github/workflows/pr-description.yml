@@ -7,8 +7,8 @@ permissions:
   pull-requests: read
   statuses: write
 concurrency:
-  group: pr-description-${{ github.event.pull_request.head.sha }}
-  cancel-in-progress: true
+  group: pr-description-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 jobs:
   description:
     runs-on: ubuntu-latest
@@ -53,3 +53,4 @@ jobs:
                   pathlib.Path(destination).write_bytes(response.read())
           PY
           python3 run_check.py
+
