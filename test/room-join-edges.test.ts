@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { after, afterEach, before, test } from 'node:test'
 import type { Browser, BrowserContext, Page } from 'playwright'
 import { io } from 'socket.io-client'
+import { WebSocket } from 'ws'
 import {
   eventually,
   launchBrowser,
@@ -102,6 +103,7 @@ function recordRoomCalls() {
         event: string,
         fn: (...args: unknown[]) => unknown
       ) {
+        window.roomPeer = this
         if (event !== 'call') return realOn.call(this, event, fn)
         return realOn.call(this, event, ((
           call: import('peerjs').MediaConnection
@@ -117,6 +119,10 @@ function recordRoomCalls() {
           ) => unknown
           call.answer = (...args: unknown[]) => {
             window.answeredCalls.push(call.peer)
+            // A test names callers whose answer fails, to prove one
+            // failing waiting call cannot abandon the rest
+            if (window.failingAnswers?.includes(call.peer))
+              throw new Error('injected answer failure')
             window.answeredConns.push(call)
             return realAnswer(...args)
           }
@@ -341,6 +347,80 @@ async function openCaller() {
   }
 }
 
+/** Joins a room with a plain socket, like a member's own page would */
+
+async function joinFromOutside(roomName: string, peerId: string) {
+  const socket = io(server.url, {
+    transports: ['websocket'],
+    forceNew: true,
+    reconnection: false
+  })
+  await new Promise<void>((resolve, reject) => {
+    socket.once('connect', () => resolve())
+    socket.once('connect_error', reject)
+  })
+  socket.emit('join-room', roomName, peerId)
+  await server.waitForOutput(`user: ${peerId} - joined: ${roomName}`)
+  return socket
+}
+
+/** A member's raw PeerJS signaling socket, open and ready to send */
+
+async function rawSignaling(memberId: string): Promise<WebSocket> {
+  const socket = new WebSocket(
+    `${server.url.replace(/^http/, 'ws')}/peerjs?key=pinto&id=${memberId}&token=test-token`
+  )
+  await new Promise<void>((resolve, reject) => {
+    socket.once('message', (data) => {
+      const message = JSON.parse(String(data))
+      if (message.type === 'OPEN') resolve()
+      else reject(new Error(`unexpected first signaling message: ${data}`))
+    })
+    socket.once('error', reject)
+  })
+  return socket
+}
+
+/** Sends a media offer over raw signaling, like a caller's browser would */
+
+function sendOffer(
+  socket: WebSocket,
+  dst: string,
+  connectionId: string,
+  sdp: { type: RTCSdpType; sdp: string }
+) {
+  socket.send(
+    JSON.stringify({
+      type: 'OFFER',
+      dst,
+      payload: { connectionId, type: 'media', sdp }
+    })
+  )
+}
+
+/** A real audio and video offer, made the way a member's browser would */
+
+async function makeOffer(): Promise<{ type: RTCSdpType; sdp: string }> {
+  const page = await newPage()
+  await page.goto('/')
+  const offer = await page.evaluate(async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    })
+    const connection = new RTCPeerConnection({ iceServers: [] })
+    for (const track of stream.getTracks()) connection.addTrack(track, stream)
+    const offer = await connection.createOffer()
+    connection.close()
+    for (const track of stream.getTracks()) track.stop()
+    if (offer.sdp === undefined)
+      throw new Error('the generated offer carries no SDP')
+    return { type: offer.type, sdp: offer.sdp }
+  })
+  await page.close()
+  return offer
+}
+
 /** Ids of callers whose calls the room page received */
 
 const incomingCalls = (page: Page): Promise<string[]> =>
@@ -463,4 +543,138 @@ test('Leave closes a call that is still waiting for the roster answer', async ()
   assert.deepEqual(await answeredCalls(room.page), [])
   assert.equal(await caller.answered(), 0)
   assert.deepEqual(await attendees(room.page)(), [])
+})
+
+test('a duplicate offer cannot make joining answer a retired call', async () => {
+  const room = await openRoom('replaced-waiting-call', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+
+  // A member whose signaling is sent raw, like the runs that crashed
+  const member = 'replaced-member'
+  const memberRoom = await joinFromOutside(room.name, member)
+  const memberSignal = await rawSignaling(member)
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+
+  // The member offers the same connection twice; the library silently
+  // retires the first call for the second
+  sendOffer(memberSignal, room.peerId, 'mc_replaced', offer)
+  await eventually(
+    () =>
+      incomingCalls(room.page).then(
+        (ids) => ids.filter((id) => id === member).length
+      ),
+    1
+  )
+  sendOffer(memberSignal, room.peerId, 'mc_replaced', offer)
+  await eventually(
+    () =>
+      incomingCalls(room.page).then(
+        (ids) => ids.filter((id) => id === member).length
+      ),
+    2
+  )
+  // The library retired the first call for the duplicate; the recorded
+  // close is that retirement, not the room turning the member down
+  assert.deepEqual(await closedCalls(room.page), [member])
+
+  // A caller outside the room offers the same connection id; it waits too
+  const stranger = 'replaced-stranger'
+  const strangerSignal = await rawSignaling(stranger)
+  sendOffer(strangerSignal, room.peerId, 'mc_replaced', offer)
+  await eventually(
+    () => incomingCalls(room.page).then((ids) => ids.includes(stranger)),
+    true
+  )
+
+  // The roster answer arrives: the live replacement is answered, the
+  // retired call is skipped, and the stranger's is turned down
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(() => answeredCalls(room.page), [member])
+  await eventually(() => closedCalls(room.page), [member, stranger])
+  assert.deepEqual(errors, [])
+  // The answered call's remote tracks arrive muted, so its video waits
+  await eventually(
+    () => controls(room.page),
+    inCall(room.name, '2nd in the room')
+  )
+  assert.deepEqual(await attendees(room.page)(), ['audio+video waiting'])
+
+  // Leave closes the answered call and nothing is left over
+  await room.page.click('#call')
+  await eventually(() => closedCalls(room.page), [member, stranger, member])
+  assert.deepEqual(await attendees(room.page)(), [])
+  assert.deepEqual(errors, [])
+
+  memberSignal.close()
+  strangerSignal.close()
+  memberRoom.disconnect()
+})
+
+test('one failing waiting call cannot abandon the rest', async () => {
+  const failing = 'failing-member'
+  const room = await openRoom('failing-waiting-call', [
+    heldJoinAnswer,
+    recordRoomCalls,
+    () => {
+      window.failingAnswers = ['failing-member']
+    }
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+
+  // Two members offer while the roster answer is held; the first one's
+  // answer fails
+  const waiting = 'waiting-member'
+  const failingRoom = await joinFromOutside(room.name, failing)
+  const waitingRoom = await joinFromOutside(room.name, waiting)
+  const failingSignal = await rawSignaling(failing)
+  const waitingSignal = await rawSignaling(waiting)
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  sendOffer(failingSignal, room.peerId, 'mc_failing', offer)
+  await eventually(
+    () => incomingCalls(room.page).then((ids) => ids.includes(failing)),
+    true
+  )
+  sendOffer(waitingSignal, room.peerId, 'mc_waiting', offer)
+  await eventually(() => incomingCalls(room.page), [failing, waiting])
+
+  // The roster answer arrives: the failure is shown and retired, and
+  // the waiting call behind it is still answered
+  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await eventually(() => answeredCalls(room.page), [failing, waiting])
+  // A failed call is retired at once, not left for Leave to find
+  await eventually(() => closedCalls(room.page), [failing])
+  assert.equal(
+    await room.page.evaluate(
+      ({ peer, connectionId }) =>
+        window.roomPeer.getConnection(peer, connectionId) === null,
+      { peer: failing, connectionId: 'mc_failing' }
+    ),
+    true
+  )
+  assert.deepEqual(errors, [])
+  await eventually(() => controls(room.page), {
+    ...inCall(room.name, '2nd in the room'),
+    error:
+      'Connection problem: A waiting call could not be answered: injected answer failure'
+  })
+
+  // Leave closes the answered call; the failed one was already retired
+  await room.page.click('#call')
+  await eventually(() => closedCalls(room.page), [failing, waiting])
+  assert.deepEqual(await attendees(room.page)(), [])
+  assert.deepEqual(errors, [])
+
+  failingSignal.close()
+  waitingSignal.close()
+  failingRoom.disconnect()
+  waitingRoom.disconnect()
 })

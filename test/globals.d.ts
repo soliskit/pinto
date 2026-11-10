@@ -42,6 +42,11 @@ declare global {
     answeredCalls: string[]
     /** Incoming calls the room page answered (recordRoomCalls) */
     answeredConns: import('peerjs').MediaConnection[]
+    /** Callers whose wrapped answer throws instead of answering; a test
+     *  sets this to prove failure isolation (recordRoomCalls) */
+    failingAnswers: string[] | undefined
+    /** The room page's own Peer, for library-state checks (recordRoomCalls) */
+    roomPeer: InstanceType<typeof Peer>
     /** Streams received on the room page's outgoing calls, by sender (recordRoomCalls) */
     outgoingStreams: { peer: string; stream: MediaStream }[]
     /** The room page's outgoing call connections (recordRoomCalls) */
