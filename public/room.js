@@ -404,8 +404,26 @@ callButton.addEventListener('click', () => {
             }
             for (const peerId of members) roomPeers.add(peerId)
             rosterLoaded = true
-            // Calls that beat the roster answer get decided now
-            for (const call of earlyCalls.splice(0)) answerIfMember(call)
+            // Calls that beat the roster answer get decided now, each on
+            // its own: one call that fails must not abandon the rest
+            for (const call of earlyCalls.splice(0)) {
+              try {
+                answerIfMember(call)
+              } catch (error) {
+                showError(
+                  'Connection problem',
+                  `A waiting call could not be answered: ${errorReason(error)}`
+                )
+                // A call that fails here belongs to no list; retire it so
+                // it cannot outlive the room. Retiring must not abandon
+                // the calls still waiting either
+                try {
+                  call.close()
+                } catch (closeError) {
+                  console.error(closeError)
+                }
+              }
+            }
           }
         )
     }
@@ -429,6 +447,10 @@ function answerIfMember(/** @type {MediaConnection} */ call) {
     call.close()
     return
   }
+  // The library silently retires a waiting call when a duplicate offer
+  // arrives for its connection id; never answer a call it no longer
+  // tracks - answering one throws and abandons the calls behind it
+  if (peer.getConnection(call.peer, call.connectionId) !== call) return
   call.answer(outgoing)
   addCall(call)
 }
@@ -437,6 +459,14 @@ peer.on('call', (call) => {
   if (!joined) {
     call.close()
     return
+  }
+  // A duplicate offer for a waiting call's connection id silently retires
+  // that call in the library; stop tracking what it retired
+  for (let index = earlyCalls.length - 1; index >= 0; index--) {
+    const waiting = earlyCalls[index]
+    if (peer.getConnection(waiting.peer, waiting.connectionId) !== waiting) {
+      earlyCalls.splice(index, 1)
+    }
   }
   // Members can hear about us and call before our roster answer arrives;
   // those calls wait for it instead of being refused by mistake
