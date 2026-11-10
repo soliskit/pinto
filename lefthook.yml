@@ -3,8 +3,11 @@ pre-commit:
   parallel: true
   commands:
     eslint:
-      glob: "**/*.{js,mjs,cjs,ts,mts,cts,tsx}"
+      glob: '**/*.{js,mjs,cjs,ts,mts,cts,tsx}'
       run: ./node_modules/.bin/eslint -- {staged_files}
     prettier:
-      glob: "**/*.{css,html,js,json,md,mjs,ts,yaml,yml}"
+      glob: '**/*.{css,html,js,json,md,mjs,ts,yaml,yml}'
       run: ./node_modules/.bin/prettier --check -- {staged_files}
+    typecheck:
+      # Whole project, once per commit: the type checker has no staged-files glob.
+      run: npm run typecheck

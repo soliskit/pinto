@@ -3,16 +3,16 @@ import { test } from 'node:test'
 import { withBrowser } from './proposal-resources.ts'
 
 for (const mode of ['500', 'abort']) {
-  test(`failed ID request (${mode}) has one error and no retry`, async () => {
+  void test(`failed ID request (${mode}) has one error and no retry`, async () => {
     await withBrowser(async (server, browser) => {
       const context = await browser.newContext({ baseURL: server.url })
       try {
         const page = await context.newPage()
         let idRequests = 0
         page.on('request', (request) => {
-          if (new URL(request.url()).pathname === '/pinto/id') idRequests++
+          if (new URL(request.url()).pathname === '/peerjs/id') idRequests++
         })
-        await page.route('**/pinto/id*', (route) =>
+        await page.route('**/peerjs/id*', (route) =>
           mode === 'abort'
             ? route.abort()
             : route.fulfill({ status: 500, body: 'controlled failure' })
@@ -53,7 +53,7 @@ for (const mode of ['500', 'abort']) {
   })
 }
 
-test('nonempty peer error detail is preserved exactly', async () => {
+void test('nonempty peer error detail is preserved exactly', async () => {
   await withBrowser(async (server, browser) => {
     const context = await browser.newContext({ baseURL: server.url })
     try {

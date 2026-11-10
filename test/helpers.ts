@@ -44,14 +44,20 @@ export async function startServer(
     { cwd: root, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] }
   )
   let output = ''
-  child.stdout.setEncoding('utf8').on('data', (data) => (output += data))
-  child.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+  child.stdout.setEncoding('utf8').on('data', (data: string) => {
+    output += data
+  })
+  child.stderr.setEncoding('utf8').on('data', (data: string) => {
+    output += data
+  })
   const exited = new Promise<void>((resolve) =>
-    child.on('exit', () => resolve())
+    child.on('exit', () => {
+      resolve()
+    })
   )
 
   const server: Server = {
-    url: `http://localhost:${port}`,
+    url: `http://localhost:${String(port)}`,
     output: () => output,
     async waitForOutput(text, from = 0) {
       const deadline = Date.now() + 10_000
@@ -67,7 +73,9 @@ export async function startServer(
       await exited
     }
   }
-  await server.waitForOutput(`Pinto listening on http://localhost:${port}`)
+  await server.waitForOutput(
+    `Pinto listening on http://localhost:${String(port)}`
+  )
   return server
 }
 
@@ -77,7 +85,9 @@ export function freePort(): Promise<number> {
     probe.on('error', reject)
     probe.listen(0, () => {
       const { port } = probe.address() as net.AddressInfo
-      probe.close(() => resolve(port))
+      probe.close(() => {
+        resolve(port)
+      })
     })
   })
 }
@@ -149,7 +159,7 @@ export function record() {
       if (!String(url).includes('/peerjs')) return
       recorded.peerSockets.push(this)
       this.addEventListener('message', (event) =>
-        recorded.peerMessages.push(event.data)
+        recorded.peerMessages.push(event.data as string)
       )
     }
   }

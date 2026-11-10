@@ -26,8 +26,8 @@ before(async () => {
   ;[server, browser] = await Promise.all([startServer(), launchBrowser()])
 })
 after(async () => {
-  await browser?.close()
-  await server?.stop()
+  await browser.close()
+  await server.stop()
 })
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map((context) => context.close()))
@@ -52,7 +52,7 @@ interface Room {
 async function openRoom(name: string): Promise<Room> {
   const page = await newPage()
   const idResponse = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/pinto/id'
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
   )
   await page.goto(`/room/${encodeURIComponent(name)}`)
   const peerId = await (await idResponse).text()
@@ -80,8 +80,7 @@ async function openCaller() {
     const peer = new Peer({
       host: location.hostname,
       port: Number(location.port),
-      path: '/',
-      key: 'pinto'
+      path: '/'
     })
     window.caller = { peer, stream, answered: new Set(), closed: new Set() }
   })
@@ -111,7 +110,7 @@ async function stays<T>(read: () => Promise<T>, expected: T, ms = 3_000) {
   }
 }
 
-test('Stop Video, Mute and Leave stop capture', async () => {
+void test('Stop Video, Mute and Leave stop capture', async () => {
   const room = await openRoom('diag-capture')
   const states = async (kind: 'audio' | 'video') =>
     room.page.evaluate(
@@ -154,7 +153,7 @@ test('Stop Video, Mute and Leave stop capture', async () => {
   )
 })
 
-test('a caller who never joined is not answered', async () => {
+void test('a caller who never joined is not answered', async () => {
   const room = await openRoom('diag-stranger')
   await join(room)
   const caller = await openCaller()
@@ -166,7 +165,7 @@ test('a caller who never joined is not answered', async () => {
   )
 })
 
-test('a stranger cannot end a call by joining and leaving as someone else', async () => {
+void test('a stranger cannot end a call by joining and leaving as someone else', async () => {
   const a = await openRoom('diag-impersonation')
   await join(a)
   const b = await openRoom('diag-impersonation')
@@ -177,7 +176,11 @@ test('a stranger cannot end a call by joining and leaving as someone else', asyn
   // A stranger joins the room over socket.io claiming b's peer id, then
   // leaves by disconnecting
   const stranger = io(server.url)
-  await new Promise<void>((resolve) => stranger.on('connect', () => resolve()))
+  await new Promise<void>((resolve) =>
+    stranger.on('connect', () => {
+      resolve()
+    })
+  )
   stranger.emit('join-room', a.name, b.peerId)
   stranger.disconnect()
 

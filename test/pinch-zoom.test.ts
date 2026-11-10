@@ -12,7 +12,7 @@ before(async () => {
   server = await startServer()
 })
 after(async () => {
-  await server?.stop()
+  await server.stop()
 })
 
 /** Reads the viewport meta content declared by the page at `path` */
@@ -26,12 +26,12 @@ async function viewportContent(path: string) {
   return match[1]
 }
 
-describe('Pinch zoom (REQ 16)', () => {
+void describe('Pinch zoom (REQ 16)', () => {
   for (const [name, path] of [
     ['lobby', '/'],
     ['room', '/room/zoom-check']
   ] as const) {
-    test(`the ${name} page allows pinch zoom`, async () => {
+    void test(`the ${name} page allows pinch zoom`, async () => {
       const content = await viewportContent(path)
       assert.ok(!content.includes('user-scalable=no'), content)
       assert.ok(!content.includes('maximum-scale'), content)

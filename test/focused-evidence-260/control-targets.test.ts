@@ -8,7 +8,7 @@ const photoPng = Buffer.from(
   'base64'
 )
 
-test('real photo controls retain minimum height and layout', async () => {
+void test('real photo controls retain minimum height and layout', async () => {
   const failures: string[] = []
   await withBrowser(async (server, browser) => {
     for (const width of widths) {
@@ -54,25 +54,34 @@ test('real photo controls retain minimum height and layout', async () => {
             console.log(
               JSON.stringify({
                 width,
-                photoDraws: await page.evaluate('window.proposalPhotoDraws')
+                photoDraws: await page.evaluate(
+                  () =>
+                    (window as unknown as { proposalPhotoDraws: unknown[] })
+                      .proposalPhotoDraws
+                )
               })
             )
           }
           const evidence = await page.evaluate(() => {
             const rect = (node: Element) =>
-              node.getBoundingClientRect().toJSON()
+              node.getBoundingClientRect().toJSON() as DOMRect
+            const required = (selector: string) => {
+              const node = document.querySelector(selector)
+              if (!node) throw new Error(`${selector} exists`)
+              return node
+            }
             return {
               controls: [...document.querySelectorAll('.controls button')]
                 .filter((node) => !(node as HTMLButtonElement).hidden)
                 .map((node) => ({ id: node.id, rect: rect(node) })),
-              title: rect(document.querySelector('#title')!),
-              status: rect(document.querySelector('#status')!),
-              self: rect(document.querySelector('#self')!)
+              title: rect(required('#title')),
+              status: rect(required('#status')),
+              self: rect(required('#self'))
             }
           })
           console.log(JSON.stringify({ width, height, state, evidence }))
           await page.screenshot({
-            path: `target-${width}-${state}.png`,
+            path: `target-${String(width)}-${state}.png`,
             fullPage: true
           })
           const expected =
@@ -83,15 +92,15 @@ test('real photo controls retain minimum height and layout', async () => {
             JSON.stringify(evidence.controls.map((x) => x.id).sort()) !==
             JSON.stringify(expected.sort())
           )
-            failures.push(`inventory:${width}/${state}`)
+            failures.push(`inventory:${String(width)}/${state}`)
           for (const { id, rect } of evidence.controls) {
             if (rect.height < 44)
               failures.push(
-                `height-rule:${width}/${state}/${id}:${rect.height}`
+                `height-rule:${String(width)}/${state}/${id}:${String(rect.height)}`
               )
             if (rect.width < 44)
               failures.push(
-                `width-control:${width}/${state}/${id}:${rect.width}`
+                `width-control:${String(width)}/${state}/${id}:${String(rect.width)}`
               )
             if (
               rect.left < 0 ||
@@ -99,7 +108,7 @@ test('real photo controls retain minimum height and layout', async () => {
               rect.top < 0 ||
               rect.bottom > height
             )
-              failures.push(`offscreen:${width}/${state}/${id}`)
+              failures.push(`offscreen:${String(width)}/${state}/${id}`)
             for (const [name, heading] of [
               ['title', evidence.title],
               ['status', evidence.status]
@@ -110,7 +119,7 @@ test('real photo controls retain minimum height and layout', async () => {
                 rect.top < heading.bottom &&
                 rect.bottom > heading.top
               )
-                failures.push(`overlap:${width}/${state}/${id}/${name}`)
+                failures.push(`overlap:${String(width)}/${state}/${id}/${name}`)
             }
           }
         }
@@ -118,20 +127,22 @@ test('real photo controls retain minimum height and layout', async () => {
         const open = await page.locator('.open-room').boundingBox()
         console.log(JSON.stringify({ width, height, state: 'lobby', open }))
         await page.screenshot({
-          path: `target-${width}-lobby.png`,
+          path: `target-${String(width)}-lobby.png`,
           fullPage: true
         })
-        if (!open) failures.push(`missing-lobby:${width}`)
+        if (!open) failures.push(`missing-lobby:${String(width)}`)
         else {
-          if (open.height < 44) failures.push(`height-rule:lobby/${width}`)
-          if (open.width < 44) failures.push(`width-control:lobby/${width}`)
+          if (open.height < 44)
+            failures.push(`height-rule:lobby/${String(width)}`)
+          if (open.width < 44)
+            failures.push(`width-control:lobby/${String(width)}`)
           if (
             open.x < 0 ||
             open.x + open.width > width ||
             open.y < 0 ||
             open.y + open.height > height
           )
-            failures.push(`offscreen:lobby/${width}`)
+            failures.push(`offscreen:lobby/${String(width)}`)
         }
       } finally {
         await context.close()

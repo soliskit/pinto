@@ -12,8 +12,17 @@ import {
   type AdapterConfig,
   type AdapterStore,
   type JwksResponse,
-  type StoreTxn
+  type StoreTxn,
+  type StoreKey,
+  type StorePrefix,
+  type StoreRecords
 } from '../src/auth/salutant-adapter.ts'
+
+/** Fails the test with the field named when a flow response lacks it */
+function required<T>(value: T | null | undefined, field: string): T {
+  assert.ok(value, `required field missing: ${field}`)
+  return value
+}
 
 const APP_ORIGIN = 'https://app.example.test'
 const SERVICE_ORIGIN = 'https://salutant.example.test'
@@ -40,7 +49,7 @@ function encodeJson(value: unknown): string {
 // no partial state. It models the required atomicity but cannot prove it
 // for any production store.
 class FakeStore implements AdapterStore {
-  private data = new Map<string, unknown>()
+  private data = new Map<StoreKey, StoreRecords[StoreKey]>()
   failOnSetPrefix: string | null = null
   failOnDelete = false
   failTransact = false
@@ -50,7 +59,7 @@ class FakeStore implements AdapterStore {
       this.failTransact = false
       throw new Error('store unavailable')
     }
-    const shadow = new Map<string, unknown>()
+    const shadow = new Map<StoreKey, StoreRecords[StoreKey]>()
     for (const [key, value] of this.data)
       shadow.set(key, structuredClone(value))
     const failOnSetPrefix = this.failOnSetPrefix
@@ -58,9 +67,14 @@ class FakeStore implements AdapterStore {
     const failOnDelete = this.failOnDelete
     this.failOnDelete = false
     const txn: StoreTxn = {
-      get: <T>(key: string): T | undefined => {
+      // Both maps are private and receive values only through typed set.
+      // Cloning preserves the key's record shape; the assertion expresses
+      // that key/value correlation, which Map's union value type loses.
+      get: <K extends StoreKey>(key: K): StoreRecords[K] | undefined => {
         const value = shadow.get(key)
-        return value === undefined ? undefined : (structuredClone(value) as T)
+        return value === undefined
+          ? undefined
+          : (structuredClone(value) as StoreRecords[K])
       },
       set: (key, value) => {
         if (failOnSetPrefix && key.startsWith(failOnSetPrefix)) {
@@ -72,8 +86,10 @@ class FakeStore implements AdapterStore {
         if (failOnDelete) throw new Error('delete failed')
         shadow.delete(key)
       },
-      keysWithPrefix: (prefix) =>
-        [...shadow.keys()].filter((key) => key.startsWith(prefix))
+      keysWithPrefix: <P extends StorePrefix>(prefix: P) =>
+        [...shadow.keys()].filter((key): key is `${P}${string}` =>
+          key.startsWith(prefix)
+        )
     }
     const result = fn(txn)
     this.data = shadow
@@ -182,7 +198,7 @@ function gateSubtleMethod(method: 'sign' | 'verify') {
         Object.defineProperty(subtle, method, ownDescriptor)
       } else {
         // The original was inherited; remove only the injected own value.
-        delete (subtle as unknown as Record<string, unknown>)[method]
+        Reflect.deleteProperty(subtle, method)
       }
     }
   }
@@ -258,16 +274,16 @@ async function driveValidSignIn(ctx: Context) {
 
 // Valid path
 
-test('valid sign-in end to end', async () => {
+void test('valid sign-in end to end', async () => {
   const ctx = await makeAdapter()
   const { start, exchange, complete } = await driveValidSignIn(ctx)
   assert.equal(exchange.acao, SERVICE_ORIGIN)
   assert.equal(complete.status, 200)
   assert.equal(complete.body.sub, 'subject-1')
   assert.ok(complete.body.sessionId)
-  const session = await ctx.adapter.getSession(complete.body.sessionId!)
+  const session = await ctx.adapter.getSession(complete.body.sessionId)
   assert.equal(session?.sub, 'subject-1')
-  assert.equal(session?.epoch, 1)
+  assert.equal(session.epoch, 1)
   assert.equal(ctx.store.keysWithPrefix('session:').length, 1)
   assert.equal(
     complete.setCookie,
@@ -276,11 +292,7 @@ test('valid sign-in end to end', async () => {
   // The redemption record links the proof id, its time and the session it
   // produced (R4).
   const redemption = ctx.store.transact((txn) =>
-    txn.get<{
-      jti: string
-      redeemedAtMs: number
-      sessionId: string | null
-    }>(`redemption:proof-${start.stateId}`)
+    txn.get(`redemption:proof-${start.stateId}`)
   )
   assert.ok(redemption)
   assert.ok(redemption.redeemedAtMs > 0)
@@ -289,7 +301,7 @@ test('valid sign-in end to end', async () => {
 
 // Cookie and state refusals
 
-test('missing pre-auth cookie at completion', async () => {
+void test('missing pre-auth cookie at completion', async () => {
   const ctx = await makeAdapter()
   await driveValidExchange(ctx)
   const complete = await ctx.adapter.handleComplete(null)
@@ -297,7 +309,7 @@ test('missing pre-auth cookie at completion', async () => {
   assert.equal(ctx.store.keysWithPrefix('session:').length, 0)
 })
 
-test('pre-auth cookie present, code step never verified', async () => {
+void test('pre-auth cookie present, code step never verified', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const complete = await ctx.adapter.handleComplete(`pre=${start.cookieValue}`)
@@ -305,7 +317,7 @@ test('pre-auth cookie present, code step never verified', async () => {
   assert.equal(ctx.store.keysWithPrefix('session:').length, 0)
 })
 
-test('wrong pre-auth cookie at completion', async () => {
+void test('wrong pre-auth cookie at completion', async () => {
   const ctx = await makeAdapter()
   const other = await ctx.adapter.startSignIn()
   const { exchange } = await driveValidExchange(ctx)
@@ -315,7 +327,7 @@ test('wrong pre-auth cookie at completion', async () => {
   assert.equal(ctx.store.keysWithPrefix('session:').length, 0)
 })
 
-test('unknown state id at exchange', async () => {
+void test('unknown state id at exchange', async () => {
   const ctx = await makeAdapter()
   const stateId = 'unknown-state-id'
   const proof = await signProof(
@@ -330,7 +342,7 @@ test('unknown state id at exchange', async () => {
   assert.equal(exchange.body.error, 'bad_state')
 })
 
-test('altered state id at exchange leaves the pending record untouched', async () => {
+void test('altered state id at exchange leaves the pending record untouched', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const altered = `${start.stateId}x`
@@ -354,7 +366,7 @@ test('altered state id at exchange leaves the pending record untouched', async (
   assert.equal(valid.status, 200)
 })
 
-test('reused or already-consumed state at exchange', async () => {
+void test('reused or already-consumed state at exchange', async () => {
   const ctx = await makeAdapter()
   const { start } = await driveValidSignIn(ctx)
   const proof = await signProof(
@@ -388,7 +400,7 @@ const claimCases: [string, (nowSec: number) => Record<string, unknown>][] = [
 ]
 
 for (const [name, overrides] of claimCases) {
-  test(`invalid proof: ${name}`, async () => {
+  void test(`invalid proof: ${name}`, async () => {
     const ctx = await makeAdapter()
     const start = await ctx.adapter.startSignIn()
     const nowSec = Math.floor(ctx.now.value / 1000)
@@ -405,7 +417,7 @@ for (const [name, overrides] of claimCases) {
   })
 }
 
-test('invalid proof: altered payload', async () => {
+void test('invalid proof: altered payload', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -422,7 +434,7 @@ test('invalid proof: altered payload', async () => {
   assert.equal(exchange.status, 400)
 })
 
-test('invalid proof: algorithm other than EdDSA', async () => {
+void test('invalid proof: algorithm other than EdDSA', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -437,7 +449,7 @@ test('invalid proof: algorithm other than EdDSA', async () => {
   assert.equal(exchange.status, 400)
 })
 
-test('unknown key id after one forced refresh', async () => {
+void test('unknown key id after one forced refresh', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -468,11 +480,11 @@ const requiredClaims: [string, unknown][] = [
 ]
 
 for (const [name, wrongType] of requiredClaims) {
-  test(`missing or wrongly typed claim: ${name}`, async () => {
+  void test(`missing or wrongly typed claim: ${name}`, async () => {
     const ctx = await makeAdapter()
     const start = await ctx.adapter.startSignIn()
     const missing = { ...validClaims(start.stateId, ctx.now.value) }
-    delete missing[name]
+    Reflect.deleteProperty(missing, name)
     const wrong = validClaims(start.stateId, ctx.now.value, {
       [name]: wrongType
     })
@@ -487,7 +499,7 @@ for (const [name, wrongType] of requiredClaims) {
   })
 }
 
-test('header key id missing or wrongly typed is rejected before key lookup', async () => {
+void test('header key id missing or wrongly typed is rejected before key lookup', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   for (const header of [{ alg: 'EdDSA' }, { alg: 'EdDSA', kid: 123 }]) {
@@ -505,7 +517,7 @@ test('header key id missing or wrongly typed is rejected before key lookup', asy
   assert.equal(ctx.jwks.control.fetches, 0) // rejected before any key lookup
 })
 
-test('wrong Origin header on the exchange', async () => {
+void test('wrong Origin header on the exchange', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -522,7 +534,7 @@ test('wrong Origin header on the exchange', async () => {
 
 // Replay and concurrency
 
-test('duplicate redemption of one valid proof', async () => {
+void test('duplicate redemption of one valid proof', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -542,7 +554,7 @@ test('duplicate redemption of one valid proof', async () => {
   assert.equal(second.body.error, 'replayed')
 })
 
-test('many parallel redemptions of one valid proof give one success', async () => {
+void test('many parallel redemptions of one valid proof give one success', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -560,7 +572,7 @@ test('many parallel redemptions of one valid proof give one success', async () =
   assert.equal(results.filter((r) => r.status === 200).length, 1)
 })
 
-test('many parallel completions against one verified state give one session', async () => {
+void test('many parallel completions against one verified state give one session', async () => {
   const ctx = await makeAdapter()
   const { start, exchange } = await driveValidExchange(ctx)
   assert.equal(exchange.status, 200)
@@ -573,7 +585,7 @@ test('many parallel completions against one verified state give one session', as
   assert.equal(ctx.store.keysWithPrefix('session:').length, 1)
 })
 
-test('valid proof with a bad state is rejected but not consumed', async () => {
+void test('valid proof with a bad state is rejected but not consumed', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -582,7 +594,8 @@ test('valid proof with a bad state is rejected but not consumed', async () => {
   )
   // Mark the state consumed behind the adapter's back, then restore it.
   ctx.store.transact((txn) => {
-    const pending = txn.get<Record<string, unknown>>(`state:${start.stateId}`)!
+    const pending = txn.get(`state:${start.stateId}`)
+    if (!pending) throw new Error('pending state missing in test')
     pending.consumed = true
     txn.set(`state:${start.stateId}`, pending)
   })
@@ -594,7 +607,8 @@ test('valid proof with a bad state is rejected but not consumed', async () => {
   assert.equal(failed.body.error, 'bad_state')
   assert.equal(ctx.store.keysWithPrefix('redemption:').length, 0)
   ctx.store.transact((txn) => {
-    const pending = txn.get<Record<string, unknown>>(`state:${start.stateId}`)!
+    const pending = txn.get(`state:${start.stateId}`)
+    if (!pending) throw new Error('pending state missing in test')
     pending.consumed = false
     txn.set(`state:${start.stateId}`, pending)
   })
@@ -607,7 +621,7 @@ test('valid proof with a bad state is rejected but not consumed', async () => {
 
 // Windows (bracketed values, not approved production settings)
 
-test('exchange outside the exchange window', async () => {
+void test('exchange outside the exchange window', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const nowSec = Math.floor(ctx.now.value / 1000)
@@ -622,7 +636,7 @@ test('exchange outside the exchange window', async () => {
   assert.equal(exchange.status, 400)
 })
 
-test('completion outside the completion window', async () => {
+void test('completion outside the completion window', async () => {
   const ctx = await makeAdapter()
   const { start, exchange } = await driveValidExchange(ctx)
   assert.equal(exchange.status, 200)
@@ -634,14 +648,14 @@ test('completion outside the completion window', async () => {
 
 // Storage and key failures (R5, R12)
 
-test('state store write failure at start fails closed', async () => {
+void test('state store write failure at start fails closed', async () => {
   const ctx = await makeAdapter()
   ctx.store.failOnSetPrefix = 'state:'
   await assert.rejects(ctx.adapter.startSignIn())
   assert.equal(ctx.store.keysWithPrefix('state:').length, 0)
 })
 
-test('redemption store failure at exchange fails closed', async () => {
+void test('redemption store failure at exchange fails closed', async () => {
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -657,7 +671,7 @@ test('redemption store failure at exchange fails closed', async () => {
   assert.equal(complete.status, 401) // state never marked verified
 })
 
-test('session write failure at completion leaves the state unconsumed', async () => {
+void test('session write failure at completion leaves the state unconsumed', async () => {
   const ctx = await makeAdapter()
   const { start, exchange } = await driveValidExchange(ctx)
   assert.equal(exchange.status, 200)
@@ -671,7 +685,7 @@ test('session write failure at completion leaves the state unconsumed', async ()
   assert.equal(ctx.store.keysWithPrefix('session:').length, 1)
 })
 
-test('key refresh failure after cache expiry rejects every proof', async () => {
+void test('key refresh failure after cache expiry rejects every proof', async () => {
   const ctx = await makeAdapter()
   const first = await driveValidExchange(ctx)
   assert.equal(first.exchange.status, 200)
@@ -695,7 +709,7 @@ test('key refresh failure after cache expiry rejects every proof', async () => {
   assert.equal(recovered.status, 200)
 })
 
-test('unknown key id with refresh unavailable', async () => {
+void test('unknown key id with refresh unavailable', async () => {
   const ctx = await makeAdapter()
   ctx.jwks.control.fail = true
   const start = await ctx.adapter.startSignIn()
@@ -711,7 +725,7 @@ test('unknown key id with refresh unavailable', async () => {
   assert.equal(exchange.status, 400)
 })
 
-test('cached key younger than five minutes is reused', async () => {
+void test('cached key younger than five minutes is reused', async () => {
   const ctx = await makeAdapter()
   await driveValidExchange(ctx)
   await driveValidExchange(ctx)
@@ -720,7 +734,7 @@ test('cached key younger than five minutes is reused', async () => {
 
 // Epoch and sessions
 
-test('epoch raise rejects an earlier-epoch proof at exchange', async () => {
+void test('epoch raise rejects an earlier-epoch proof at exchange', async () => {
   const ctx = await makeAdapter()
   await driveValidExchange(ctx) // warms the key cache at epoch 1
   ctx.now.value += 6 * 60_000
@@ -737,10 +751,12 @@ test('epoch raise rejects an earlier-epoch proof at exchange', async () => {
   assert.equal(exchange.status, 400)
 })
 
-test('epoch raise visible at completion ends the sign-in with no session', async () => {
+void test('epoch raise visible at completion ends the sign-in with no session', async () => {
   // A longer completion window keeps the state eligible while the clock
   // advances past the 5-minute key cache, so completion sees the raise.
-  const ctx = await makeAdapter({ config: { completionWindowMs: 10 * 60_000 } })
+  const ctx = await makeAdapter({
+    config: { completionWindowMs: 10 * 60_000 }
+  })
   const { start, exchange } = await driveValidExchange(ctx) // verified at epoch 1
   assert.equal(exchange.status, 200)
   // The fake proves refusal on a visible raise only: production freshness
@@ -753,7 +769,7 @@ test('epoch raise visible at completion ends the sign-in with no session', async
   assert.equal(ctx.store.keysWithPrefix('session:').length, 0)
 })
 
-test('epoch source unreadable at completion fails closed', async () => {
+void test('epoch source unreadable at completion fails closed', async () => {
   const ctx = await makeAdapter()
   const { start, exchange } = await driveValidExchange(ctx)
   assert.equal(exchange.status, 200)
@@ -764,10 +780,10 @@ test('epoch source unreadable at completion fails closed', async () => {
   assert.equal(ctx.store.keysWithPrefix('session:').length, 0)
 })
 
-test('dropSessionsBefore ends earlier-epoch sessions and clears the key cache', async () => {
+void test('dropSessionsBefore ends earlier-epoch sessions and clears the key cache', async () => {
   const ctx = await makeAdapter()
   const first = await driveValidSignIn(ctx)
-  const firstSession = first.complete.body.sessionId!
+  const firstSession = required(first.complete.body.sessionId, 'sessionId')
   const fetchesBefore = ctx.jwks.control.fetches
   ctx.jwks.control.epoch = 2
   ctx.adapter.dropSessionsBefore(2)
@@ -787,15 +803,15 @@ test('dropSessionsBefore ends earlier-epoch sessions and clears the key cache', 
   assert.ok(ctx.jwks.control.fetches > fetchesBefore)
   const complete = await ctx.adapter.handleComplete(`pre=${start.cookieValue}`)
   assert.equal(complete.status, 200)
-  const secondSession = complete.body.sessionId!
+  const secondSession = required(complete.body.sessionId, 'sessionId')
   ctx.adapter.dropSessionsBefore(2)
   assert.ok(await ctx.adapter.getSession(secondSession))
 })
 
-test('session expiry is absolute: activity does not extend it', async () => {
+void test('session expiry is absolute: activity does not extend it', async () => {
   const ctx = await makeAdapter()
   const { complete } = await driveValidSignIn(ctx)
-  const sessionId = complete.body.sessionId!
+  const sessionId = required(complete.body.sessionId, 'sessionId')
   const fetchesBefore = ctx.jwks.control.fetches
   ctx.now.value += 30 * DAY_MS - 60_000
   // The check consults the epoch path: the long-expired key cache forces a
@@ -807,22 +823,22 @@ test('session expiry is absolute: activity does not extend it', async () => {
   assert.equal(await ctx.adapter.getSession(sessionId), undefined)
 })
 
-test('sign-out ends only the current device', async () => {
+void test('sign-out ends only the current device', async () => {
   const ctx = await makeAdapter()
   const first = await driveValidSignIn(ctx)
   const second = await driveValidSignIn(ctx)
-  const firstId = first.complete.body.sessionId!
-  const secondId = second.complete.body.sessionId!
+  const firstId = required(first.complete.body.sessionId, 'sessionId')
+  const secondId = required(second.complete.body.sessionId, 'sessionId')
   const out = ctx.adapter.signOut(firstId)
   assert.equal(out.status, 200)
   assert.equal(await ctx.adapter.getSession(firstId), undefined)
   assert.ok(await ctx.adapter.getSession(secondId))
 })
 
-test('sign-out failure surfaces an error and the session stays valid', async () => {
+void test('sign-out failure surfaces an error and the session stays valid', async () => {
   const ctx = await makeAdapter()
   const { complete } = await driveValidSignIn(ctx)
-  const sessionId = complete.body.sessionId!
+  const sessionId = required(complete.body.sessionId, 'sessionId')
   ctx.store.failOnDelete = true
   const out = ctx.adapter.signOut(sessionId)
   assert.equal(out.status, 500)
@@ -832,7 +848,7 @@ test('sign-out failure surfaces an error and the session stays valid', async () 
 
 // Protocol hygiene
 
-test('no tokens in URLs', async () => {
+void test('no tokens in URLs', async () => {
   const ctx = await makeAdapter()
   const { start, exchange } = await driveValidExchange(ctx)
   assert.equal(exchange.status, 200)
@@ -840,20 +856,25 @@ test('no tokens in URLs', async () => {
   assert.deepEqual([...pageUrl.searchParams.keys()].sort(), ['app', 'state'])
   assert.equal(pageUrl.searchParams.get('app'), APP_ORIGIN)
   assert.equal(pageUrl.searchParams.get('state'), start.stateId)
-  const completeUrl = new URL(exchange.body.completeUrl!)
+  const completeUrl = new URL(
+    required(exchange.body.completeUrl, 'completeUrl')
+  )
   assert.equal(completeUrl.search, '')
   assert.equal(completeUrl.origin, APP_ORIGIN)
 })
 
-test('cookie attributes', async () => {
+void test('cookie attributes', async () => {
   const ctx = await makeAdapter()
   const { start, complete } = await driveValidSignIn(ctx)
   assert.equal(
     start.setCookie,
     `pre=${start.cookieValue}; Path=/; Secure; HttpOnly; SameSite=Lax`
   )
-  assert.match(complete.setCookie!, /^sess=/)
-  for (const cookie of [start.setCookie!, complete.setCookie!]) {
+  assert.match(required(complete.setCookie, 'complete.setCookie'), /^sess=/)
+  for (const cookie of [
+    required(start.setCookie, 'start.setCookie'),
+    required(complete.setCookie, 'complete.setCookie')
+  ]) {
     assert.ok(cookie.includes('Secure'))
     assert.ok(cookie.includes('HttpOnly'))
     assert.ok(cookie.includes('SameSite=Lax'))
@@ -861,7 +882,7 @@ test('cookie attributes', async () => {
   }
 })
 
-test('cookie compare rejects wrong and garbage values', async () => {
+void test('cookie compare rejects wrong and garbage values', async () => {
   // Functional refusals only. Fixed iteration; no runtime timing
   // guarantee is claimed or tested here.
   const ctx = await makeAdapter()
@@ -877,7 +898,7 @@ test('cookie compare rejects wrong and garbage values', async () => {
 // where one exists; the report to the owner flags every case that extends
 // beyond the 42 approved definitions.
 
-test('empty subject is rejected', async () => {
+void test('empty subject is rejected', async () => {
   // Definition 18: subject validity is presence plus non-empty, consistently.
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
@@ -892,7 +913,7 @@ test('empty subject is rejected', async () => {
   assert.equal(exchange.status, 400)
 })
 
-test('wrong JWK key type or curve is refused', async () => {
+void test('wrong JWK key type or curve is refused', async () => {
   // Definition 14: the published key itself must be Ed25519, not only the
   // proof's alg header.
   const wrongPairs = [
@@ -931,11 +952,12 @@ test('wrong JWK key type or curve is refused', async () => {
   }
 })
 
-test('config beyond the adopted bounds is rejected', () => {
+void test('config beyond the adopted bounds is rejected', () => {
   const base = {
     origin: APP_ORIGIN,
     serviceOrigin: SERVICE_ORIGIN,
-    fetchJwks: async (): Promise<JwksResponse> => ({ keys: [], epoch: 1 }),
+    fetchJwks: (): Promise<JwksResponse> =>
+      Promise.resolve({ keys: [], epoch: 1 }),
     store: new FakeStore(),
     stateHmacKeyBytes: HMAC_KEY
   }
@@ -961,7 +983,7 @@ test('config beyond the adopted bounds is rejected', () => {
   )
 })
 
-test('state write failure at exchange rolls back the staged redemption', async () => {
+void test('state write failure at exchange rolls back the staged redemption', async () => {
   // Definitions 27-29's atomicity condition across two writes, not one.
   const ctx = await makeAdapter()
   const start = await ctx.adapter.startSignIn()
@@ -979,7 +1001,7 @@ test('state write failure at exchange rolls back the staged redemption', async (
   assert.equal(complete.status, 401) // state never marked verified
 })
 
-test('state write failure at completion rolls back the staged session', async () => {
+void test('state write failure at completion rolls back the staged session', async () => {
   const ctx = await makeAdapter()
   const { start, exchange } = await driveValidExchange(ctx)
   assert.equal(exchange.status, 200)
@@ -988,7 +1010,7 @@ test('state write failure at completion rolls back the staged session', async ()
   // All or none: the staged session and redemption update are gone too.
   assert.equal(ctx.store.keysWithPrefix('session:').length, 0)
   const redemption = ctx.store.transact((txn) =>
-    txn.get<{ sessionId: string | null }>(`redemption:proof-${start.stateId}`)
+    txn.get(`redemption:proof-${start.stateId}`)
   )
   assert.equal(redemption?.sessionId, null)
   // The state is still verified but unconsumed: completion can recover.
@@ -996,32 +1018,32 @@ test('state write failure at completion rolls back the staged session', async ()
   assert.equal(retry.status, 200)
 })
 
-test('session check ends the session on a visible epoch raise', async () => {
+void test('session check ends the session on a visible epoch raise', async () => {
   // The settled epoch-ends-all rule applied at check time, within the
   // adopted 5-minute cache bound.
   const ctx = await makeAdapter()
   const { complete } = await driveValidSignIn(ctx)
-  const sessionId = complete.body.sessionId!
+  const sessionId = required(complete.body.sessionId, 'sessionId')
   ctx.now.value += 6 * 60_000 // past the key cache: the check re-reads it
   ctx.jwks.control.epoch = 2
   assert.equal(await ctx.adapter.getSession(sessionId), undefined)
 })
 
-test('session check fails closed when the epoch source is unreadable', async () => {
+void test('session check fails closed when the epoch source is unreadable', async () => {
   const ctx = await makeAdapter()
   const { complete } = await driveValidSignIn(ctx)
-  const sessionId = complete.body.sessionId!
+  const sessionId = required(complete.body.sessionId, 'sessionId')
   ctx.now.value += 6 * 60_000
   ctx.jwks.control.fail = true
   assert.equal(await ctx.adapter.getSession(sessionId), undefined)
 })
 
-test('unknown-key forced refresh cannot erase the observed epoch', async () => {
+void test('unknown-key forced refresh cannot erase the observed epoch', async () => {
   // Definitions 15 and 33: the forced refresh must still run the epoch
   // comparison even though it rebuilds the key cache from empty.
   const ctx = await makeAdapter()
   const { complete } = await driveValidSignIn(ctx)
-  const sessionId = complete.body.sessionId!
+  const sessionId = required(complete.body.sessionId, 'sessionId')
   ctx.jwks.control.epoch = 2 // a raise is published behind the warm cache
   const start = await ctx.adapter.startSignIn()
   const proof = await signProof(
@@ -1038,7 +1060,7 @@ test('unknown-key forced refresh cannot erase the observed epoch', async () => {
   assert.equal(await ctx.adapter.getSession(sessionId), undefined)
 })
 
-test('a stale key response cannot regress the observed epoch', async () => {
+void test('a stale key response cannot regress the observed epoch', async () => {
   const key = await mintServiceKey()
   const ctx = await makeAdapter({ key, jwks: makeJwks(key.publicJwk, 2) })
   const warm = await ctx.adapter.startSignIn()
@@ -1065,7 +1087,7 @@ test('a stale key response cannot regress the observed epoch', async () => {
   assert.equal(exchange.status, 400) // the observed floor still rejects it
 })
 
-test('digest compare rejects inputs that do not decode to 32 bytes', () => {
+void test('digest compare rejects inputs that do not decode to 32 bytes', () => {
   // Definition 42: the fixed-length guard runs before the compare loop.
   const digest = toBase64Url(new Uint8Array(32).fill(1))
   assert.equal(fixedDigestEqual(digest, digest), true)
@@ -1137,9 +1159,7 @@ const epochRaceVariants: [string, () => Promise<void>][] = [
         assert.equal(complete.body.error, 'stale_epoch')
         assert.equal(ctx.store.keysWithPrefix('session:').length, 0)
         const redemption = ctx.store.transact((txn) =>
-          txn.get<{ sessionId: string | null }>(
-            `redemption:proof-${start.stateId}`
-          )
+          txn.get(`redemption:proof-${start.stateId}`)
         )
         assert.equal(redemption?.sessionId, null)
       } finally {
@@ -1153,7 +1173,7 @@ const epochRaceVariants: [string, () => Promise<void>][] = [
     async () => {
       const ctx = await makeAdapter()
       const { complete } = await driveValidSignIn(ctx)
-      const sessionId = complete.body.sessionId!
+      const sessionId = required(complete.body.sessionId, 'sessionId')
       ctx.now.value += 6 * 60_000 // cache expires: the check re-reads keys
       const hold: JwksHold = { entered: false, open: () => {} }
       ctx.jwks.control.hold = hold
@@ -1182,7 +1202,7 @@ const epochRaceVariants: [string, () => Promise<void>][] = [
 ]
 
 for (const [path, run] of epochRaceVariants) {
-  test(
+  void test(
     `epoch raise observed between epoch read and commit fails closed: ${path}`,
     run
   )

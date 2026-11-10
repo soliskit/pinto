@@ -76,15 +76,14 @@ if (!configResponse.ok) {
     `Connection settings could not be loaded (${configResponse.status}).`
   )
 }
-/** @type {{ key: string, iceServers: RTCIceServer[] }} */
-const config = await configResponse.json()
+const configJson = /** @type {unknown} */ (await configResponse.json())
+const config = /** @type {{ iceServers: RTCIceServer[] }} */ (configJson)
 const secure = location.protocol === 'https:'
 const peer = new Peer({
   host: location.hostname,
   port: Number(location.port) || (secure ? 443 : 80),
   secure,
   path: '/',
-  key: config.key,
   config: { iceServers: config.iceServers }
 })
 const socket = io()
@@ -128,8 +127,8 @@ function sendVideo(track) {
   for (const { call } of calls.values()) {
     const sender = call.peerConnection
       ?.getSenders()
-      .find((sender) => sender.track?.kind === 'video')
-    sender?.replaceTrack(track)
+      .find((each) => each.track?.kind === 'video')
+    void sender?.replaceTrack(track)
   }
 }
 
@@ -144,8 +143,8 @@ function sendAudio(track) {
   for (const { call } of calls.values()) {
     const sender = call.peerConnection
       ?.getSenders()
-      .find((sender) => sender.track?.kind === 'audio')
-    sender?.replaceTrack(track)
+      .find((each) => each.track?.kind === 'audio')
+    void sender?.replaceTrack(track)
   }
 }
 
@@ -246,7 +245,9 @@ function addCall(call) {
   call.on('close', () => {
     if (calls.get(call.peer)?.call === call) removeCall(call.peer)
   })
-  call.on('error', (error) => console.error(error))
+  call.on('error', (error) => {
+    console.error(error)
+  })
 }
 
 /** @param {string} peerId */
@@ -260,6 +261,7 @@ function removeCall(peerId) {
 }
 
 // One entry per kind of problem, so concurrent problems all stay visible
+/** @type {Map<string, { heading: HTMLHeadingElement, message: HTMLHeadingElement }>} */
 const errorEntries = new Map()
 
 /**
@@ -269,13 +271,16 @@ const errorEntries = new Map()
 function showError(heading, message) {
   let entry = errorEntries.get(heading)
   if (!entry) {
-    entry = document.createElement('div')
-    entry.append(document.createElement('h1'), document.createElement('h2'))
-    errorBox.append(entry)
+    const box = document.createElement('div')
+    const headingElement = document.createElement('h1')
+    const messageElement = document.createElement('h2')
+    box.append(headingElement, messageElement)
+    errorBox.append(box)
+    entry = { heading: headingElement, message: messageElement }
     errorEntries.set(heading, entry)
   }
-  entry.firstChild.textContent = heading
-  entry.lastChild.textContent = message
+  entry.heading.textContent = heading
+  entry.message.textContent = message
   errorBox.hidden = false
 }
 
@@ -313,16 +318,20 @@ photo.addEventListener('error', () => {
 setInterval(drawPhoto, PHOTO_REDRAW_INTERVAL_MS)
 selfVideo.srcObject = new MediaStream([photoTrack])
 
-muteButton.addEventListener('click', async () => {
-  muted = !muted
-  if (joined) await applyMic()
-  render()
+muteButton.addEventListener('click', () => {
+  void (async () => {
+    muted = !muted
+    if (joined) await applyMic()
+    render()
+  })()
 })
 
-cameraButton.addEventListener('click', async () => {
-  cameraOn = !cameraOn
-  if (joined) await applyCamera()
-  render()
+cameraButton.addEventListener('click', () => {
+  void (async () => {
+    cameraOn = !cameraOn
+    if (joined) await applyCamera()
+    render()
+  })()
 })
 
 photoInput.addEventListener('change', () => {
@@ -331,7 +340,9 @@ photoInput.addEventListener('change', () => {
   photoInput.value = ''
 })
 
-removePhotoButton.addEventListener('click', () => setPhoto(DEFAULT_PHOTO))
+removePhotoButton.addEventListener('click', () => {
+  setPhoto(DEFAULT_PHOTO)
+})
 
 callButton.addEventListener('click', () => {
   if (joined) {
@@ -344,7 +355,8 @@ callButton.addEventListener('click', () => {
     // This touches socket.io's internal buffer; the served-bundle
     // tripwire in room.test.ts pins what it relies on
     socket.sendBuffer = socket.sendBuffer.filter(
-      (packet) => packet.data[0] !== 'join-room'
+      (packet) =>
+        /** @type {{ data: unknown[] }} */ (packet).data[0] !== 'join-room'
     )
     for (const peerId of calls.keys()) removeCall(peerId)
     roomPeers.clear()
@@ -484,14 +496,14 @@ peer.on('disconnected', () => {
     peer.reconnect()
   }, PEER_RECONNECT_DELAY_MS)
 })
-peer.on('error', (error) =>
+peer.on('error', (/** @type {{ type?: string, message?: string }} */ error) => {
   showError(
     'Connection problem',
     `${error.type}: ${error.message || 'No further error details are available.'}`
   )
-)
+})
 
-socket.on('user-connected', (peerId) => {
+socket.on('user-connected', (/** @type {string} */ peerId) => {
   // A page that considers itself outside the room must not call:
   // stray membership can still announce joiners to it
   if (!joined) return
@@ -515,7 +527,7 @@ socket.on('user-connected', (peerId) => {
   }
   addCall(call)
 })
-socket.on('user-disconnected', (peerId) => {
+socket.on('user-disconnected', (/** @type {string} */ peerId) => {
   roomPeers.delete(peerId)
   removeCall(peerId)
 })

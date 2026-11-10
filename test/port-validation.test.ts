@@ -22,8 +22,12 @@ function runServer(
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let output = ''
-    child.stdout.setEncoding('utf8').on('data', (data) => (output += data))
-    child.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+    child.stdout.setEncoding('utf8').on('data', (data: string) => {
+      output += data
+    })
+    child.stderr.setEncoding('utf8').on('data', (data: string) => {
+      output += data
+    })
     child.on('error', reject)
     const killer = setTimeout(() => {
       child.kill()
@@ -40,9 +44,9 @@ function runServer(
 // 2026); an unconfigured local port is reported clearly rather than silently
 // defaulting (owner decision, November 2, 2026). The 443 fallback itself is
 // pinned by test/default-ports.test.ts.
-describe('port validation', () => {
+void describe('port validation', () => {
   for (const value of ['abc', '0', '-1', '70000', '3.5']) {
-    test(`PORT=${value} exits 1 with a clear message`, async () => {
+    void test(`PORT=${value} exits 1 with a clear message`, async () => {
       const { code, output } = await runServer({ PORT: value })
       assert.equal(code, 1, `output:\n${output}`)
       assert.match(
@@ -53,7 +57,7 @@ describe('port validation', () => {
     })
   }
 
-  test('an unset PORT keeps the 443 fallback and says so', async () => {
+  void test('an unset PORT keeps the 443 fallback and says so', async () => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       KEY: '',
@@ -67,8 +71,12 @@ describe('port validation', () => {
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let output = ''
-    child.stdout.setEncoding('utf8').on('data', (data) => (output += data))
-    child.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+    child.stdout.setEncoding('utf8').on('data', (data: string) => {
+      output += data
+    })
+    child.stderr.setEncoding('utf8').on('data', (data: string) => {
+      output += data
+    })
     try {
       const deadline = Date.now() + 10_000
       // Serving on 443 is pinned by test/default-ports.test.ts; here the

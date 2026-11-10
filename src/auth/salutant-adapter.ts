@@ -4,11 +4,21 @@
 // reviewed reference flow in soliskit/salutant's stub app. The fake store
 // is test-only; production persistence needs its own approved design.
 
+// Each key namespace has one record shape. Callers cannot choose an
+// unrelated return type for a read, and writes use the same key contract.
+export interface StoreRecords {
+  [key: `state:${string}`]: PendingState
+  [key: `redemption:${string}`]: Redemption
+  [key: `session:${string}`]: Session
+}
+export type StoreKey = keyof StoreRecords
+export type StorePrefix = 'state:' | 'redemption:' | 'session:'
+
 export interface StoreTxn {
-  get<T>(key: string): T | undefined
-  set(key: string, value: unknown): void
-  delete(key: string): void
-  keysWithPrefix(prefix: string): string[]
+  get<K extends StoreKey>(key: K): StoreRecords[K] | undefined
+  set<K extends StoreKey>(key: K, value: StoreRecords[K]): void
+  delete(key: StoreKey): void
+  keysWithPrefix<P extends StorePrefix>(prefix: P): `${P}${string}`[]
 }
 
 // Transaction contract: fn runs against a staged view; its writes commit
@@ -434,7 +444,7 @@ export class SalutantSignInAdapter {
         return 'stale_epoch'
       }
       if (txn.get(`redemption:${claims.jti}`)) return 'replayed'
-      const pending = txn.get<PendingState>(`state:${input.state}`)
+      const pending = txn.get(`state:${input.state}`)
       if (!pending || pending.consumed || pending.verifiedSub)
         return 'bad_state'
       txn.set(`redemption:${claims.jti}`, {
@@ -450,7 +460,11 @@ export class SalutantSignInAdapter {
       return 'ok'
     })
     if (verdict !== 'ok') {
-      return { status: 400, acao: this.serviceOrigin, body: { error: verdict } }
+      return {
+        status: 400,
+        acao: this.serviceOrigin,
+        body: { error: verdict }
+      }
     }
     return {
       status: 200,
@@ -500,7 +514,7 @@ export class SalutantSignInAdapter {
       )
       const pending = txn
         .keysWithPrefix('state:')
-        .map((key) => txn.get<PendingState>(key))
+        .map((key) => txn.get(key))
         .find(
           (p): p is PendingState =>
             p !== undefined &&
@@ -529,8 +543,8 @@ export class SalutantSignInAdapter {
       } satisfies Session)
       // Link the redemption record to the session it produced (R4).
       if (pending.verifiedJti !== undefined) {
-        const redemptionKey = `redemption:${pending.verifiedJti}`
-        const redemption = txn.get<Redemption>(redemptionKey)
+        const redemptionKey = `redemption:${pending.verifiedJti}` as const
+        const redemption = txn.get(redemptionKey)
         if (redemption) txn.set(redemptionKey, { ...redemption, sessionId })
       }
       pending.consumed = true
@@ -562,8 +576,8 @@ export class SalutantSignInAdapter {
         currentEpoch,
         this.lastObservedEpoch ?? currentEpoch
       )
-      const key = `session:${sessionId}`
-      const session = txn.get<Session>(key)
+      const key = `session:${sessionId}` as const
+      const session = txn.get(key)
       if (!session) return undefined
       if (this.clock() - session.createdAtMs >= this.config.sessionTtlMs) {
         return undefined
@@ -595,7 +609,7 @@ export class SalutantSignInAdapter {
   dropSessionsBefore(epoch: number): void {
     this.store.transact((txn) => {
       for (const key of txn.keysWithPrefix('session:')) {
-        const session = txn.get<Session>(key)
+        const session = txn.get(key)
         if (session && session.epoch < epoch) txn.delete(key)
       }
     })
