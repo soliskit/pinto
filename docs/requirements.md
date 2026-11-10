@@ -24,6 +24,7 @@ The requirements below are numbered REQ 1 and up; the earlier decision-log numbe
 | REQ 15 | "Leave must stay usable whenever a call is up, including during a signaling outage." TODAY.                                                                                                                                                                                                                                                                              |
 | REQ 16 | "Both pages can be pinch-zoomed." TODAY.                                                                                                                                                                                                                                                                                                                                 |
 | REQ 18 | "A peer connection error shows its error type and available nonempty detail. If the detail is empty, it says 'No further error details are available.' without guessing a cause." TARGET. Implementation and verification pending. |
+| REQ 17 | "Buttons use a minimum height of 44 CSS pixels. A natural height greater than 44 CSS pixels is not reduced." TARGET. Implementation and verification pending. |
 
 ## Planned services, scoped line by line
 
