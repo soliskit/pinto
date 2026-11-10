@@ -6,7 +6,7 @@ import urllib.request
 from check_pr_description import check
 
 
-def run(api, repo, number, template):
+def run(api, repo, number, template, event_sha, expected_sha=None):
     prefix = '/repos/' + repo
     def unique_open_pr(head):
         matches = []
@@ -47,14 +47,27 @@ def run(api, repo, number, template):
         if fields(pr) != fields(again):
             raise ValueError('PR changed during read.')
         return head, pr.get('body') or '', tuple(sorted(paths))
-    head, body, paths = snapshot()
-    target = prefix + '/statuses/' + head
-    api('POST', target, {'state': 'pending', 'context': 'PR description', 'description': 'Checking the current description.'})
+    # The publication target is frozen before anything is posted: the
+    # operator's expected commit in recovery, otherwise the first
+    # resolved head. No status is ever posted to a newer head.
+    frozen = expected_sha
+    target = prefix + '/statuses/' + (frozen or event_sha)
     try:
+        if frozen is None:
+            frozen = api('GET', prefix + '/pulls/' + str(number))['head']['sha']
+            target = prefix + '/statuses/' + frozen
+        api('POST', target, {'state': 'pending', 'context': 'PR description', 'description': 'Checking the current description.'})
+        head, body, paths = snapshot()
+        if head != frozen:
+            if expected_sha is not None:
+                raise ValueError('PR head differs from the expected commit.')
+            raise ValueError('PR changed during read.')
         errors = check(body, paths, template)
-        if snapshot() != (head, body, paths):
+        if snapshot() != (frozen, body, paths):
             raise ValueError('PR changed before status publication.')
         api('POST', target, {'state': 'failure' if errors else 'success', 'context': 'PR description', 'description': 'Description needs changes.' if errors else 'Required description fields are complete.'})
+        if snapshot() != (frozen, body, paths):
+            raise ValueError('PR changed after status publication.')
         return errors
     except Exception:
         api('POST', target, {'state': 'error', 'context': 'PR description', 'description': 'Description could not be verified.'})
@@ -78,10 +91,14 @@ def main():
         config = json.load(f)
     if config['repository'] != repo:
         raise ValueError('Configuration repository mismatch.')
-    errors = run(api, repo, number, template)
+    expected = os.environ.get('RECOVERY_EXPECTED_SHA') or None
+    if expected is not None and (len(expected) != 40 or any(c not in '0123456789abcdef' for c in expected)):
+        raise ValueError('Invalid expected SHA')
+    errors = run(api, repo, number, template, event['pull_request']['head']['sha'], expected)
     for error in errors:
         print(error)
     return bool(errors)
 
 if __name__ == '__main__':
     sys.exit(main())
+

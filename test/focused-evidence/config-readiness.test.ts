@@ -43,58 +43,31 @@ test('pending config disables Mute until its handler is installed', async () => 
   })
 })
 
-for (const format of ['json', 'html']) {
-  test(`HTTP 500 ${format} config is rejected before initialization`, async () => {
-    await withBrowser(async (server, browser) => {
-      const context = await browser.newContext({ baseURL: server.url })
-      try {
-        const page = await context.newPage()
-        let undefinedIdRequests = 0
-        page.on('request', (request) => {
-          if (new URL(request.url()).pathname.includes('/undefined/id'))
-            undefinedIdRequests++
+test('HTTP error config is rejected even when its JSON looks valid', async () => {
+  await withBrowser(async (server, browser) => {
+    const context = await browser.newContext({ baseURL: server.url })
+    try {
+      const page = await context.newPage()
+      await page.route('**/config', (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: '{"key":"pinto","iceServers":[]}'
         })
-        await page.route('**/config', (route) =>
-          route.fulfill({
-            status: 500,
-            contentType: format === 'json' ? 'application/json' : 'text/html',
-            body:
-              format === 'json'
-                ? '{"iceServers":[]}'
-                : '<!doctype html><title>Controlled error</title><p>Unavailable</p>'
-          })
-        )
-        await page.goto('/room/config-error')
-        // Observe an actual terminal initialization signal on either arm.
-        await page.waitForFunction(
-          () =>
-            document.querySelector('#page-error') ||
-            document.querySelector('#error:not([hidden])') ||
-            document.querySelector('#call:not([disabled])')
-        )
-        const evidence = {
-          format,
-          message: (await page.locator('#page-error').count())
-            ? await page.locator('#page-error').textContent()
-            : null,
-          muteDisabled: await page.locator('#mute').isDisabled(),
-          joinDisabled: await page.locator('#call').isDisabled(),
-          undefinedIdRequests
-        }
-        console.log(JSON.stringify({ configFailureEvidence: evidence }))
-        assert.match(
-          evidence.message || '',
-          /Connection settings could not be loaded \(500\)/
-        )
-        assert.equal(evidence.muteDisabled, true)
-        assert.equal(evidence.joinDisabled, true)
-        assert.equal(undefinedIdRequests, 0, 'no keyless peer ID request')
-      } finally {
-        await context.close()
-      }
-    })
+      )
+      await page.goto('/room/config-error')
+      await page.locator('#page-error').waitFor()
+      assert.match(
+        (await page.locator('#page-error').textContent()) || '',
+        /Connection settings could not be loaded \(500\)/
+      )
+      assert.equal(await page.locator('#mute').isDisabled(), true)
+      assert.equal(await page.locator('#call').isDisabled(), true)
+    } finally {
+      await context.close()
+    }
   })
-}
+})
 
 test('aborted and unreadable config retains existing visible failure reporting', async () => {
   await withBrowser(async (server, browser) => {

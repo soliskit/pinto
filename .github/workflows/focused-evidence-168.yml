@@ -39,7 +39,7 @@ jobs:
           node-version-file: app/package.json
       - name: Verify and copy identical isolated test bytes
         env:
-          EXPECTED_BASE: a4d943626c62cb1ed86c96de7a9757f2ef5ffcdb
+          EXPECTED_BASE: 6580487a816aadf54fe39a625baf37eedff52338
           ACTUAL_BASE: ${{ github.event.pull_request.base.sha }}
           CANDIDATE: ${{ github.event.pull_request.head.sha }}
           PHASE: ${{ matrix.phase }}
@@ -54,9 +54,9 @@ jobs:
           if [ "$PHASE" = baseline ]; then ref=$ACTUAL_BASE; else ref=$CANDIDATE; fi
           test "$(git -C app rev-parse HEAD)" = "$ref"
           # Bundle contents and embedded hash map are fixed in the reviewed workflow.
-          printf '%s  %s\n' 'a329320c0f63f6ec5c3d35406f0c66f4b19058073273bdb3f3497cd8133c9348' evidence-source/test/focused-evidence/prepare.py | sha256sum --check --strict
-          printf '%s  %s\n' '433789543eb0b976c9dca74f39a019667535a7153645e656abd4d82bf45786ef' evidence-source/test/focused-evidence/inspect-evidence.py | sha256sum --check --strict
-          python3 evidence-source/test/focused-evidence/prepare.py app evidence-source
+          printf '%s  %s\n' 'f2f1451fbd074af2d67426b7a7538dcd4ff351ef20469c1b7d424f99632eabf2' evidence-source/test/focused-evidence-168/prepare.py | sha256sum --check --strict
+          printf '%s  %s\n' '433789543eb0b976c9dca74f39a019667535a7153645e656abd4d82bf45786ef' evidence-source/test/focused-evidence-168/inspect-evidence.py | sha256sum --check --strict
+          python3 evidence-source/test/focused-evidence-168/prepare.py app evidence-source
           printf 'phase=%s\nbrowser=%s\nbase=%s\nhead=%s\n' "$PHASE" "$BROWSER" "$ACTUAL_BASE" "$CANDIDATE" > receipts/identity.txt
           git -C app diff --binary > receipts/fixture-overlay.diff
           node --version > receipts/node.txt
@@ -92,7 +92,7 @@ jobs:
           # Keep images even on an intended baseline assertion failure.
           find . -maxdepth 1 -name 'target-*.png' -type f -exec cp '{}' ../receipts/ \;
           sha256sum "$testfile" test/proposal-resources.ts test/resource-receipt.ts test/helpers.ts > ../receipts/executed-inputs.sha256
-          python3 ../evidence-source/test/focused-evidence/inspect-evidence.py ../receipts "$PHASE" "$SCOPE" "$PINTO_BROWSER"
+          python3 ../evidence-source/test/focused-evidence-168/inspect-evidence.py ../receipts "$PHASE" "$SCOPE" "$PINTO_BROWSER"
       - name: Upload raw evidence, including failure and setup logs
         if: always()
         id: upload

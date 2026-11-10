@@ -1,0 +1,27 @@
+# Private authoring draft. No project file reads or writes have been executed by this script.
+from pathlib import Path
+import hashlib, json, sys
+app, source = map(lambda x: Path(x).resolve(), sys.argv[1:])
+bundle = source / 'test/focused-evidence-168'
+EXPECTED = {'proposal-resources.ts': '2ac1d2b46700dba078e56923eb35ae4e06a62a278fa7a5a346462b58f174949d', 'resource-receipt.ts': '1025239889050c084f583e30ce415688e3843e8de698171c54d953db87ff238b', 'control-targets.test.ts': 'dfff55902a7aed797a68c97e1c4bb28422639cf4ee72256f6c87b9e231c979dc', 'peer-log-lines.test.ts': '60d44afd38b311e61c16784c86932cb84d91c23f804c9641cea53fe3f4ec77b3', 'peer-error-detail.test.ts': 'a40a451497b4d71e3ce176d1b4f604fd7913ceec75d3053f9fcb6fb13bf2449a', 'config-readiness.test.ts': '4fb8cc79feacb4d65f6fb7ac03b8f129775a93be69f30314ecaaa6c90b2b7590', 'helpers.ts': 'd4c5e3d496cb3cc56f115fcae6d7dc01fd19a5d1bdedbcc2be0df86634b338fa'}
+# Scope is a publication parameter, not selected by untrusted message content.
+# Only one is supplied per independent candidate; whitespace is rejected.
+scope = (bundle / 'scope.txt').read_text()
+choices = {'260': 'control-targets.test.ts', '132': 'peer-log-lines.test.ts', '188': 'peer-error-detail.test.ts', '168': 'config-readiness.test.ts'}
+if scope != __import__('os').environ['SCOPE']: raise SystemExit('Workflow scope mismatch')
+if scope not in choices: raise SystemExit('Invalid scope bytes')
+for name, expected in EXPECTED.items():
+    data = (bundle / name).read_bytes()
+    if hashlib.sha256(data).hexdigest() != expected: raise SystemExit('Fixture hash mismatch: ' + name)
+# Verify the dependency inputs have not changed relative to the pinned base.
+# App-source diff must be reviewed separately; this is not implementation-authority proof.
+import subprocess
+for name in ['package.json', 'package-lock.json']:
+    pinned = subprocess.check_output(['git', '-C', str(source), 'show', '6580487a816aadf54fe39a625baf37eedff52338:' + name])
+    if (app / name).read_bytes() != pinned: raise SystemExit('Dependency drift: ' + name)
+for name in [choices[scope], 'proposal-resources.ts', 'resource-receipt.ts', 'helpers.ts']:
+    target = app / 'test' / name
+    target.write_bytes((bundle / name).read_bytes())
+receipts = app.parent / 'receipts'
+(receipts / 'testfile.txt').write_text('test/' + choices[scope] + '\n')
+(receipts / 'fixture-inventory.json').write_text(json.dumps(EXPECTED, sort_keys=True) + '\n')
