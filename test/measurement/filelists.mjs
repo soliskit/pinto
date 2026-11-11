@@ -59,6 +59,7 @@ export function thirdPartyFiles() {
   ]
 }
 
+/** @param {string} abs */
 export function readFile(abs) {
   return readFileSync(abs, 'utf8')
 }

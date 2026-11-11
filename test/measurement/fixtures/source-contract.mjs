@@ -186,8 +186,10 @@ try {
       { url: '/input.js', source, functions: full }
     ])
     assert.equal(same.size, 1)
-    assert.equal(same.get('/input.js').source, source)
-    assert.equal(same.get('/input.js').coverageList.length, 2)
+    const entry = same.get('/input.js')
+    assert(entry, 'the merged input URL must be present')
+    assert.equal(entry.source, source)
+    assert.equal(entry.coverageList.length, 2)
   })
 } finally {
   rmSync(dir, { recursive: true, force: true })

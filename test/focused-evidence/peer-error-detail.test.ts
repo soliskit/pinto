@@ -2,13 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { withBrowser } from './proposal-resources.ts'
 
-test('failed ID request shows honest nonempty error detail', async () => {
+void test('failed ID request shows honest nonempty error detail', async () => {
   await withBrowser(async (server, browser) => {
     for (const mode of ['500', 'abort']) {
       const context = await browser.newContext({ baseURL: server.url })
       try {
         const page = await context.newPage()
-        await page.route('**/pinto/id*', (route) =>
+        await page.route('**/peerjs/id*', (route) =>
           mode === 'abort'
             ? route.abort()
             : route.fulfill({ status: 500, body: 'controlled failure' })
@@ -27,7 +27,7 @@ test('failed ID request shows honest nonempty error detail', async () => {
   })
 })
 
-test('nonempty peer error detail is preserved exactly', async () => {
+void test('nonempty peer error detail is preserved exactly', async () => {
   await withBrowser(async (server, browser) => {
     const context = await browser.newContext({ baseURL: server.url })
     try {

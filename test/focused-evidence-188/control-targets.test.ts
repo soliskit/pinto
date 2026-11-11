@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { withBrowser } from './proposal-resources.ts'
 
-test('selected44px targets retain narrow and large layouts', async () => {
+void test('selected44px targets retain narrow and large layouts', async () => {
   await withBrowser(async (server, browser) => {
     for (const width of [320, 390, 414, 568, 768, 1280]) {
       const height = width === 320 ? 568 : width === 390 ? 844 : 800
@@ -25,18 +25,18 @@ test('selected44px targets retain narrow and large layouts', async () => {
             el.textContent = leave ? 'Leave' : 'Join'
             el.classList.toggle('end', leave)
           }, state === 'leave-with-photo')
-          const evidence = await page
+          const evidence = (await page
             .locator('.controls button:visible')
             .evaluateAll((buttons) =>
               buttons.map((el) => ({
                 id: el.id,
-                rect: el.getBoundingClientRect().toJSON()
+                rect: el.getBoundingClientRect().toJSON() as DOMRect
               }))
-            )
+            )) as { id: string; rect: DOMRect }[]
           console.log(JSON.stringify({ width, height, state, evidence }))
           // Capture before assertions so an intended baseline failure has pixels.
           await page.screenshot({
-            path: `target-${width}-${state}.png`,
+            path: `target-${String(width)}-${state}.png`,
             fullPage: true
           })
           const expectedIds =
@@ -50,35 +50,35 @@ test('selected44px targets retain narrow and large layouts', async () => {
           for (const { id, rect } of evidence) {
             assert.ok(
               rect.height >= 44,
-              `height-rule:${width}/${state}/${id}: ${JSON.stringify(rect)}`
+              `height-rule:${String(width)}/${state}/${id}: ${JSON.stringify(rect)}`
             )
             assert.ok(
               rect.width >= 44,
-              `width-control:${width}/${state}/${id}: ${JSON.stringify(rect)}`
+              `width-control:${String(width)}/${state}/${id}: ${JSON.stringify(rect)}`
             )
             assert.ok(
               rect.left >= 0 &&
                 rect.right <= width &&
                 rect.top >= 0 &&
                 rect.bottom <= height,
-              `${width}/${state}/${id}: offscreen`
+              `${String(width)}/${state}/${id}: offscreen`
             )
           }
         }
         await page.goto('/')
         await page.screenshot({
-          path: `target-${width}-lobby.png`,
+          path: `target-${String(width)}-lobby.png`,
           fullPage: true
         })
         const open = await page.locator('.open-room').boundingBox()
         assert.ok(open, 'lobby target exists')
         assert.ok(
           open.height >= 44,
-          `height-rule:lobby/${width}: ${JSON.stringify(open)}`
+          `height-rule:lobby/${String(width)}: ${JSON.stringify(open)}`
         )
         assert.ok(
           open.width >= 44,
-          `width-control:lobby/${width}: ${JSON.stringify(open)}`
+          `width-control:lobby/${String(width)}: ${JSON.stringify(open)}`
         )
       } finally {
         await context.close()

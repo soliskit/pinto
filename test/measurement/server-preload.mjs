@@ -10,5 +10,7 @@ if (process.env.PINTO_MEASURE === '1') {
   // so the snapshot and the exit write together keep every path executed
   // before and after the signal exactly once.
   const { takeCoverage } = await import('node:v8')
-  process.on('SIGUSR2', () => takeCoverage())
+  process.on('SIGUSR2', () => {
+    takeCoverage()
+  })
 }

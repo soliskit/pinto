@@ -15,6 +15,7 @@ const integer = (x, max = 10000) =>
   Number.isInteger(x) && x > 0 && x <= max ? x : null
 const choose = (x, values, fallback = 'inconclusive') =>
   values.includes(x) ? x : fallback
+/** @param {string} prefix */
 function parsed(prefix) {
   return lines
     .filter((line) => line.startsWith(prefix))

@@ -8,9 +8,9 @@
 export function ordinal(n) {
   const tens = n % 100
   if (tens < 11 || tens > 13) {
-    if (n % 10 === 1) return `${n}st`
-    if (n % 10 === 2) return `${n}nd`
-    if (n % 10 === 3) return `${n}rd`
+    if (n % 10 === 1) return `${String(n)}st`
+    if (n % 10 === 2) return `${String(n)}nd`
+    if (n % 10 === 3) return `${String(n)}rd`
   }
-  return `${n}th`
+  return `${String(n)}th`
 }

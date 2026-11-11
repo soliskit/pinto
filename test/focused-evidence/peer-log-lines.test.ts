@@ -37,13 +37,13 @@ for (const [name, id, expected] of [
     'left\\u061cright'
   ]
 ]) {
-  test(name, async () => {
+  void test(name, async () => {
     const server = await startServer()
     const failures: unknown[] = []
     try {
       const from = server.output().length
       const url = new URL(server.url.replace('http:', 'ws:') + '/peerjs')
-      url.searchParams.set('key', 'pinto')
+      url.searchParams.set('key', 'peerjs')
       url.searchParams.set('id', id)
       url.searchParams.set('token', 'controlled-test-token')
       const ws = new WebSocket(url)

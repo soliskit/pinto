@@ -88,11 +88,15 @@ export async function startServer(
     resourceReceipt(resourceId, 'acquired')
     if (!child.stdout || !child.stderr)
       throw Error('Missing owned server pipes')
-    child.stdout.setEncoding('utf8').on('data', (data) => (output += data))
-    child.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+    child.stdout.setEncoding('utf8').on('data', (data: string) => {
+      output += data
+    })
+    child.stderr.setEncoding('utf8').on('data', (data: string) => {
+      output += data
+    })
     const ownedChild = child
     const server: Server = {
-      url: `http://localhost:${port}`,
+      url: `http://localhost:${String(port)}`,
       output: () => output,
       async waitForOutput(text, from = 0) {
         const deadline = Date.now() + 10_000
@@ -110,7 +114,9 @@ export async function startServer(
       },
       stop
     }
-    await server.waitForOutput(`Pinto listening on http://localhost:${port}`)
+    await server.waitForOutput(
+      `Pinto listening on http://localhost:${String(port)}`
+    )
     return server
   } catch (startupError) {
     try {
@@ -132,7 +138,9 @@ export function freePort(): Promise<number> {
     probe.on('error', reject)
     probe.listen(0, () => {
       const { port } = probe.address() as net.AddressInfo
-      probe.close(() => resolve(port))
+      probe.close(() => {
+        resolve(port)
+      })
     })
   })
 }
@@ -204,7 +212,7 @@ export function record() {
       if (!String(url).includes('/peerjs')) return
       recorded.peerSockets.push(this)
       this.addEventListener('message', (event) =>
-        recorded.peerMessages.push(event.data)
+        recorded.peerMessages.push(event.data as string)
       )
     }
   }

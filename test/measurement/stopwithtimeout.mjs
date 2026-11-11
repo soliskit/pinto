@@ -3,10 +3,17 @@
 // instead of risking a half-written report.
 import { MeasurementFailure } from './validate.mjs'
 
+/**
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {Promise<unknown>} exited
+ * @param {number} [timeoutMs]
+ */
 export async function stopWithTimeout(child, exited, timeoutMs = 10000) {
   child.kill()
   const timeout = new Promise((_resolve, reject) =>
-    setTimeout(() => reject(new Error('timeout')), timeoutMs)
+    setTimeout(() => {
+      reject(new Error('timeout'))
+    }, timeoutMs)
   )
   try {
     await Promise.race([exited, timeout])
@@ -14,7 +21,7 @@ export async function stopWithTimeout(child, exited, timeoutMs = 10000) {
     child.kill('SIGKILL')
     await exited
     throw new MeasurementFailure(
-      `server ignored the stop signal for ${timeoutMs}ms and was killed; the measurement run fails rather than risk a half-written report`
+      `server ignored the stop signal for ${String(timeoutMs)}ms and was killed; the measurement run fails rather than risk a half-written report`
     )
   }
 }

@@ -5,11 +5,17 @@
 // V8 refines block ranges as code executes - so counts are not zipped here;
 // the converter accumulates every load onto the file's own structure.
 
+/** @typedef {import('node:inspector').Profiler.FunctionCoverage} FunctionCoverage */
+/** @typedef {{url?: string, source?: string, functions?: FunctionCoverage[]}} CoverageEntry */
+/** @typedef {{url: string, source: string | undefined, coverageList: (FunctionCoverage[] | undefined)[]}} MergedCoverage */
+
 export class CoverageConflict extends Error {}
 
 // entries: [{ url, source, functions: [...] }]
 // returns Map url -> { url, source, coverageList: [functions, ...] }
+/** @param {CoverageEntry[]} entries */
 export function mergeV8Entries(entries) {
+  /** @type {Map<string, MergedCoverage>} */
   const byUrl = new Map()
   for (const entry of entries) {
     if (!entry.url) continue
@@ -39,6 +45,7 @@ export function mergeV8Entries(entries) {
 
 // A file on a list that never loaded counts as 0% for its pipeline: one
 // zero-count range over the whole file leaves every path uncovered.
+/** @param {string} url @param {string} source */
 export function uncovered(url, source) {
   return {
     url,

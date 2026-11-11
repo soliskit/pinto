@@ -16,6 +16,7 @@ const server = spawn(process.execPath, ['src/index.ts'], {
 process.on('exit', () => server.kill('SIGKILL'))
 
 // Wait for the server on the default port
+/** @param {number} code */
 async function finish(code) {
   if (process.env.PINTO_MEASURE === '1') {
     const { stopMeasuredServer } =
@@ -45,6 +46,7 @@ for (;;) {
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] })
 const page = await browser.newPage()
+/** @type {string[]} */
 const peerSockets = []
 page.on('websocket', (ws) => {
   if (ws.url().includes('/peerjs')) peerSockets.push(ws.url())

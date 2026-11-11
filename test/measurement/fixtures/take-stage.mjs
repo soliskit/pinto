@@ -68,6 +68,7 @@ export function helperState(entries, source) {
     ? 'exact-zero'
     : 'absent-exact'
 }
+/** @param {number} count */
 const cap = (count) => (count === 0 ? '0' : count === 1 ? '1' : '2plus')
 // Inputs are parsed data, not instructions. Failure yields no partial summary.
 export function summarizeTakes(records, index, source, mode) {
@@ -181,6 +182,7 @@ export function summarizeTakes(records, index, source, mode) {
   }
 }
 // Call only after the unchanged original capture validator has succeeded.
+/** @param {string} dir @param {string} source @param {string} mode */
 export function readTakeSummary(dir, source, mode) {
   try {
     const text = readFileSync(join(dir, 'captures.index'), 'utf8')

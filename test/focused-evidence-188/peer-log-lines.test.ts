@@ -24,7 +24,7 @@ function throwFailures(errors: unknown[], message: string) {
     throw new AggregateError(errors, message, { cause: errors[0] })
 }
 
-test('peer connection and disconnect IDs cannot add log lines', async () => {
+void test('peer connection and disconnect IDs cannot add log lines', async () => {
   const server = await startServer()
   const failures: unknown[] = []
   try {
@@ -34,7 +34,7 @@ test('peer connection and disconnect IDs cannot add log lines', async () => {
     ]) {
       const from = server.output().length
       const url = new URL(server.url.replace('http:', 'ws:') + '/peerjs')
-      url.searchParams.set('key', 'pinto')
+      url.searchParams.set('key', 'peerjs')
       url.searchParams.set('id', id)
       url.searchParams.set('token', 'controlled-test-token')
       const ws = new WebSocket(url)

@@ -63,7 +63,7 @@ async function waitFor(fn, { timeout = 3000, interval = 25 } = {}) {
 
 // ---- parser unit tests ----
 
-test('parser: unmasked text frame round-trip', () => {
+void test('parser: unmasked text frame round-trip', () => {
   const p = new WsFrameParser()
   const frames = p.push(encodeFrame({ opcode: 1, payload: Buffer.from('hi') }))
   assert.equal(frames.length, 1)
@@ -73,7 +73,7 @@ test('parser: unmasked text frame round-trip', () => {
   assert.equal(frames[0].payload.toString(), 'hi')
 })
 
-test('parser: masked client frame unmasked correctly', () => {
+void test('parser: masked client frame unmasked correctly', () => {
   const p = new WsFrameParser()
   const frames = p.push(
     encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
@@ -83,7 +83,7 @@ test('parser: masked client frame unmasked correctly', () => {
   assert.equal(frames[0].payload.toString(), HB_TEXT)
 })
 
-test('parser: 16-bit extended length', () => {
+void test('parser: 16-bit extended length', () => {
   const p = new WsFrameParser()
   const payload = Buffer.alloc(200, 0x61)
   const frames = p.push(encodeFrame({ opcode: 2, payload }))
@@ -92,7 +92,7 @@ test('parser: 16-bit extended length', () => {
   assert.deepEqual(frames[0].payload, payload)
 })
 
-test('parser: fragmented message reassembled', () => {
+void test('parser: fragmented message reassembled', () => {
   const p = new WsFrameParser()
   const r = new MessageReassembler()
   const wire = Buffer.concat([
@@ -104,7 +104,7 @@ test('parser: fragmented message reassembled', () => {
   assert.equal(messages[0].payload.toString(), OPEN_TEXT)
 })
 
-test('parser: OPEN split at every possible byte', () => {
+void test('parser: OPEN split at every possible byte', () => {
   const wire = encodeFrame({ opcode: 1, payload: Buffer.from(OPEN_TEXT) })
   for (let i = 1; i < wire.length; i++) {
     const p = new WsFrameParser()
@@ -112,7 +112,7 @@ test('parser: OPEN split at every possible byte', () => {
     const first = r.push(p.push(wire.subarray(0, i)))
     const second = r.push(p.push(wire.subarray(i)))
     const messages = [...first, ...second]
-    assert.equal(messages.length, 1, `split at ${i}`)
+    assert.equal(messages.length, 1, `split at ${String(i)}`)
     assert.equal(messages[0].payload.toString(), OPEN_TEXT)
   }
 })
@@ -137,7 +137,10 @@ async function startWsUpstream(t, { coalesceOpen = false } = {}) {
       }
     }
     sock.on('data', (chunk) => {
-      if (upgraded) return handle(chunk)
+      if (upgraded) {
+        handle(chunk)
+        return
+      }
       buf = Buffer.concat([buf, chunk])
       const end = buf.indexOf('\r\n\r\n')
       if (end === -1) return
@@ -182,10 +185,9 @@ async function wsClient(t, port, path, options = {}) {
 
 function onceEvent(sock, event, timeout = 1500) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`no ${event} within ${timeout}ms`)),
-      timeout
-    )
+    const timer = setTimeout(() => {
+      reject(new Error(`no ${event} within ${String(timeout)}ms`))
+    }, timeout)
     sock.once(event, () => {
       clearTimeout(timer)
       resolve()
@@ -226,7 +228,7 @@ const PEER_PATH = '/peerjs?key=pinto&id=test-id&token=test-token'
 
 // ---- proxy integration tests ----
 
-test('proxy: coalesced 101+OPEN is captured from connection start', async (t) => {
+void test('proxy: coalesced 101+OPEN is captured from connection start', async (t) => {
   const upstream = await startWsUpstream(t, { coalesceOpen: true })
   const { events, pagePort } = await startTestProxy(t, upstream.port)
   const { sock } = await wsClient(t, pagePort, PEER_PATH)
@@ -249,7 +251,7 @@ test('proxy: coalesced 101+OPEN is captured from connection start', async (t) =>
   assert.ok(!events.some((e) => e.ev === 'decision-point'))
 })
 
-test('proxy: no-OPEN decision point at first post-resume heartbeat', async (t) => {
+void test('proxy: no-OPEN decision point at first post-resume heartbeat', async (t) => {
   const upstream = await startWsUpstream(t)
   const { events, pagePort } = await startTestProxy(t, upstream.port)
   const { sock } = await wsClient(t, pagePort, PEER_PATH)
@@ -263,7 +265,7 @@ test('proxy: no-OPEN decision point at first post-resume heartbeat', async (t) =
   assert.equal(typeof dp.rPlusMs, 'number')
 })
 
-test('proxy: kill fin - no close leak server-ward until tidy', async (t) => {
+void test('proxy: kill fin - no close leak server-ward until tidy', async (t) => {
   const upstream = await startWsUpstream(t)
   const { events, pagePort, controlPort } = await startTestProxy(
     t,
@@ -306,7 +308,7 @@ test('proxy: kill fin - no close leak server-ward until tidy', async (t) => {
   assert.ok(events.some((e) => e.ev === 'tidy'))
 })
 
-test('proxy: kill close-frame - close goes client-ward only', async (t) => {
+void test('proxy: kill close-frame - close goes client-ward only', async (t) => {
   const upstream = await startWsUpstream(t)
   const { events, pagePort, controlPort } = await startTestProxy(
     t,
@@ -334,7 +336,7 @@ test('proxy: kill close-frame - close goes client-ward only', async (t) => {
   assert.ok(events.some((e) => e.ev === 'kill' && e.mode === 'close-frame'))
 })
 
-test('proxy: deliver close-frame - server-SEEN drop (scenario B)', async (t) => {
+void test('proxy: deliver close-frame - server-SEEN drop (scenario B)', async (t) => {
   const upstream = await startWsUpstream(t)
   const { events, pagePort, controlPort } = await startTestProxy(
     t,
@@ -358,7 +360,7 @@ test('proxy: deliver close-frame - server-SEEN drop (scenario B)', async (t) => 
   assert.ok(events.some((e) => e.ev === 'deliver-close-frame-sent'))
 })
 
-test('proxy: deliver fin - FIN delivered server-ward', async (t) => {
+void test('proxy: deliver fin - FIN delivered server-ward', async (t) => {
   const upstream = await startWsUpstream(t)
   const { pagePort, controlPort } = await startTestProxy(t, upstream.port)
   const { sock } = await wsClient(t, pagePort, PEER_PATH)
@@ -376,7 +378,7 @@ test('proxy: deliver fin - FIN delivered server-ward', async (t) => {
   )
 })
 
-test('proxy: kill refused for non-peer connections', async (t) => {
+void test('proxy: kill refused for non-peer connections', async (t) => {
   const upstream = await startWsUpstream(t)
   const { pagePort, controlPort } = await startTestProxy(t, upstream.port)
   await wsClient(t, pagePort, '/socket.io/?EIO=4&transport=websocket')
@@ -384,7 +386,7 @@ test('proxy: kill refused for non-peer connections', async (t) => {
   assert.equal(res.error, 'kill is for peer conns only')
 })
 
-test('proxy: upgrade classification peer vs socket.io vs other', async (t) => {
+void test('proxy: upgrade classification peer vs socket.io vs other', async (t) => {
   const upstream = await startWsUpstream(t)
   const { events, pagePort } = await startTestProxy(t, upstream.port)
   await wsClient(t, pagePort, PEER_PATH)
@@ -471,7 +473,9 @@ async function httpGet(port, path, { close = false } = {}) {
     body = await new Promise((resolve) => {
       const parts = [buf]
       sock.on('data', (c) => parts.push(c))
-      sock.once('close', () => resolve(Buffer.concat(parts)))
+      sock.once('close', () => {
+        resolve(Buffer.concat(parts))
+      })
     })
   }
   return {
@@ -484,7 +488,7 @@ async function httpGet(port, path, { close = false } = {}) {
   }
 }
 
-test('proxy: /config interception rewrites iceServers only', async (t) => {
+void test('proxy: /config interception rewrites iceServers only', async (t) => {
   const upstream = await startHttpUpstream(t, {
     configResponder: (req, res) => {
       const body = JSON.stringify({
@@ -529,7 +533,7 @@ test('proxy: /config interception rewrites iceServers only', async (t) => {
   first.sock.destroy()
 })
 
-test('proxy: /config interception fails closed on non-JSON', async (t) => {
+void test('proxy: /config interception fails closed on non-JSON', async (t) => {
   const upstream = await startHttpUpstream(t, {
     configResponder: (req, res) => {
       const body = 'not json at all'
@@ -553,7 +557,7 @@ test('proxy: /config interception fails closed on non-JSON', async (t) => {
   sock.destroy()
 })
 
-test('proxy: chunked non-config response passes through', async (t) => {
+void test('proxy: chunked non-config response passes through', async (t) => {
   const upstream = await startHttpUpstream(t, {
     configResponder: () => {}
   })

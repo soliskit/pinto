@@ -57,7 +57,7 @@ const cases = [
   },
   ...['', 'PASS', 'yes ', ' yes', 'null', '1', marker + ' yes'].map(
     (value, i) => ({
-      name: 'near-' + i,
+      name: 'near-' + String(i),
       input: base.replace(key + 'yes', key + value),
       value: 'inconclusive',
       code: 1

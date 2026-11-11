@@ -3,9 +3,15 @@ import { after, afterEach, before, describe, test } from 'node:test'
 import type { Browser, BrowserContext, Page } from 'playwright'
 import { launchBrowser, startServer, type Server } from './helpers.ts'
 
-let server: Server
-let browser: Browser
-let context: BrowserContext
+let server: Server | undefined
+let browser: Browser | undefined
+let context: BrowserContext | undefined
+
+// Test bodies require successful setup; cleanup may also run after failure.
+function ready<T>(resource: T | undefined, name: string): T {
+  assert.ok(resource, `${name} setup did not complete`)
+  return resource
+}
 
 before(async () => {
   ;[server, browser] = await Promise.all([startServer(), launchBrowser()])
@@ -17,7 +23,9 @@ after(async () => {
 afterEach(() => context?.close())
 
 async function open(path: string): Promise<Page> {
-  context = await browser.newContext({ baseURL: server.url })
+  context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
   context.setDefaultTimeout(10_000)
   const page = await context.newPage()
   await page.goto(path)
@@ -50,12 +58,16 @@ function contrast(foreground: string, background: string): number {
 
 // Page text meets WCAG 2.2 AA: 4.5:1 for normal text (owner decision,
 // October 20, 2026; docs/requirements.md REQ 12)
-describe('contrast', () => {
-  test('room-name placeholder against its input background', async () => {
+void describe('contrast', () => {
+  void test('room-name placeholder against its input background', async () => {
     const page = await open('/')
     const [foreground, background] = await page.evaluate(() => [
-      getComputedStyle(document.querySelector('input')!, '::placeholder').color,
-      getComputedStyle(document.querySelector('input')!).backgroundColor
+      getComputedStyle(
+        document.querySelector('input') as HTMLInputElement,
+        '::placeholder'
+      ).color,
+      getComputedStyle(document.querySelector('input') as HTMLInputElement)
+        .backgroundColor
     ])
     assert.ok(
       contrast(foreground, background) >= 4.5,
@@ -63,11 +75,12 @@ describe('contrast', () => {
     )
   })
 
-  test('Mute text against its button background', async () => {
+  void test('Mute text against its button background', async () => {
     const page = await open('/room/test')
     const [foreground, background] = await page.evaluate(() => [
-      getComputedStyle(document.querySelector('.mute')!).color,
-      getComputedStyle(document.querySelector('.mute')!).backgroundColor
+      getComputedStyle(document.querySelector('.mute') as HTMLElement).color,
+      getComputedStyle(document.querySelector('.mute') as HTMLElement)
+        .backgroundColor
     ])
     assert.ok(
       contrast(foreground, background) >= 4.5,

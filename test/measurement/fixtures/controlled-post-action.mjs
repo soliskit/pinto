@@ -59,9 +59,13 @@ async function runChild(child, dir, fixtureMode) {
       }
       resolve(reason)
     }
-    const watchdog = setTimeout(() => finish('child-deadline'), 100000)
-    proc.once('error', () => finish('spawn-failed'))
-    proc.once('exit', (code) =>
+    const watchdog = setTimeout(() => {
+      finish('child-deadline')
+    }, 100000)
+    proc.once('error', () => {
+      finish('spawn-failed')
+    })
+    proc.once('exit', (code) => {
       finish(
         code === 0
           ? 'none'
@@ -69,7 +73,7 @@ async function runChild(child, dir, fixtureMode) {
             ? 'child-timeout'
             : 'child-failed'
       )
-    )
+    })
   })
 }
 for (const controlArm of ['no-navigation', 'released-navigation'])
