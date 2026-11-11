@@ -64,7 +64,9 @@ export default tseslint.config(
       'test/measurement/fixtures/take-screen-controls.mjs',
       'test/measurement/v8merge.mjs',
       'test/measurement/fixtures/screen-stage.mjs',
-      'test/measurement/node-source-identity.mjs'
+      'test/measurement/node-source-identity.mjs',
+      'test/measurement/validate.mjs',
+      'test/measurement/checks.mjs'
     ],
     extends: [
       tseslint.configs.recommendedTypeChecked,
