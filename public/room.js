@@ -2,7 +2,10 @@
 import { element } from './element.js'
 import { ordinal } from './ordinal.js'
 
-/** @typedef {import('peerjs').MediaConnection} MediaConnection */
+/**
+ * PeerJS leaves this unset before negotiation and clears it on cleanup.
+ * @typedef {Omit<import('peerjs').MediaConnection, 'peerConnection'> & { peerConnection?: RTCPeerConnection | null }} MediaConnection
+ */
 
 const DEFAULT_PHOTO = '/no-video.svg'
 // One final literal slash in the address is link formatting, not part of
@@ -73,12 +76,16 @@ const earlyCalls = /** @type {MediaConnection[]} */ ([])
 const configResponse = await fetch('/config')
 if (!configResponse.ok) {
   throw Error(
-    `Connection settings could not be loaded (${configResponse.status}).`
+    `Connection settings could not be loaded (${String(configResponse.status)}).`
   )
 }
 const configJson = /** @type {unknown} */ (await configResponse.json())
 const config = /** @type {{ iceServers: RTCIceServer[] }} */ (configJson)
 const secure = location.protocol === 'https:'
+/**
+ * PeerJS call can return undefined while disconnected or without a stream.
+ * @type {Omit<import('peerjs').Peer, 'call'> & { call: (peerId: string, stream: MediaStream) => MediaConnection | undefined }}
+ */
 const peer = new Peer({
   host: location.hostname,
   port: Number(location.port) || (secure ? 443 : 80),
@@ -499,7 +506,7 @@ peer.on('disconnected', () => {
 peer.on('error', (/** @type {{ type?: string, message?: string }} */ error) => {
   showError(
     'Connection problem',
-    `${error.type}: ${error.message || 'No further error details are available.'}`
+    `${String(error.type)}: ${error.message || 'No further error details are available.'}`
   )
 })
 

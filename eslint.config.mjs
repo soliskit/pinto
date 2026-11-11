@@ -31,7 +31,10 @@ export default tseslint.config(
     // so the client config is pointed at explicitly; types/ joins this block
     // because client-globals.d.ts is only reachable through that tsconfig.
     files: ['public/**/*.js', 'types/**/*.ts'],
-    extends: [tseslint.configs.recommendedTypeChecked],
+    extends: [
+      tseslint.configs.recommendedTypeChecked,
+      tseslint.configs.strictTypeChecked
+    ],
     languageOptions: {
       globals: { ...globals.browser, Peer: 'readonly', io: 'readonly' },
       parserOptions: {
@@ -46,6 +49,33 @@ export default tseslint.config(
     // block above, because in flat config later blocks win.
     files: ['*.js', '*.mjs', 'scripts/**/*.js'],
     extends: [tseslint.configs.disableTypeChecked]
+  },
+  {
+    // Selected test helpers share the existing Node project.
+    files: [
+      'test/default-port-client.helper.mjs',
+      'test/default-port-https-client.helper.mjs',
+      'test/default-port-server.helper.mjs',
+      'test/measurement/stopwithtimeout.mjs',
+      'test/measurement/filelists.mjs',
+      'test/measurement/server-preload.mjs',
+      'test/measurement/fixtures/screen-stage-controls.mjs',
+      'test/measurement/fixtures/fixture-src.js',
+      'test/measurement/fixtures/take-screen-controls.mjs',
+      'test/measurement/v8merge.mjs',
+      'test/measurement/fixtures/screen-stage.mjs',
+      'test/measurement/node-source-identity.mjs'
+    ],
+    extends: [
+      tseslint.configs.recommendedTypeChecked,
+      tseslint.configs.strictTypeChecked
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.json'],
+        tsconfigRootDir: import.meta.dirname
+      }
+    }
   },
   {
     languageOptions: {

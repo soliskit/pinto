@@ -15,9 +15,14 @@ const server = spawn(process.execPath, ['src/index.ts'], {
 if (process.env.PINTO_MEASURE === '1')
   process.on('exit', () => server.kill('SIGKILL'))
 let output = ''
-server.stdout.setEncoding('utf8').on('data', (data) => (output += data))
-server.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+server.stdout
+  .setEncoding('utf8')
+  .on('data', /** @param {string} data */ (data) => (output += data))
+server.stderr
+  .setEncoding('utf8')
+  .on('data', /** @param {string} data */ (data) => (output += data))
 
+/** @param {number} code */
 async function finish(code) {
   if (process.env.PINTO_MEASURE === '1') {
     const { stopMeasuredServer } =

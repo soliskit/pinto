@@ -17,6 +17,7 @@ import {
 } from '../stop-measured-server.mjs'
 const dir = mkdtempSync(join(tmpdir(), 'pinto-identity-stop-'))
 let proofs = 0
+/** @param {string} name @param {() => unknown} fn */
 async function proof(name, fn) {
   await fn()
   proofs++
@@ -48,17 +49,21 @@ const functions = [
   }
 ]
 await proof('query/hash source identities retain each V8 instance', () => {
-  const es = [1, 2].map((n) =>
-    normalizeOwnNodeEntry(
-      { url: url + '?load=' + n + '#part', functions },
+  const es = [1, 2].map((n) => {
+    const normalized = normalizeOwnNodeEntry(
+      { url: url + '?load=' + String(n) + '#part', functions },
       bindings
     )
-  )
+    assert(normalized, 'the bound query URL must normalize')
+    return normalized
+  })
   const merged = mergeV8Entries(es)
   assert.equal(merged.size, 1)
-  assert.deepEqual(merged.get(url).coverageList, [functions, functions])
+  const entry = merged.get(url)
+  assert(entry, 'the merged source URL must be present')
+  assert.deepEqual(entry.coverageList, [functions, functions])
 })
-await proof('conflicting supplied source rejected', () =>
+await proof('conflicting supplied source rejected', () => {
   assert.throws(
     () =>
       normalizeOwnNodeEntry(
@@ -67,16 +72,17 @@ await proof('conflicting supplied source rejected', () =>
       ),
     /conflict/
   )
-)
-await proof('different physical files remain separate', () =>
-  assert.equal(
-    mergeV8Entries([
-      normalizeOwnNodeEntry({ url, functions }, bindings),
-      normalizeOwnNodeEntry({ url: pathToFileURL(b).href, functions }, bindings)
-    ]).size,
-    2
+})
+await proof('different physical files remain separate', () => {
+  const first = normalizeOwnNodeEntry({ url, functions }, bindings)
+  const second = normalizeOwnNodeEntry(
+    { url: pathToFileURL(b).href, functions },
+    bindings
   )
-)
+  assert(first, 'the first bound physical file must normalize')
+  assert(second, 'the second bound physical file must normalize')
+  assert.equal(mergeV8Entries([first, second]).size, 2)
+})
 await proof(
   'scope and protocol cannot expand through query normalization',
   () => {
@@ -115,8 +121,9 @@ await proof(
     assert.equal(cov.f[cold[0]], 0)
   }
 )
+/** @param {string} mode @param {string} coverage */
 async function start(mode, coverage) {
-  const file = join(dir, 'child-' + mode + '-' + Date.now() + '.mjs')
+  const file = join(dir, 'child-' + mode + '-' + String(Date.now()) + '.mjs')
   writeFileSync(
     file,
     `process.on('SIGTERM',()=>${mode === 'ignore' ? '{}' : 'process.exit(0)'});console.log('ready');setInterval(()=>{},1000)`
@@ -189,4 +196,6 @@ await proof('stale and cut-off receipts fail closed', () => {
   writeFileSync(join(receiptDir, 'coverage-99-100-0.json'), '{')
   assert.throws(() => validateProcessReceipt(receiptDir, 99, 0, url), /cut-off/)
 })
-console.log(`${proofs}/${proofs} identity and shutdown fixture proofs passed`)
+console.log(
+  `${String(proofs)}/${String(proofs)} identity and shutdown fixture proofs passed`
+)

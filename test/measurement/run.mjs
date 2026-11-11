@@ -35,6 +35,7 @@ const outDir =
   mkdtempSync(join(tmpdir(), 'pinto-measure-'))
 const TIMEOUT_MS = 20 * 60 * 1000
 
+/** @param {...string} gitArgs */
 function git(...gitArgs) {
   return execFileSync('git', gitArgs, { cwd: root, encoding: 'utf8' }).trim()
 }
@@ -62,7 +63,7 @@ function runSuite() {
       child.kill('SIGKILL')
       reject(
         new MeasurementFailure(
-          `suite exceeded ${TIMEOUT_MS / 60000} minutes; run failed, no numbers produced`
+          `suite exceeded ${String(TIMEOUT_MS / 60000)} minutes; run failed, no numbers produced`
         )
       )
     }, TIMEOUT_MS)
@@ -81,6 +82,7 @@ function runSuite() {
 
 // Starts a verification server without any coverage or preload, for page
 // checks that must not add coverage to the measurement.
+/** @param {(baseUrl: string) => unknown} fn */
 async function withVerificationServer(fn) {
   const { spawn: spawnRaw } = await import('node:child_process')
   const port = 20000 + Math.floor(Math.random() * 20000)
@@ -109,7 +111,7 @@ async function withVerificationServer(fn) {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   try {
-    await fn(`http://localhost:${port}`)
+    await fn(`http://localhost:${String(port)}`)
   } finally {
     child.kill('SIGKILL')
   }
@@ -234,8 +236,8 @@ for (const rel of [
   }
   console.log(
     s.functions.measurable === false
-      ? `${rel}: lines ${s.lines.covered}/${s.lines.total}, branches ${s.branches.covered}/${s.branches.total}, functions n/a (no named functions reach the converter)`
-      : `${rel}: lines ${s.lines.covered}/${s.lines.total}, branches ${s.branches.covered}/${s.branches.total}, functions ${s.functions.covered}/${s.functions.total}`
+      ? `${rel}: lines ${String(s.lines.covered)}/${String(s.lines.total)}, branches ${String(s.branches.covered)}/${String(s.branches.total)}, functions n/a (no named functions reach the converter)`
+      : `${rel}: lines ${String(s.lines.covered)}/${String(s.lines.total)}, branches ${String(s.branches.covered)}/${String(s.branches.total)}, functions ${String(s.functions.covered)}/${String(s.functions.total)}`
   )
 }
 console.log(`report: ${join(outDir, 'report.json')}`)

@@ -9,24 +9,51 @@ import { browserFiles, thirdPartyFiles, root } from './filelists.mjs'
 
 // The packages must come clean from the npm registry at locked versions: no
 // install-time patches, no fork overrides, no non-registry sources.
+/**
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+function fieldOf(value, key) {
+  return typeof value === 'object' && value !== null && key in value
+    ? Reflect.get(value, key)
+    : undefined
+}
+
 export function checkLockfile() {
+  /** @type {unknown} */
   const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'))
+  // A null lockfile threw a TypeError here before; it is now a failure.
+  if (lock === null)
+    throw new MeasurementFailure(
+      'third-party package check failed: package-lock.json is null'
+    )
+  const packages = fieldOf(lock, 'packages')
   const problems = []
-  for (const [path, pkg] of Object.entries(lock.packages || {})) {
+  for (const entry of packages ? Object.entries(packages) : []) {
+    const path = entry[0]
     if (
       !path.includes('node_modules/peerjs') &&
       !path.includes('node_modules/socket.io')
     )
       continue
+    const resolved = fieldOf(entry[1], 'resolved')
+    // A null package entry or a non-text resolved value threw a TypeError
+    // here before; it is now a failure. Missing and empty values still pass.
+    if (entry[1] === null || (typeof resolved !== 'string' && resolved))
+      throw new MeasurementFailure(
+        `third-party package check failed: ${path} has an unreadable entry`
+      )
     if (
-      pkg.resolved &&
-      !pkg.resolved.startsWith('https://registry.npmjs.org/')
+      typeof resolved === 'string' &&
+      resolved &&
+      !resolved.startsWith('https://registry.npmjs.org/')
     ) {
-      problems.push(`${path} resolves from non-registry source ${pkg.resolved}`)
+      problems.push(`${path} resolves from non-registry source ${resolved}`)
     }
   }
   for (const name of ['peerjs', 'socket.io']) {
-    const top = lock.packages?.[`node_modules/${name}`]
+    const top = fieldOf(packages, `node_modules/${name}`)
     if (!top) problems.push(`${name} is not installed at top level`)
   }
   if (problems.length) {
@@ -39,6 +66,7 @@ export function checkLockfile() {
 // Every served own-code script in the captures must equal its checked-in
 // source, and each served third-party script must equal the installed
 // package. A mismatch that is not a declared server-built script fails the run.
+/** @param {{ url: string, source?: string }[]} browserEntries */
 export function checkServedScripts(browserEntries) {
   const own = new Map(
     browserFiles().map((f) => [f.servedPath, readFileSync(f.abs, 'utf8')])
@@ -53,7 +81,9 @@ export function checkServedScripts(browserEntries) {
   // a retrieval gap, not content. Every retrieved source for a known path
   // must match, and a known path seen only through irretrievable sources
   // fails the run as unverifiable.
+  /** @type {Set<string>} */
   const seenUnverifiable = new Set()
+  /** @type {Set<string>} */
   const seenVerified = new Set()
   for (const entry of browserEntries) {
     let pathname
@@ -91,6 +121,7 @@ export function checkServedScripts(browserEntries) {
 
 // Detects script written inside a page's HTML, including event-handler
 // attributes. Fixture-proven; a page that carries one fails the check.
+/** @param {string} html @param {string} pageName */
 export function findInlineScripts(html, pageName) {
   const problems = []
   const scriptTags = html.match(/<script\b[^>]*>/gi) || []
@@ -111,6 +142,7 @@ export function findInlineScripts(html, pageName) {
 
 // Fetches the pages from a verification server (never a measured one) and
 // checks both the inline-script rule and that served HTML matches disk.
+/** @param {string} baseUrl */
 export async function checkPages(baseUrl) {
   const pages = [
     { name: 'index.html', path: '/' },

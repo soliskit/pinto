@@ -31,6 +31,7 @@ import { stopWithTimeout } from '../stopwithtimeout.mjs'
 const { createFileCoverage } = libCoverage
 const here = fileURLToPath(new URL('.', import.meta.url))
 const results = []
+/** @param {string} name @param {() => unknown} fn */
 async function proof(name, fn) {
   try {
     await fn()
@@ -41,9 +42,11 @@ async function proof(name, fn) {
   }
 }
 
+/** @param {import('istanbul-lib-coverage').FileCoverageData} cov */
 const lineHits = (cov) => createFileCoverage(cov).getLineCoverage()
 
 // Runs a fixture program with coverage on and returns its converted coverage.
+/** @param {string} fileAbs @param {{preload?: boolean}} [options] */
 async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'fx-cov-'))
   const nodeOptions = preload
@@ -59,9 +62,13 @@ async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
       },
       stdio: 'ignore'
     })
-    child.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`fixture exited ${code}`))
-    )
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve()
+      } else {
+        reject(new Error(`fixture exited ${code}`))
+      }
+    })
   })
   const url = 'file://' + fileAbs
   const entries = []
@@ -78,6 +85,7 @@ async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
 }
 
 // A temp file with fixture content, so the converter reads real paths.
+/** @param {string} name @param {string} content */
 function tempScript(name, content) {
   const dir = mkdtempSync(join(tmpdir(), 'fx-js-'))
   const abs = join(dir, name)
@@ -107,6 +115,7 @@ async function withFixtureServer(routes, fn) {
 
 const FX_JS =
   'function f() {\n  return 7\n}\nif (location.search.includes("run")) {\n  f()\n}\n'
+/** @param {string} src */
 const PAGE = (src) => `<html><body><script src="${src}"></script></body></html>`
 const routesFor = (extra = {}) => ({
   '/fx.js': { type: 'text/javascript', body: FX_JS },
@@ -115,6 +124,7 @@ const routesFor = (extra = {}) => ({
 
 // Captures each document's coverage separately (the preload's job is capture
 // across navigation; these fixtures prove merge and conversion).
+/** @param {string[]} pages */
 async function capturePerDocument(pages) {
   const browser = await chromium.launch()
   const page = await browser.newPage()
@@ -217,6 +227,7 @@ await proof('a scope-listed file that never loads shows 0%', async () => {
   const abs = tempScript('never.js', FX_JS)
   const cov = await toFileCoverage(uncovered('file://' + abs, FX_JS), abs)
   const s = summarize([{ path: abs, coverage: cov }])[abs]
+  assert(s, 'the never-loaded file summary must be present')
   assert.equal(s.lines.covered, 0)
   assert(s.lines.total > 0, 'total lines must be counted')
   assert.equal(s.functions.covered, 0)
@@ -282,6 +293,7 @@ await proof(
     ]) {
       const merged = mergeV8Entries(order)
       const entry = merged.get('/fx.js')
+      assert(entry, 'the merged fixture URL must be present')
       assert.equal(entry.source, FX_JS)
       assert.equal(entry.coverageList.length, 2)
       const cov = await toFileCoverage(entry, abs)
@@ -477,9 +489,13 @@ console.log('child done')
           },
           stdio: ['ignore', 'pipe', 'pipe']
         })
-        proc.on('exit', (code) =>
-          code === 0 ? resolve() : reject(new Error(`child exited ${code}`))
-        )
+        proc.on('exit', (code) => {
+          if (code === 0) {
+            resolve()
+          } else {
+            reject(new Error(`child exited ${code}`))
+          }
+        })
         proc.on('error', reject)
       })
     } finally {
@@ -542,10 +558,11 @@ await proof(
   'a served script differing from its checked-in source fails the run',
   async () => {
     assert.throws(
-      () =>
+      () => {
         checkServedScripts([
           { url: 'http://localhost:1/home.js', source: 'tampered()' }
-        ]),
+        ])
+      },
       (e) => e instanceof MeasurementFailure && e.message.includes('/home.js')
     )
   }
@@ -555,13 +572,14 @@ await proof(
   'a third-party script differing from its package fails the run',
   async () => {
     assert.throws(
-      () =>
+      () => {
         checkServedScripts([
           {
             url: 'http://localhost:1/vendor/peerjs.min.js',
             source: 'tampered()'
           }
-        ]),
+        ])
+      },
       (e) => e instanceof MeasurementFailure && e.message.includes('peerjs')
     )
   }
@@ -647,5 +665,5 @@ await proof('dropping one capture among many fails the run', async () => {
 
 console.log(results.join('\n'))
 console.log(
-  `${results.filter((r) => r.startsWith('ok')).length}/${results.length} fixture proofs passed`
+  `${String(results.filter((r) => r.startsWith('ok')).length)}/${String(results.length)} fixture proofs passed`
 )

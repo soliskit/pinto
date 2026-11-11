@@ -63,7 +63,7 @@ export class WsFrameParser {
       offset += 8
     }
     if (!Number.isSafeInteger(len) || len > MAX_PAYLOAD) {
-      throw new Error(`frame payload length ${len} over cap`)
+      throw new Error(`frame payload length ${String(len)} over cap`)
     }
     let maskKey = null
     if (masked) {

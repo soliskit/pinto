@@ -2,6 +2,8 @@
 import { realpathSync, readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
+/** @typedef {{url: string, source: string, sha256: string}} SourceBinding */
+/** @param {{abs: string}[]} files */
 export function scopedSourceBindings(files) {
   return new Map(
     files.map((f) => {
@@ -18,6 +20,11 @@ export function scopedSourceBindings(files) {
     })
   )
 }
+/**
+ * @template {{url: string, source?: string}} Entry
+ * @param {Entry} entry
+ * @param {Map<string, SourceBinding>} bindings
+ */
 export function normalizeOwnNodeEntry(entry, bindings) {
   let u, physical
   try {

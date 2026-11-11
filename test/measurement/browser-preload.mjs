@@ -74,7 +74,7 @@ if (process.env.PINTO_MEASURE === '1') {
     async function take(why) {
       const at = Date.now()
       seq += 1
-      const name = `${process.pid}-${seq}.json`
+      const name = `${String(process.pid)}-${String(seq)}.json`
       let result
       try {
         ;({ result } = await session.send('Profiler.takePreciseCoverage'))
@@ -134,7 +134,10 @@ if (process.env.PINTO_MEASURE === '1') {
             // failed capture the same way take() does so the run fails.
             seq += 1
             writeFileSync(
-              join(captureDir, `${process.pid}-${seq}.json.failed`),
+              join(
+                captureDir,
+                `${String(process.pid)}-${String(seq)}.json.failed`
+              ),
               `after:${api} capture threw: ${error}\n`
             )
           }
@@ -155,7 +158,9 @@ if (process.env.PINTO_MEASURE === '1') {
       }
       return originalClose(...args)
     }
-    page.once('close', () => clearInterval(poll))
+    page.once('close', () => {
+      clearInterval(poll)
+    })
     return { take }
   }
 

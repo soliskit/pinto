@@ -59,11 +59,18 @@ const phases = [
   'fixtures-timeout',
   'fixtures-failed'
 ]
+/**
+ * @param {string[]} lines
+ * @param {string} key
+ * @param {string[]} allowed
+ * @param {string} fallback
+ */
 function one(lines, key, allowed, fallback) {
   const hits = lines.filter((line) => line.startsWith(key))
   const value = hits.length === 1 ? hits[0].slice(key.length) : fallback
   return allowed.includes(value) ? value : fallback
 }
+/** @param {unknown} text @param {string} layer */
 export function screen(text, layer) {
   if (typeof text !== 'string' || !['container', 'host'].includes(layer))
     throw new Error('screen input invalid')
@@ -75,7 +82,9 @@ export function screen(text, layer) {
       (line) =>
         line.startsWith('fixture-phase=') && phases.includes(line.slice(14))
     )
-    const last = found.length ? found.at(-1).slice(14) : 'unavailable'
+    const last = found.length
+      ? found[found.length - 1].slice(14)
+      : 'unavailable'
     output.push('fixture-last-phase=' + last)
     if (last !== 'fixtures-pass') valid = false
   }
