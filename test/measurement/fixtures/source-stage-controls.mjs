@@ -56,22 +56,30 @@ crossing.ranges.push(
 )
 assert.equal(rawHelperPositive(entries(crossing), source), 'inconclusive')
 console.log('raw-helper-control=pass')
-assert.equal(await directLine2Positive(entries(), source, async () => 1), 'yes')
-assert.equal(await directLine2Positive(entries(), source, async () => 0), 'no')
 assert.equal(
-  await directLine2Positive(entries(), source, async () => {
-    throw new Error('control')
-  }),
+  await directLine2Positive(entries(), source, () => Promise.resolve(1)),
+  'yes'
+)
+assert.equal(
+  await directLine2Positive(entries(), source, () => Promise.resolve(0)),
+  'no'
+)
+assert.equal(
+  await directLine2Positive(entries(), source, () =>
+    Promise.reject(new Error('control'))
+  ),
   'inconclusive'
 )
 assert.equal(
-  await directLine2Positive(entries(), source, async () => undefined),
+  await directLine2Positive(entries(), source, () =>
+    Promise.resolve(undefined)
+  ),
   'inconclusive'
 )
 console.log('direct-error-control=pass')
 assert.equal(rawHelperPositive(entries(fn(0)), source), 'no')
 assert.equal(
-  await directLine2Positive(entries(fn(0)), source, async () => 1),
+  await directLine2Positive(entries(fn(0)), source, () => Promise.resolve(1)),
   'yes'
 )
 assert.equal(wrapperLine2Positive(0), 'no')

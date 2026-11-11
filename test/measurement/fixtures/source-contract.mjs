@@ -174,7 +174,7 @@ try {
       /coverage range exceeds empty source/
     )
   })
-  await proof('source-conflict', async () => {
+  await proof('source-conflict', () => {
     assert.throws(() =>
       mergeV8Entries([
         { url: '/input.js', source, functions: full },
