@@ -30,6 +30,18 @@ import {
 } from './ws-frame-parser.mjs'
 import { startProxy } from './row51-proxy.mjs'
 
+/**
+ * Ordinary [[Get]] of one property on parsed data (same form as the
+ * take-stage measurement helper); returns unknown.
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+const readKey = (value, key) =>
+  value === null || value === undefined
+    ? undefined
+    : Reflect.get(Object(value), key, value)
+
 const OPEN_TEXT = '{"type":"OPEN"}'
 const HB_TEXT = '{"type":"HEARTBEAT"}'
 const RESPONSE_101 =
@@ -578,8 +590,8 @@ void test('proxy: /config interception rewrites iceServers only', async (t) => {
   const first = await httpGet(pagePort, '/config')
   /** @type {unknown} */
   const json = JSON.parse(first.body.toString('utf8'))
-  assert.equal(json.key, 'pinto', 'key unchanged')
-  assert.deepEqual(json.iceServers, [], 'iceServers emptied')
+  assert.equal(readKey(json, 'key'), 'pinto', 'key unchanged')
+  assert.deepEqual(readKey(json, 'iceServers'), [], 'iceServers emptied')
   const m = /content-length: (\d+)/i.exec(first.head)
   assert.ok(m !== null)
   const declared = Number(m[1])
