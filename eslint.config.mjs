@@ -5,33 +5,12 @@ import tseslint from 'typescript-eslint'
 import promise from 'eslint-plugin-promise'
 import prettierRecommended from 'eslint-plugin-prettier/recommended'
 
-// Files in the helper block below that share the existing Node project.
+// Every Node-side JS/MJS file shares the existing Node project: tsconfig.json
+// now checks JS (checkJs) and includes all of src/test/types, so the typed
+// rule sets apply to the whole test tree, not an enumerated subset.
 const helperFiles = [
-  'test/default-port-client.helper.mjs',
-  'test/default-port-https-client.helper.mjs',
-  'test/default-port-server.helper.mjs',
-  'test/measurement/stopwithtimeout.mjs',
-  'test/measurement/filelists.mjs',
-  'test/measurement/server-preload.mjs',
-  'test/measurement/fixtures/screen-stage-controls.mjs',
+  'test/**/*.mjs',
   'test/measurement/fixtures/fixture-src.js',
-  'test/measurement/fixtures/run-fixtures.mjs',
-  'test/measurement/fixtures/take-screen-controls.mjs',
-  'test/measurement/v8merge.mjs',
-  'test/measurement/runtime-coverage.mjs',
-  'test/measurement/runtime-converter.mjs',
-  'test/measurement/fixtures/screen-stage.mjs',
-  'test/measurement/node-source-identity.mjs',
-  'test/measurement/validate.mjs',
-  'test/measurement/checks.mjs',
-  'test/ws-frame-parser.mjs',
-  'test/measurement/stop-measured-server.mjs',
-  'test/measurement/fixtures/source-contract.mjs',
-  'test/measurement/fixtures/identity-and-stop.mjs',
-  'test/measurement/fixtures/source-stage-controls.mjs',
-  'test/measurement/fixtures/source-stage.mjs',
-  'test/measurement/fixtures/take-stage-controls.mjs',
-  'test/measurement/fixtures/controlled-preload.mjs',
   'eslint.config.mjs'
 ]
 

@@ -178,11 +178,46 @@ if (process.env.PINTO_MEASURE === '1') {
     }, POLL_MS)
     poll.unref()
 
-    for (const api of NAV_APIS) {
-      const original = page[api].bind(page)
-      page[api] = async (...args) => {
+    /**
+     * Wrap one navigation-capable page API so a capture is taken before it.
+     * @template {unknown[]} A
+     * @template T
+     * @param {'goto' | 'reload' | 'goBack' | 'goForward' | 'click' | 'dblclick' | 'tap' | 'press'} api
+     * @param {(...args: A) => Promise<T>} original
+     * @returns {(...args: A) => Promise<T>}
+     */
+    const wrapNav = (api, original) => {
+      return async (...args) => {
         await take(`before:${api}`)
         return original(...args)
+      }
+    }
+    for (const api of NAV_APIS) {
+      switch (api) {
+        case 'goto':
+          page.goto = wrapNav(api, page.goto.bind(page))
+          break
+        case 'reload':
+          page.reload = wrapNav(api, page.reload.bind(page))
+          break
+        case 'goBack':
+          page.goBack = wrapNav(api, page.goBack.bind(page))
+          break
+        case 'goForward':
+          page.goForward = wrapNav(api, page.goForward.bind(page))
+          break
+        case 'click':
+          page.click = wrapNav(api, page.click.bind(page))
+          break
+        case 'dblclick':
+          page.dblclick = wrapNav(api, page.dblclick.bind(page))
+          break
+        case 'tap':
+          page.tap = wrapNav(api, page.tap.bind(page))
+          break
+        case 'press':
+          page.press = wrapNav(api, page.press.bind(page))
+          break
       }
     }
 

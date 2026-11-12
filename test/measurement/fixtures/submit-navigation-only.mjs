@@ -70,6 +70,8 @@ async function proof(name, fn) {
   } catch {
     let childPhase = 'unavailable'
     try {
+      if (childPhaseFile === undefined)
+        throw new TypeError('child phase file path missing')
       const value = readFileSync(childPhaseFile, 'utf8')
       if (childPhases.has(value)) childPhase = value
     } catch {
@@ -206,7 +208,7 @@ mark('done')
                       ? 'spawn-missing'
                       : 'child-failed'
               reject(error)
-            } else resolve()
+            } else resolve(undefined)
           }
           const watchdog = setTimeout(() => {
             finish(new Error('child cleanup deadline exceeded'))
@@ -227,7 +229,8 @@ mark('done')
       }
       phase = 'capture-validation'
       const entries = validateBrowserDir(join(dir, 'browser')).filter(
-        (entry) => new URL(readKey(entry, 'url')).pathname === '/event.js'
+        (entry) =>
+          new URL(String(readKey(entry, 'url'))).pathname === '/event.js'
       )
       Object.assign(
         observations[fixtureMode],
@@ -246,7 +249,7 @@ mark('done')
         async (entry) => {
           const direct = V8ToIstanbul(abs, 0, { source: src })
           await direct.load()
-          direct.applyCoverage(entry.functions)
+          direct.applyCoverage(readKey(entry, 'functions'))
           return lineHits(direct.toIstanbul()[abs])[2]
         }
       )

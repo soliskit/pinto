@@ -12,11 +12,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true,
-    "allowJs": true
+    "allowJs": true,
+    "checkJs": true
   },
   "files": [
     "test/measurement/runtime-coverage.mjs",
     "test/measurement/runtime-converter.mjs"
   ],
-  "include": ["src", "test", "eslint.config.mjs"]
+  "include": ["src", "test", "types", "eslint.config.mjs"]
 }

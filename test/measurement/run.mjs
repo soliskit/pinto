@@ -39,6 +39,14 @@ const readKey = (value, key) =>
   value === null || value === undefined
     ? undefined
     : Reflect.get(Object(value), key, value)
+// Validators admit only string urls; a non-string here threw a TypeError in
+// fileURLToPath before, so the guard keeps the same failure with a name.
+/** @param {unknown} value @param {string} key @returns {string} */
+const readStringKey = (value, key) => {
+  const v = readKey(value, key)
+  if (typeof v !== 'string') throw new MeasurementFailure(`non-string ${key}`)
+  return v
+}
 const args = process.argv.slice(2)
 const suite = args.includes('--slow') ? 'slow' : 'fast'
 const outDir =
@@ -80,7 +88,7 @@ function runSuite() {
     }, TIMEOUT_MS)
     child.on('exit', (code) => {
       clearTimeout(killer)
-      if (code === 0) resolve()
+      if (code === 0) resolve(undefined)
       else
         reject(
           new MeasurementFailure(
@@ -161,8 +169,8 @@ checkServedScripts(browserCaptures)
 // the clean-tree check above ties to the pinned commit.
 const serverMerged = mergeV8Entries(
   serverEntries.map((e) => ({
-    url: readKey(e, 'url'),
-    source: readFile(fileURLToPath(readKey(e, 'url'))),
+    url: readStringKey(e, 'url'),
+    source: readFile(fileURLToPath(readStringKey(e, 'url'))),
     functions: readKey(e, 'functions')
   }))
 )
@@ -170,14 +178,19 @@ const serverMerged = mergeV8Entries(
 // with content identity still enforced across every load.
 const browserMerged = mergeV8Entries(
   browserCaptures.map((e) => {
+    const url = readKey(e, 'url')
     try {
       return {
-        url: new URL(readKey(e, 'url')).pathname,
+        url: new URL(String(url)).pathname,
         source: readKey(e, 'source'),
         functions: readKey(e, 'functions')
       }
     } catch {
-      return e
+      return {
+        url,
+        source: readKey(e, 'source'),
+        functions: readKey(e, 'functions')
+      }
     }
   })
 )
@@ -191,11 +204,13 @@ for (const f of serverFiles()) {
 const own = new Map(browserFiles().map((f) => [f.servedPath, f]))
 const browserByPath = new Map()
 for (const [pathname, merged] of browserMerged) {
-  const f = own.get(pathname)
+  // A non-string url can only come from an unparseable capture; it matches
+  // no served path, exactly as Map lookup by it found nothing before.
+  const f = typeof pathname === 'string' ? own.get(pathname) : undefined
   if (!f) continue
   if (browserByPath.has(pathname)) {
     throw new MeasurementFailure(
-      `internal: duplicate merged browser entry for ${pathname}`
+      `internal: duplicate merged browser entry for ${String(pathname)}`
     )
   }
   browserByPath.set(pathname, f)

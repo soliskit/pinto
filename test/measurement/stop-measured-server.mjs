@@ -15,7 +15,9 @@ export function validateProcessReceipt(dir, pid, startedAt, sourceUrl) {
   if (!names.length)
     throw new MeasurementFailure('missing PID-bound server receipt')
   for (const name of names) {
-    const stamp = Number(pattern.exec(name)[1])
+    const match = pattern.exec(name)
+    if (!match) throw new MeasurementFailure('malformed server receipt name')
+    const stamp = Number(match[1])
     if (stamp < startedAt) throw new MeasurementFailure('stale server receipt')
     /** @type {unknown} */
     let raw

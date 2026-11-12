@@ -88,7 +88,7 @@ async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
     })
     child.on('exit', (code) => {
       if (code === 0) {
-        resolve()
+        resolve(undefined)
       } else {
         reject(new Error(`fixture exited ${String(code)}`))
       }
@@ -125,7 +125,7 @@ function tempScript(name, content) {
  */
 async function withFixtureServer(routes, fn) {
   const server = createServer((req, res) => {
-    const pathname = new URL(req.url, 'http://x').pathname
+    const pathname = new URL(String(req.url), 'http://x').pathname
     const route = routes[pathname]
     if (route === undefined) {
       res.writeHead(404)
@@ -135,7 +135,11 @@ async function withFixtureServer(routes, fn) {
     res.writeHead(200, { 'content-type': route.type })
     res.end(route.body)
   })
-  await new Promise((resolve) => server.listen(0, resolve))
+  await new Promise((resolve) =>
+    server.listen(0, () => {
+      resolve(undefined)
+    })
+  )
   try {
     const address = server.address()
     if (address === null || typeof address === 'string')
@@ -500,7 +504,7 @@ await proof(
       `import { createServer } from 'node:http'
 import { chromium } from 'playwright'
 const server = createServer((req, res) => {
-  const p = new URL(req.url, 'http://x').pathname
+  const p = new URL(String(req.url), 'http://x').pathname
   if (p === '/before.js') { res.writeHead(200, { 'content-type': 'text/javascript' }); res.end('function g() {\\n  return 1\\n}\\ng()\\n'); return }
   if (p === '/p') { res.end('<html><script src="/before.js"></script></html>'); return }
   res.end('<html></html>')
@@ -531,7 +535,7 @@ console.log('child done')
         })
         proc.on('exit', (code) => {
           if (code === 0) {
-            resolve()
+            resolve(undefined)
           } else {
             reject(new Error(`child exited ${String(code)}`))
           }

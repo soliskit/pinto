@@ -105,9 +105,16 @@ export function validateServerDir(
     const result = parsed.result
     const appEntries = sourceBindings
       ? result
-          .map((r) => normalizeOwnNodeEntry(r, sourceBindings))
+          // Non-record entries reach normalizeOwnNodeEntry as null either
+          // way: its own reads land inside its try and are filtered out.
+          .map((r) =>
+            isRecord(r) ? normalizeOwnNodeEntry(r, sourceBindings) : null
+          )
           .filter(Boolean)
-      : result.filter((r) => serverUrls.has(urlOf(r)))
+      : result.filter((r) => {
+          const u = urlOf(r)
+          return u !== undefined && serverUrls.has(u)
+        })
     for (const r of appEntries) checkFunctions(r, f)
     if (appEntries.length > 0) filesWithApp++
     for (const r of appEntries) entries.push(r)
