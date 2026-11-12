@@ -37,6 +37,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Check Playwright package version
         run: node -e "process.exit(require('playwright/package.json').version==='1.65.0'?0:1)"
+      - uses: actions/setup-python@v6
+      - run: pip install ruff==0.17.4
+      - run: ruff check .
+      - run: ruff format --check .
       - run: npm run typecheck
       - run: npm run lint
       - name: Allow unprivileged low-port binds for the default-port probe
