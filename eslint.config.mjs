@@ -29,6 +29,7 @@ const helperFiles = [
   'test/measurement/fixtures/identity-and-stop.mjs',
   'test/measurement/fixtures/source-stage-controls.mjs',
   'test/measurement/fixtures/take-stage-controls.mjs',
+  'test/measurement/fixtures/controlled-preload.mjs',
   'eslint.config.mjs'
 ]
 
