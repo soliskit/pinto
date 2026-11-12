@@ -92,7 +92,7 @@ if (process.env.PINTO_MEASURE === '1') {
         if (/closed/i.test(String(error))) return
         writeFileSync(
           join(captureDir, `${name}.failed`),
-          `takePreciseCoverage threw during ${why}: ${error}\n`
+          `takePreciseCoverage threw during ${why}: ${String(error)}\n`
         )
         return
       }
@@ -145,7 +145,7 @@ if (process.env.PINTO_MEASURE === '1') {
                 captureDir,
                 `${String(process.pid)}-${String(seq)}.json.failed`
               ),
-              `after:${api} capture threw: ${error}\n`
+              `after:${api} capture threw: ${String(error)}\n`
             )
           }
         }
