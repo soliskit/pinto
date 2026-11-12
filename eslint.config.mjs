@@ -66,7 +66,8 @@ export default tseslint.config(
       'test/measurement/fixtures/screen-stage.mjs',
       'test/measurement/node-source-identity.mjs',
       'test/measurement/validate.mjs',
-      'test/measurement/checks.mjs'
+      'test/measurement/checks.mjs',
+      'test/ws-frame-parser.mjs'
     ],
     extends: [
       tseslint.configs.recommendedTypeChecked,
