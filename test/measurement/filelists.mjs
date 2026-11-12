@@ -22,6 +22,7 @@ export function browserFiles() {
     'public/element.js',
     'public/home.js',
     'public/ordinal.js',
+    'public/page-error.js',
     'public/room.js'
   ].map((rel) => ({
     rel,
