@@ -30,13 +30,6 @@ const peerjsClient = fileURLToPath(
   import.meta.resolve('peerjs/dist/peerjs.min.js')
 )
 
-// The room page's one inline script, pinned by hash so the pages can send a
-// script policy without a blanket inline permission. The drift test in
-// test/server.test.ts rehashes the block out of the served page and fails
-// when the block changes without a matching policy hash update.
-const INLINE_ERROR_REPORTER_HASH =
-  'sha256-okU0uUUAylgFnnwitDCdtD9A+sDUUZtI9MtjMiLDsUQ='
-
 // Browsers that do not resolve 'self' to WebSocket schemes also get a socket
 // address derived only from authorized configuration: Render's own hostname
 // variable on the deployment (its external address is HTTPS), or the
@@ -56,7 +49,7 @@ function socketSources(): string[] {
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
-  `script-src 'self' '${INLINE_ERROR_REPORTER_HASH}'`,
+  "script-src 'self'",
   "style-src 'self'",
   "img-src 'self' blob:",
   ["connect-src 'self'", ...socketSources()].join(' '),
