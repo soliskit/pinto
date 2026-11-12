@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
@@ -86,7 +85,7 @@ void describe('with the default settings', () => {
         const response = await get(path)
         const csp = response.headers.get('content-security-policy') ?? ''
         assert.match(csp, /default-src 'none'/, path)
-        assert.match(csp, /script-src 'self' 'sha256-/, path)
+        assert.match(csp, /script-src 'self';/, path)
         assert.match(csp, /frame-ancestors 'none'/, path)
         assert.match(csp, /connect-src 'self'/, path)
         assert.equal(
@@ -98,20 +97,25 @@ void describe('with the default settings', () => {
       }
     })
 
-    void test('the script policy pins the served inline script by hash', async () => {
+    void test('the script policy allows only self-hosted scripts', async () => {
       const response = await get('/room/lobby')
       const html = await response.text()
       const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
       assert.equal(
         inline.length,
-        1,
-        'the served room page has exactly one inline script'
+        0,
+        'the served room page has no inline script'
       )
-      const hash = createHash('sha256').update(inline[0][1]).digest('base64')
       const csp = response.headers.get('content-security-policy') ?? ''
-      assert.ok(
-        csp.includes(`'sha256-${hash}'`),
-        'the served policy carries the hash of the served block'
+      assert.match(
+        csp,
+        /script-src 'self';/,
+        'the served policy allows only self-hosted scripts'
+      )
+      assert.doesNotMatch(
+        csp,
+        /sha256-/,
+        'the served policy carries no inline-script hash'
       )
     })
 
