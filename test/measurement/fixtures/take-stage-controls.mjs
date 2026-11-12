@@ -11,6 +11,7 @@ import {
 } from './take-stage.mjs'
 const source = 'function submitted() {\n  window.__submitted = true\n}\n'
 const end = source.indexOf('}') + 1
+/** @param {number} [count] */
 const entry = (count = 0) => ({
   url: 'http://localhost/event.js',
   source,
@@ -21,9 +22,16 @@ const entry = (count = 0) => ({
     }
   ]
 })
+/** @template T @param {T} value @returns {T} */
 const clone = (value) => structuredClone(value)
+/**
+ * @param {number} sequence
+ * @param {string} why
+ * @param {ReturnType<typeof entry>[]} [entries]
+ * @param {number} [at]
+ */
 const take = (sequence, why, entries = [entry()], at = 7) => ({
-  name: `42-${sequence}.json`,
+  name: `42-${String(sequence)}.json`,
   data: { pid: 42, why, at, navigations: [], entries }
 })
 const indexFor = (records) =>

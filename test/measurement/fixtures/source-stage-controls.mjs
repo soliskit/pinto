@@ -9,10 +9,22 @@ import {
   wrapperLine2Positive
 } from './source-stage.mjs'
 const source = 'function submitted() {\n  window.__submitted = true\n}\n'
+/** @param {number} [count] @param {string} [name] @param {number} [start] */
 const fn = (count = 1, name = 'submitted', start = 0) => ({
   functionName: name,
   ranges: [{ startOffset: start, endOffset: source.indexOf('}') + 1, count }]
 })
+/**
+ * @overload
+ * @returns {{ source: string, functions: ReturnType<typeof fn>[] }[]}
+ */
+/**
+ * @template FunctionData
+ * @overload
+ * @param {FunctionData} f
+ * @returns {{ source: string, functions: FunctionData[] }[]}
+ */
+/** @param {unknown} [f] */
 const entries = (f = fn()) => [{ source, functions: [f] }]
 assert.equal(sourceMatch(entries(), source), 'yes')
 assert.equal(sourceMatch([{ source: 'different' }], source), 'no')
@@ -84,7 +96,9 @@ assert.equal(
 )
 assert.equal(wrapperLine2Positive(0), 'no')
 assert.equal(wrapperLine2Positive(undefined), 'inconclusive')
-assert.throws(() => assert(0 > 0, 'original line2 oracle remains a failure'))
+assert.throws(() => {
+  assert(false, 'original line2 oracle remains a failure')
+})
 console.log('separate-observations-control=pass')
 
 // Real pinned-library integration, distinct from injected error callbacks.
@@ -92,9 +106,11 @@ for (const count of [0, 1]) {
   const input = entries(fn(count))
   const result = await directLine2Positive(input, source, async (entry) => {
     const path = '/synthetic-source-stage.js'
-    const converter = new V8ToIstanbul(path, 0, { source })
+    const converter = V8ToIstanbul(path, 0, { source })
     await converter.load()
-    converter.applyCoverage(entry.functions)
+    converter.applyCoverage(
+      entry.functions.map((fn) => ({ ...fn, isBlockCoverage: false }))
+    )
     return libCoverage
       .createFileCoverage(converter.toIstanbul()[path])
       .getLineCoverage()[2]

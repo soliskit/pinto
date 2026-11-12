@@ -70,13 +70,20 @@ export function rawHelperPositive(entries, source) {
     )
   )
 }
+/**
+ * @template Entry
+ * @param {Entry[]} entries
+ * @param {unknown} source
+ * @param {(entry: Entry) => unknown} convert
+ */
 export async function directLine2Positive(entries, source, convert) {
   if (sourceMatch(entries, source) !== 'yes') return 'inconclusive'
   let positive = false
   try {
     for (const entry of entries) {
       const hit = await convert(entry)
-      if (!Number.isFinite(hit) || hit < 0) return 'inconclusive'
+      if (typeof hit !== 'number' || !Number.isFinite(hit) || hit < 0)
+        return 'inconclusive'
       if (hit > 0) positive = true
     }
     return answer(positive)
