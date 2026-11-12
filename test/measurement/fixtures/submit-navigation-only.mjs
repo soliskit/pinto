@@ -19,6 +19,18 @@ import { mergeV8Entries } from '../v8merge.mjs'
 import { toFileCoverage } from '../convert.mjs'
 import { validateBrowserDir } from '../validate.mjs'
 const here = fileURLToPath(new URL('.', import.meta.url))
+// Property read with ordinary [[Get]] semantics: null/undefined yield
+// undefined, primitives box for the holder but stay the getter receiver.
+/**
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+const readKey = (value, key) =>
+  value === null || value === undefined
+    ? undefined
+    : Reflect.get(Object(value), key, value)
+/** @type {string[]} */
 const results = []
 const observations = Object.fromEntries(
   ['click', 'enter'].map((mode) => [
@@ -34,6 +46,7 @@ const observations = Object.fromEntries(
 )
 let activeMode = 'unavailable'
 let phase = 'setup'
+/** @type {string | undefined} */
 let childPhaseFile
 let failureKind = 'other'
 const childPhases = new Set([
@@ -179,7 +192,7 @@ mark('done')
             // Best effort on all outcomes. Host container teardown is the final
             // authority for Chromium descendants that create their own groups.
             try {
-              process.kill(-proc.pid, 'SIGKILL')
+              process.kill(-(proc.pid ?? NaN), 'SIGKILL')
             } catch {
               // The process group may already be gone; the container receipt is authoritative.
             }
@@ -202,7 +215,7 @@ mark('done')
             finish(
               code === 0
                 ? undefined
-                : new Error(`child exited ${code}/${signal}`)
+                : new Error(`child exited ${String(code)}/${String(signal)}`)
             )
           })
           proc.once('error', (error) => {
@@ -214,7 +227,7 @@ mark('done')
       }
       phase = 'capture-validation'
       const entries = validateBrowserDir(join(dir, 'browser')).filter(
-        (entry) => new URL(entry.url).pathname === '/event.js'
+        (entry) => new URL(readKey(entry, 'url')).pathname === '/event.js'
       )
       Object.assign(
         observations[fixtureMode],
@@ -241,8 +254,8 @@ mark('done')
       const merged = mergeV8Entries(
         entries.map((entry) => ({
           url: '/event.js',
-          source: entry.source,
-          functions: entry.functions
+          source: readKey(entry, 'source'),
+          functions: readKey(entry, 'functions')
         }))
       )
       phase = 'convert'

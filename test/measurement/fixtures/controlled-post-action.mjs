@@ -26,6 +26,12 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 /** @param {import('../runtime-coverage.mjs').RuntimeCoverageData | undefined} cov */
 const lineHits = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
 const finite = (x) => Number.isFinite(x) && x >= 0 && x <= 500000
+// Ordinary [[Get]] semantics for reads on unknown JSON data; mirrors the
+// take-stage helper (primitive receiver preserved, nullish yields undefined).
+/** @param {unknown} value @param {string} key @returns {unknown} */
+const readKey = (value, key) =>
+  value == null ? undefined : Reflect.get(Object(value), key, value)
+/** @param {string} path @returns {unknown} */
 const parse = (path) => {
   try {
     return JSON.parse(readFileSync(path, 'utf8'))
@@ -33,6 +39,12 @@ const parse = (path) => {
     return null
   }
 }
+/**
+ * @param {string} child
+ * @param {string} dir
+ * @param {string} fixtureMode
+ * @returns {Promise<string>}
+ */
 async function runChild(child, dir, fixtureMode) {
   return new Promise((resolve) => {
     const proc = spawn(
@@ -53,12 +65,13 @@ async function runChild(child, dir, fixtureMode) {
       }
     )
     let settled = false
+    /** @param {string} reason */
     function finish(reason) {
       if (settled) return
       settled = true
       clearTimeout(watchdog)
       try {
-        process.kill(-proc.pid, 'SIGKILL')
+        process.kill(-(proc.pid ?? NaN), 'SIGKILL')
       } catch {
         // ignore
       }
@@ -226,8 +239,15 @@ mark('done')
         .map((name) => ({ name, data: parse(join(browserDir, name)) }))
         .sort(
           (a, b) =>
-            (a.data?.ordinal ?? Infinity) - (b.data?.ordinal ?? Infinity)
+            Number(readKey(a.data, 'ordinal') ?? Infinity) -
+            Number(readKey(b.data, 'ordinal') ?? Infinity)
         )
+      /**
+       * @template T
+       * @param {string} file
+       * @param {(line: string) => T} decode
+       * @returns {T[]}
+       */
       function tolerantLines(file, decode) {
         let text
         try {
@@ -253,16 +273,18 @@ mark('done')
         return parts
       })
       const writes = tolerantLines('writes.receipts', (line) => {
+        /** @type {unknown} */
         const w = JSON.parse(line)
         if (!w || typeof w !== 'object' || Array.isArray(w)) throw new Error()
         return w
       })
       expectedCount = allNames.length <= 128 ? records.length : null
       const explicit = records.filter(
-        (r) => r.data?.why === 'fixture:after-action'
+        (r) => readKey(r.data, 'why') === 'fixture:after-action'
       )
-      if (explicit.length === 1) explicitOrdinal = explicit[0].data.ordinal
-      sessionId = records[0]?.data?.sessionId ?? null
+      if (explicit.length === 1)
+        explicitOrdinal = readKey(explicit[0].data, 'ordinal')
+      sessionId = readKey(records[0]?.data, 'sessionId') ?? null
       if (
         !records.length ||
         index.length !== records.length ||
@@ -273,19 +295,21 @@ mark('done')
       let priorWritten = 0
       for (let i = 0; i < records.length; i++) {
         const { name, data: d } = records[i]
-        const ws = writes.filter((w) => w.name === name)
-        const ix = index.filter(([n, why]) => n === name && why === d?.why)
+        const ws = writes.filter((w) => readKey(w, 'name') === name)
+        const ix = index.filter(
+          ([n, why]) => n === name && why === readKey(d, 'why')
+        )
         const w = ws.length === 1 ? ws[0] : null
         const row = {
           mode,
-          sessionId: d?.sessionId ?? null,
-          ordinal: d?.ordinal ?? null,
-          why: d?.why ?? 'unavailable',
-          queuedAt: d?.queuedAt ?? null,
-          initiatedAt: d?.initiatedAt ?? null,
-          respondedAt: d?.respondedAt ?? null,
-          sourceFetchedAt: d?.sourceFetchedAt ?? null,
-          writtenAt: w?.writtenAt ?? null,
+          sessionId: readKey(d, 'sessionId') ?? null,
+          ordinal: readKey(d, 'ordinal') ?? null,
+          why: readKey(d, 'why') ?? 'unavailable',
+          queuedAt: readKey(d, 'queuedAt') ?? null,
+          initiatedAt: readKey(d, 'initiatedAt') ?? null,
+          respondedAt: readKey(d, 'respondedAt') ?? null,
+          sourceFetchedAt: readKey(d, 'sourceFetchedAt') ?? null,
+          writtenAt: readKey(w, 'writtenAt') ?? null,
           relation: 'ambiguous',
           eligible: 'no',
           source: 'inconclusive',
@@ -310,45 +334,46 @@ mark('done')
         const metadata =
           d &&
           w &&
-          d.ordinal === i + 1 &&
-          d.sessionId === sessionId &&
-          w.sessionId === sessionId &&
-          w.ordinal === d.ordinal &&
+          readKey(d, 'ordinal') === i + 1 &&
+          readKey(d, 'sessionId') === sessionId &&
+          readKey(w, 'sessionId') === sessionId &&
+          readKey(w, 'ordinal') === readKey(d, 'ordinal') &&
           ix.length === 1 &&
           times.every(finite) &&
           times.every((x, j) => j === 0 || times[j - 1] <= x) &&
-          priorWritten <= d.initiatedAt &&
+          priorWritten <= readKey(d, 'initiatedAt') &&
           ['queuedAt', 'initiatedAt', 'respondedAt', 'sourceFetchedAt'].every(
-            (k) => w[k] === d[k]
+            (k) => readKey(w, k) === readKey(d, k)
           )
         if (!metadata) complete = false
         else {
-          priorWritten = w.writtenAt
+          priorWritten = readKey(w, 'writtenAt')
           row.receipt = 'complete'
         }
         if (
-          finite(timeline.markerObservedAt) &&
-          d?.initiatedAt >= timeline.markerObservedAt
+          finite(readKey(timeline, 'markerObservedAt')) &&
+          readKey(d, 'initiatedAt') >= readKey(timeline, 'markerObservedAt')
         )
           row.relation = 'post-marker'
         else if (
-          finite(timeline.actionStartedAt) &&
-          d?.respondedAt < timeline.actionStartedAt
+          finite(readKey(timeline, 'actionStartedAt')) &&
+          readKey(d, 'respondedAt') < readKey(timeline, 'actionStartedAt')
         )
           row.relation = 'pre-action'
         const eligible =
           metadata &&
           Number.isInteger(explicitOrdinal) &&
-          d.ordinal <= explicitOrdinal &&
-          finite(timeline.actionStartedAt) &&
-          d.respondedAt >= timeline.actionStartedAt &&
-          (!finite(timeline.releaseIssuedAt) ||
-            d.respondedAt <= timeline.releaseIssuedAt)
+          readKey(d, 'ordinal') <= explicitOrdinal &&
+          finite(readKey(timeline, 'actionStartedAt')) &&
+          readKey(d, 'respondedAt') >= readKey(timeline, 'actionStartedAt') &&
+          (!finite(readKey(timeline, 'releaseIssuedAt')) ||
+            readKey(d, 'respondedAt') <= readKey(timeline, 'releaseIssuedAt'))
         row.eligible = eligible ? 'yes' : 'no'
-        const entries = Array.isArray(d?.entries)
-          ? d.entries.filter((e) => {
+        const entriesValue = readKey(d, 'entries')
+        const entries = Array.isArray(entriesValue)
+          ? entriesValue.filter((e) => {
               try {
-                return new URL(e.url).pathname === '/event.js'
+                return new URL(readKey(e, 'url')).pathname === '/event.js'
               } catch {
                 return false
               }
@@ -366,17 +391,21 @@ mark('done')
         row.sourceHash = expectedHash
         row.raw = rawHelperPositive(entries, src)
         const helpers = entries
-          .flatMap((e) => e.functions || [])
+          .flatMap((e) => readKey(e, 'functions') || [])
           .filter(
             (fn) =>
-              fn.functionName === 'submitted' &&
-              fn.ranges?.[0]?.startOffset === 0 &&
-              fn.ranges[0].endOffset === 52
+              readKey(fn, 'functionName') === 'submitted' &&
+              readKey(readKey(readKey(fn, 'ranges'), '0'), 'startOffset') ===
+                0 &&
+              readKey(readKey(readKey(fn, 'ranges'), '0'), 'endOffset') === 52
           )
         if (helpers.length === 1) {
           row.helperStart = 0
           row.helperEnd = 52
-          row.helperCount = helpers[0].ranges[0].count
+          row.helperCount = readKey(
+            readKey(readKey(helpers[0], 'ranges'), '0'),
+            'count'
+          )
         } else {
           complete = false
           continue
@@ -387,14 +416,18 @@ mark('done')
           for (const entry of entries) {
             const converter = V8ToIstanbul(abs, 0, { source: src })
             await converter.load()
-            converter.applyCoverage(entry.functions)
+            converter.applyCoverage(readKey(entry, 'functions'))
             const hit = lineHits(converter.toIstanbul()[abs])[2]
             assert(isFiniteNonnegative(hit))
             directHit += hit
           }
           row.direct = directHit > 0 ? 'yes' : 'no'
           const merged = mergeV8Entries(
-            entries.map((e) => ({ ...e, url: '/event.js' }))
+            entries.map((e) => ({
+              url: '/event.js',
+              source: readKey(e, 'source'),
+              functions: readKey(e, 'functions')
+            }))
           )
           const cov = await toFileCoverage(merged.get('/event.js'), abs)
           const hit = lineHits(cov)[2]
@@ -433,33 +466,36 @@ mark('done')
     } catch {
       complete = false
     }
-    const tr = timeline.explicitReceipt
+    const tr = readKey(timeline, 'explicitReceipt')
     const timelineValid =
       [
-        timeline.actionStartedAt,
-        timeline.actionResolvedAt,
-        timeline.markerObservedAt,
-        tr?.writtenAt
+        readKey(timeline, 'actionStartedAt'),
+        readKey(timeline, 'actionResolvedAt'),
+        readKey(timeline, 'markerObservedAt'),
+        readKey(tr, 'writtenAt')
       ].every(finite) &&
-      timeline.actionStartedAt <= timeline.actionResolvedAt &&
-      timeline.actionResolvedAt <= timeline.markerObservedAt &&
-      tr?.ordinal === explicitOrdinal &&
-      tr?.sessionId === sessionId &&
+      readKey(timeline, 'actionStartedAt') <=
+        readKey(timeline, 'actionResolvedAt') &&
+      readKey(timeline, 'actionResolvedAt') <=
+        readKey(timeline, 'markerObservedAt') &&
+      readKey(tr, 'ordinal') === explicitOrdinal &&
+      readKey(tr, 'sessionId') === sessionId &&
       rows.some(
         (row) =>
           row.ordinal === explicitOrdinal &&
           row.receipt === 'complete' &&
-          row.initiatedAt >= timeline.markerObservedAt &&
-          row.writtenAt === tr.writtenAt
+          row.initiatedAt >= readKey(timeline, 'markerObservedAt') &&
+          row.writtenAt === readKey(tr, 'writtenAt')
       ) &&
       (controlArm === 'released-navigation'
-        ? finite(timeline.releaseIssuedAt) &&
-          timeline.releaseIssuedAt >= tr.writtenAt
-        : timeline.releaseIssuedAt === undefined)
+        ? finite(readKey(timeline, 'releaseIssuedAt')) &&
+          readKey(timeline, 'releaseIssuedAt') >= readKey(tr, 'writtenAt')
+        : readKey(timeline, 'releaseIssuedAt') === undefined)
     if (!timelineValid) complete = false
     // Emit every bounded surviving row BEFORE status decisions. No source or URL.
     for (const row of rows)
       console.log('controlled-take=' + JSON.stringify(row))
+    /** @param {unknown} x @returns {unknown} */
     const safeTime = (x) => (finite(x) ? x : null)
     console.log(
       'controlled-timeline=' +
@@ -468,11 +504,11 @@ mark('done')
           sessionId,
           explicitOrdinal,
           expectedCount,
-          actionStartedAt: safeTime(timeline.actionStartedAt),
-          actionResolvedAt: safeTime(timeline.actionResolvedAt),
-          markerObservedAt: safeTime(timeline.markerObservedAt),
-          explicitWrittenAt: safeTime(tr?.writtenAt),
-          releaseIssuedAt: safeTime(timeline.releaseIssuedAt),
+          actionStartedAt: safeTime(readKey(timeline, 'actionStartedAt')),
+          actionResolvedAt: safeTime(readKey(timeline, 'actionResolvedAt')),
+          markerObservedAt: safeTime(readKey(timeline, 'markerObservedAt')),
+          explicitWrittenAt: safeTime(readKey(tr, 'writtenAt')),
+          releaseIssuedAt: safeTime(readKey(timeline, 'releaseIssuedAt')),
           valid: timelineValid ? 'yes' : 'no'
         })
     )
@@ -500,7 +536,7 @@ mark('done')
     console.log(
       mode + '-receipt-state=' + (complete ? 'complete' : 'incomplete')
     )
-    console.log(mode + '-take-count=' + rows.length)
+    console.log(mode + '-take-count=' + String(rows.length))
     console.log(
       mode +
         '-interval-positive=' +
