@@ -23,6 +23,7 @@ export const relations = [
   'action-initiation',
   'later-initiation'
 ]
+/** @type {Map<unknown, unknown>} */
 const reasonMap = new Map([
   ['before:goto', 'before-goto'],
   ['before:click', 'before-click'],
@@ -204,10 +205,11 @@ export function readTakeSummary(dir, source, mode) {
     })
     const records = readdirSync(dir)
       .filter((name) => name.endsWith('.json'))
-      .map((name) => ({
-        name,
-        data: JSON.parse(readFileSync(join(dir, name), 'utf8'))
-      }))
+      .map((name) => {
+        /** @type {unknown} */
+        const data = JSON.parse(readFileSync(join(dir, name), 'utf8'))
+        return { name, data }
+      })
     return summarizeTakes(records, index, source, mode)
   } catch {
     return emptyTakeSummary()
