@@ -9,12 +9,17 @@ const modes = [
 ]
 const lines = readFileSync(process.argv[2], 'utf8').split('\n')
 let valid = true
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+const isRecord = (value) => typeof value === 'object' && value !== null
+/** @type {(x: unknown, max?: number) => number | null} */
 const number = (x, max = 500000) =>
-  Number.isFinite(x) && x >= 0 && x <= max ? x : null
+  typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= max ? x : null
+/** @type {(x: unknown, max?: number) => number | null} */
 const integer = (x, max = 10000) =>
-  Number.isInteger(x) && x > 0 && x <= max ? x : null
+  typeof x === 'number' && Number.isInteger(x) && x > 0 && x <= max ? x : null
+/** @type {(x: unknown, values: readonly string[], fallback?: string) => string} */
 const choose = (x, values, fallback = 'inconclusive') =>
-  values.includes(x) ? x : fallback
+  typeof x === 'string' && values.includes(x) ? x : fallback
 /** @param {string} prefix */
 function parsed(prefix) {
   return lines
@@ -22,7 +27,9 @@ function parsed(prefix) {
     .slice(0, 520)
     .map((line) => {
       try {
-        return JSON.parse(line.slice(prefix.length))
+        /** @type {unknown} */
+        const value = JSON.parse(line.slice(prefix.length))
+        return value
       } catch {
         valid = false
         return null
@@ -32,11 +39,12 @@ function parsed(prefix) {
 const allRows = parsed('controlled-take=')
 const timelines = parsed('controlled-timeline=')
 for (const mode of modes) {
+  /** @type {(key: string, allowed: string[]) => string} */
   const field = (key, allowed) => {
     const prefix = mode + (key ? '-' + key : '') + '='
     const found = lines.filter((line) => line.startsWith(prefix))
     const raw = found.length === 1 ? found[0].slice(prefix.length) : null
-    const value = allowed.includes(raw) ? raw : 'unavailable'
+    const value = raw !== null && allowed.includes(raw) ? raw : 'unavailable'
     if (value === 'unavailable') valid = false
     console.log(prefix + value)
     return value
@@ -85,13 +93,14 @@ for (const mode of modes) {
     /^(0|[1-9][0-9]{0,2})$/.test(rawCount) && Number(rawCount) <= 128
       ? Number(rawCount)
       : null
-  const rows = allRows.filter((row) => row?.mode === mode)
+  const rows = allRows.filter(isRecord).filter((row) => row.mode === mode)
   let complete =
     state === 'complete' &&
     count !== null &&
     rows.length === count &&
     rows.length <= 128
-  const ts = timelines.filter((t) => t?.mode === mode)
+  const ts = timelines.filter(isRecord).filter((t) => t.mode === mode)
+  /** @type {Record<string, unknown>} */
   const t = ts.length === 1 ? ts[0] : {}
   const timeline = {
     mode,
@@ -162,6 +171,7 @@ for (const mode of modes) {
       helperStart: row.helperStart === 0 ? 0 : null,
       helperEnd: row.helperEnd === 52 ? 52 : null,
       helperCount:
+        typeof row.helperCount === 'number' &&
         Number.isSafeInteger(row.helperCount) &&
         row.helperCount >= 0 &&
         row.helperCount <= 10000
@@ -180,7 +190,8 @@ for (const mode of modes) {
       clean.sourceFetchedAt,
       clean.writtenAt
     ]
-    const enumsValid = [
+    /** @type {(keyof typeof clean)[]} */
+    const enumKeys = [
       'eligible',
       'why',
       'relation',
@@ -190,7 +201,8 @@ for (const mode of modes) {
       'wrapper',
       'helperCredit',
       'receipt'
-    ].every((key) => clean[key] === row[key])
+    ]
+    const enumsValid = enumKeys.every((key) => clean[key] === row[key])
     const eligible =
       clean.receipt === 'complete' &&
       timeline.explicitOrdinal !== null &&
@@ -262,7 +274,7 @@ for (const mode of modes) {
   )
     complete = false
   console.log('controlled-timeline=' + JSON.stringify(timeline))
-  console.log(countPrefix + (count ?? 'unavailable'))
+  console.log(countPrefix + String(count ?? 'unavailable'))
   console.log(
     mode + '-screen-receipts=' + (complete ? 'complete' : 'incomplete')
   )
