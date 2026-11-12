@@ -16,7 +16,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import libCoverage from 'istanbul-lib-coverage'
+import { libCoverage, isPositive } from '../runtime-coverage.mjs'
 import { chromium } from 'playwright'
 import { CoverageConflict, mergeV8Entries, uncovered } from '../v8merge.mjs'
 import { toFileCoverage, summarize } from '../convert.mjs'
@@ -43,7 +43,7 @@ async function proof(name, fn) {
   }
 }
 
-/** @param {import('istanbul-lib-coverage').FileCoverageData} cov */
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData} cov */
 const lineHits = (cov) => createFileCoverage(cov).getLineCoverage()
 
 // Runs a fixture program with coverage on and returns its converted coverage.
@@ -155,7 +155,7 @@ await proof(
     const cov = await nodeCoverageFor(prog)
     const lines = lineHits(cov)
     assert.equal(lines[2], 0, 'line 2 (neverRuns body) must be uncovered')
-    assert(lines[5] > 0, 'line 5 (runs body) must be covered')
+    assert(isPositive(lines[5]), 'line 5 (runs body) must be covered')
   }
 )
 
@@ -185,7 +185,7 @@ await proof(
         )
         const cov = await toFileCoverage(merged.get('/fx.js'), abs)
         assert(
-          lineHits(cov)[2] > 0,
+          isPositive(lineHits(cov)[2]),
           'f body line must be covered after the second load'
         )
       }
@@ -222,7 +222,7 @@ await proof(
         )
         const a = await toFileCoverage(merged.get('/fx.js'), abs)
         const b = await toFileCoverage(merged.get('/b.js'), abs)
-        assert(lineHits(a)[2] > 0, 'fx.js f must be covered')
+        assert(isPositive(lineHits(a)[2]), 'fx.js f must be covered')
         assert.equal(lineHits(b)[2], 0, 'b.js f must stay uncovered')
       }
     )
@@ -304,7 +304,7 @@ await proof(
       assert.equal(entry.coverageList.length, 2)
       const cov = await toFileCoverage(entry, abs)
       assert.ok(
-        Object.values(cov.s).some((hits) => hits > 0),
+        Object.values(cov.s).some((hits) => isPositive(hits)),
         "the undefined-source take's execution counts must reach the file coverage"
       )
     }
@@ -353,14 +353,14 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/fx.js'), abs)
     const fc = createFileCoverage(cov)
-    /** @type {Partial<Record<number, number>>} */
+    /** @type {Partial<Record<number, unknown>>} */
     const lines = fc.getLineCoverage()
     assert.equal(
       lines[2] ?? 0,
       0,
       'the return line inside never-called f must be uncovered'
     )
-    assert((lines[4] ?? 0) > 0, 'the top-level guard line stays covered')
+    assert(isPositive(lines[4] ?? 0), 'the top-level guard line stays covered')
   }
 )
 
@@ -400,11 +400,14 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/n.js'), abs)
     const fc = createFileCoverage(cov)
-    /** @type {Partial<Record<number, number>>} */
+    /** @type {Partial<Record<number, unknown>>} */
     const lines = fc.getLineCoverage()
     assert.equal(lines[3] ?? 0, 0, 'inner body must be uncovered')
     assert.equal(lines[5] ?? 0, 0, 'outer body statement must be uncovered')
-    assert((lines[7] ?? 0) > 0, 'the top-level reference line stays covered')
+    assert(
+      isPositive(lines[7] ?? 0),
+      'the top-level reference line stays covered'
+    )
     const outerEntry = Object.entries(cov.fnMap).find(
       ([, fn]) => fn.name === 'outer'
     )
@@ -446,12 +449,12 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/o.js'), abs)
     const fc = createFileCoverage(cov)
-    /** @type {Partial<Record<number, number>>} */
+    /** @type {Partial<Record<number, unknown>>} */
     const lines = fc.getLineCoverage()
     assert.equal(lines[3] ?? 0, 1, 'the executed return must stay covered')
     for (const [k, fn] of Object.entries(cov.fnMap)) {
       if (fn.name === 'outer')
-        assert.ok(cov.f[k] > 0, 'outer must read as invoked')
+        assert.ok(isPositive(cov.f[k]), 'outer must read as invoked')
       if (fn.name === 'inner')
         assert.equal(cov.f[k], 0, 'inner must read as never invoked')
     }
@@ -530,7 +533,7 @@ console.log('child done')
       }))
     )
     const cov = await toFileCoverage(merged.get('/before.js'), abs)
-    assert(lineHits(cov)[2] > 0, 'g body line must be covered')
+    assert(isPositive(lineHits(cov)[2]), 'g body line must be covered')
   }
 )
 
@@ -543,8 +546,14 @@ await proof(
     )
     const cov = await nodeCoverageFor(prog, { preload: true })
     const lines = lineHits(cov)
-    assert(lines[2] > 0, 'beforeSignal body covered across snapshot and exit')
-    assert(lines[5] > 0, 'afterSignal body covered across snapshot and exit')
+    assert(
+      isPositive(lines[2]),
+      'beforeSignal body covered across snapshot and exit'
+    )
+    assert(
+      isPositive(lines[5]),
+      'afterSignal body covered across snapshot and exit'
+    )
   }
 )
 
