@@ -34,8 +34,14 @@ const take = (sequence, why, entries = [entry()], at = 7) => ({
   name: `42-${String(sequence)}.json`,
   data: { pid: 42, why, at, navigations: [], entries }
 })
+/**
+ * @typedef {{ name: string, data: { pid: number, why: string, at: number,
+ *   navigations: never[], entries: ReturnType<typeof entry>[] } }} ConstructedTake
+ */
+/** @param {{ name: string, data: { why: string } }[]} records */
 const indexFor = (records) =>
   records.map(({ name, data }) => ({ name, why: data.why }))
+/** @param {ConstructedTake[]} records @param {string} [mode] */
 const summary = (records, mode = 'click') =>
   summarizeTakes(records, indexFor(records), source, mode)
 assert.equal(helperState([], source), 'no-event-entry')
@@ -60,24 +66,31 @@ for (const badSource of [undefined, null, 8, '', source + '//different']) {
   )
 }
 for (const change of [
+  /** @param {{ functions: unknown }} e */
   (e) => {
     e.functions = null
   },
+  /** @param {ReturnType<typeof entry>} e */
   (e) => {
     e.functions[0].ranges = []
   },
+  /** @param {ReturnType<typeof entry>} e */
   (e) => {
     e.functions[0].ranges[0].count = -1
   },
+  /** @param {ReturnType<typeof entry>} e */
   (e) => {
     e.functions[0].ranges[0].count = 0.5
   },
+  /** @param {ReturnType<typeof entry>} e */
   (e) => {
     e.functions[0].ranges[0].startOffset = -1
   },
+  /** @param {ReturnType<typeof entry>} e */
   (e) => {
     e.functions[0].ranges[0].endOffset = source.length + 1
   },
+  /** @param {ReturnType<typeof entry>} e */
   (e) => {
     e.functions[0].ranges.push({ ...e.functions[0].ranges[0], count: 1 })
   }
@@ -149,41 +162,52 @@ for (const why of [
   )
 }
 for (const change of [
+  /** @param {ConstructedTake[]} r @param {{name: string, why: string}[]} i */
   (r, i) => {
     r.push(clone(r[0]))
     i.push(clone(i[0]))
   },
+  /** @param {ConstructedTake[]} r @param {{name: string, why: string}[]} i */
   (r, i) => {
     r[0].name = '42-3.json'
     i[0].name = '42-3.json'
   },
+  /** @param {ConstructedTake[]} r @param {{name: string, why: string}[]} i */
   (r, i) => {
     i[0].why = 'poll'
   },
+  /** @param {ConstructedTake[]} r @param {{name: string, why: string}[]} i */
   (r, i) => {
     r[0].data.why = 'unknown'
     i[0].why = 'unknown'
   },
+  /** @param {ConstructedTake[]} r @param {{name: string, why: string}[]} i */
   (r, i) => {
     r[0].data.pid = 43
     r[0].name = '43-1.json'
     i[0].name = '43-1.json'
   },
+  /** @param {ConstructedTake[]} r */
   (r) => {
     r[0].data.at = NaN
   },
+  /** @param {{ data: { entries: unknown } }[]} r */
   (r) => {
     r[0].data.entries = null
   },
+  /** @param {{ data: { navigations: unknown[] } }[]} r */
   (r) => {
     r[0].data.navigations = [{}]
   },
+  /** @param {{ data: { entries: unknown } }[]} r */
   (r) => {
     r[0].data.entries = [{ url: 'not a URL' }]
   },
+  /** @param {ConstructedTake[]} r @param {{name: string, why: string}[]} i */
   (r, i) => {
     i[0].name = 'missing.json'
   },
+  /** @param {ConstructedTake[]} r @param {{name: string, why: string}[]} i */
   (r, i) => {
     i.pop()
   }
