@@ -77,6 +77,7 @@ const tls = https.createServer(
 tls.on('upgrade', (socket) => socket.destroy())
 tls.listen(443, '127.0.0.1')
 
+/** @param {number} code */
 async function finish(code) {
   if (process.env.PINTO_MEASURE === '1') {
     const { stopMeasuredServer } =
@@ -108,6 +109,7 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', '--ignore-certificate-errors']
 })
 const page = await browser.newPage()
+/** @type {string[]} */
 const peerSockets = []
 page.on('websocket', (ws) => {
   if (ws.url().includes('/peerjs')) peerSockets.push(ws.url())

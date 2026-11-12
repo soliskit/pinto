@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import libCoverage from 'istanbul-lib-coverage'
+import { libCoverage, isPositive } from '../runtime-coverage.mjs'
 import V8ToIstanbul from 'v8-to-istanbul'
 import { toFileCoverage } from '../convert.mjs'
 import { mergeV8Entries } from '../v8merge.mjs'
@@ -21,6 +21,7 @@ const source = [
   ''
 ].join('\n')
 const diskOther = 'throw new Error("different disk source")\n'
+/** @param {string} name @param {number} count */
 const span = (name, count) => ({
   functionName: name,
   isBlockCoverage: true,
@@ -40,13 +41,17 @@ const root = {
 const full = [root, span('cold', 0), span('hot', 1)]
 const coldTake = [root, span('cold', 0), span('hot', 0)]
 const absentTake = [root, span('cold', 0)]
+/** @param {import('node:inspector').Profiler.FunctionCoverage[][]} takes */
 const merged = (takes) => ({ url: '/input.js', source, coverageList: takes })
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData | undefined} cov */
 const lines = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData} cov @param {string} name */
 const functionHit = (cov, name) => {
   const found = Object.entries(cov.fnMap).find(([, fn]) => fn.name === name)
   assert(found, 'expected named function is present')
   return cov.f[found[0]]
 }
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData} cov */
 const shape = (cov) => ({
   statementMap: cov.statementMap,
   s: cov.s,
@@ -55,6 +60,7 @@ const shape = (cov) => ({
   branchMap: cov.branchMap,
   b: cov.b
 })
+/** @param {string} name @param {() => unknown} run */
 async function proof(name, run) {
   await run()
   console.log(name + '=pass')
@@ -71,7 +77,7 @@ try {
   })
   await proof('same-source', async () => {
     writeFileSync(path, source)
-    const direct = new V8ToIstanbul(path, 0, { source })
+    const direct = V8ToIstanbul(path, 0, { source })
     await direct.load()
     direct.applyCoverage(full)
     const cov = await toFileCoverage(merged([full]), path)
@@ -149,7 +155,7 @@ try {
         0,
         'an uncalled take cannot credit the child'
       )
-      assert(functionHit(cov, 'g') > 0, 'the other take did call g')
+      assert(isPositive(functionHit(cov, 'g')), 'the other take did call g')
     }
   })
   await proof('empty-source', async () => {
@@ -174,7 +180,7 @@ try {
       /coverage range exceeds empty source/
     )
   })
-  await proof('source-conflict', async () => {
+  await proof('source-conflict', () => {
     assert.throws(() =>
       mergeV8Entries([
         { url: '/input.js', source, functions: full },
@@ -186,8 +192,10 @@ try {
       { url: '/input.js', source, functions: full }
     ])
     assert.equal(same.size, 1)
-    assert.equal(same.get('/input.js').source, source)
-    assert.equal(same.get('/input.js').coverageList.length, 2)
+    const entry = same.get('/input.js')
+    assert(entry, 'the merged input URL must be present')
+    assert.equal(entry.source, source)
+    assert.equal(entry.coverageList.length, 2)
   })
 } finally {
   rmSync(dir, { recursive: true, force: true })

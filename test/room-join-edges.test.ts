@@ -25,7 +25,8 @@ function heldJoinAnswer() {
         window.roomSocket = socket
         const realEmit = socket.emit.bind(socket)
         socket.emit = (event: string, ...rest: unknown[]) => {
-          const callback = rest.at(-1)
+          const callback = rest.at(-1) as
+            ((...answer: unknown[]) => unknown) | undefined
           if (event === 'join-room' && typeof callback === 'function') {
             rest.pop()
             // Tag the attempt: the id stays harness metadata, never
@@ -39,18 +40,18 @@ function heldJoinAnswer() {
             // The answer itself arrived in time: socket.io clears its ack
             // timeout on arrival. Only the page's processing is held.
             return realEmit(event, ...rest, (...answer: unknown[]) => {
-              const [error] = answer
+              const [error] = answer as [Error | null, ...unknown[]]
               // Errors (ack timeout, disconnect flush) fire at once, the
               // way socket.io would deliver them; only answers that
               // actually arrived are held, with their raw payload
               if (error !== null) {
                 attempt.outcome = { error: String(error) }
-                return callback(...answer)
+                return Reflect.apply(callback, io, answer)
               }
               attempt.outcome = { answer }
               window.heldJoinAnswers.push({
                 answer,
-                release: () => callback(...answer)
+                release: () => Reflect.apply(callback, io, answer)
               })
             })
           }
@@ -59,7 +60,7 @@ function heldJoinAnswer() {
         return socket
       }
     },
-    set(value) {
+    set(value: typeof import('socket.io-client').io) {
       realIo = value
     }
   })
@@ -97,7 +98,7 @@ function recordRoomCalls() {
         event: string,
         fn: (...args: unknown[]) => unknown
       ) => unknown
-      const realOn = value.prototype.on as On
+      const realOn = Reflect.get(value.prototype, 'on') as On
       ;(value.prototype as { on: On }).on = function (
         this: InstanceType<typeof Peer>,
         event: string,
@@ -129,7 +130,7 @@ function recordRoomCalls() {
           fn(call)
         }) as (...args: unknown[]) => unknown)
       }
-      const realCall = value.prototype.call as (
+      const realCall = Reflect.get(value.prototype, 'call') as (
         this: InstanceType<typeof Peer>,
         ...args: unknown[]
       ) => import('peerjs').MediaConnection
@@ -148,9 +149,15 @@ function recordRoomCalls() {
   })
 }
 
-let server: Server
-let browser: Browser
+let server: Server | undefined
+let browser: Browser | undefined
 const contexts: BrowserContext[] = []
+
+// Test bodies require successful setup; cleanup may also run after failure.
+function ready<T>(resource: T | undefined, name: string): T {
+  assert.ok(resource, `${name} setup did not complete`)
+  return resource
+}
 
 before(async () => {
   ;[server, browser] = await Promise.all([startServer(), launchBrowser()])
@@ -165,7 +172,9 @@ afterEach(async () => {
 
 /** A page in its own browser context, like a separate person */
 async function newPage(init?: (() => void) | (() => void)[]) {
-  const context = await browser.newContext({ baseURL: server.url })
+  const context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
   context.setDefaultTimeout(10_000)
   contexts.push(context)
   await context.addInitScript(record)
@@ -187,7 +196,7 @@ async function openRoom(
 ): Promise<Room> {
   const page = await newPage(init)
   const idResponse = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/pinto/id'
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
   )
   await page.goto(`/room/${encodeURIComponent(name)}`)
   const peerId = await (await idResponse).text()
@@ -199,9 +208,12 @@ async function openRoom(
 
 /** Presses Join and waits until the server has put the page in the room */
 async function join({ page, name, peerId }: Room) {
-  const from = server.output().length
+  const from = ready(server, 'server').output().length
   await page.click('#call')
-  await server.waitForOutput(`user: ${peerId} - joined: ${name}`, from)
+  await ready(server, 'server').waitForOutput(
+    `user: ${peerId} - joined: ${name}`,
+    from
+  )
 }
 
 /** Everything the room page shows, so tests can compare it whole */
@@ -228,8 +240,11 @@ function controls(page: Page) {
         ? null
         : [...byId('error').children]
             .map((entry) => {
-              const [heading, message] = entry.children
-              return `${heading?.textContent ?? ''}: ${message?.textContent ?? ''}`
+              const [heading, message] = entry.children as unknown as [
+                Element,
+                Element
+              ]
+              return `${heading.textContent}: ${message.textContent}`
             })
             .join(' | ')
     }
@@ -316,8 +331,7 @@ async function openCaller() {
     const peer = new Peer({
       host: location.hostname,
       port: Number(location.port),
-      path: '/',
-      key: 'pinto'
+      path: '/'
     })
     window.caller = { peer, stream, answered: new Set(), closed: new Set() }
   })
@@ -337,7 +351,9 @@ async function openCaller() {
         const socket = io()
         window.caller.socket = socket
         await new Promise<void>((resolve) =>
-          socket.on('connect', () => resolve())
+          socket.once('connect', () => {
+            resolve()
+          })
         )
         await socket.emitWithAck('join-room', roomName, window.caller.peer.id)
       }, roomName)
@@ -350,17 +366,21 @@ async function openCaller() {
 /** Joins a room with a plain socket, like a member's own page would */
 
 async function joinFromOutside(roomName: string, peerId: string) {
-  const socket = io(server.url, {
+  const socket = io(ready(server, 'server').url, {
     transports: ['websocket'],
     forceNew: true,
     reconnection: false
   })
   await new Promise<void>((resolve, reject) => {
-    socket.once('connect', () => resolve())
+    socket.once('connect', () => {
+      resolve()
+    })
     socket.once('connect_error', reject)
   })
   socket.emit('join-room', roomName, peerId)
-  await server.waitForOutput(`user: ${peerId} - joined: ${roomName}`)
+  await ready(server, 'server').waitForOutput(
+    `user: ${peerId} - joined: ${roomName}`
+  )
   return socket
 }
 
@@ -368,13 +388,16 @@ async function joinFromOutside(roomName: string, peerId: string) {
 
 async function rawSignaling(memberId: string): Promise<WebSocket> {
   const socket = new WebSocket(
-    `${server.url.replace(/^http/, 'ws')}/peerjs?key=pinto&id=${memberId}&token=test-token`
+    `${ready(server, 'server').url.replace(/^http/, 'ws')}/peerjs?key=peerjs&id=${memberId}&token=test-token`
   )
   await new Promise<void>((resolve, reject) => {
-    socket.once('message', (data) => {
-      const message = JSON.parse(String(data))
+    socket.once('message', (data: Buffer) => {
+      const message = JSON.parse(data.toString()) as { type?: string }
       if (message.type === 'OPEN') resolve()
-      else reject(new Error(`unexpected first signaling message: ${data}`))
+      else
+        reject(
+          new Error(`unexpected first signaling message: ${data.toString()}`)
+        )
     })
     socket.once('error', reject)
   })
@@ -436,7 +459,7 @@ const answeredCalls = (page: Page): Promise<string[]> =>
 
 /** Raw payloads of the join answers currently held, oldest first */
 
-test('microphone denial when joining keeps the camera and mutes the mic', async () => {
+void test('microphone denial when joining keeps the camera and mutes the mic', async () => {
   const room = await openRoom('mic-denied', () => {
     const getUserMedia = navigator.mediaDevices.getUserMedia.bind(
       navigator.mediaDevices
@@ -467,19 +490,21 @@ test('microphone denial when joining keeps the camera and mutes the mic', async 
   )
 })
 
-test('a refused Join turns down a call that was still waiting', async () => {
+void test('a refused Join turns down a call that was still waiting', async () => {
   const room = await openRoom('refused-waiting-call', recordRoomCalls)
-  const squatter = io(server.url, {
+  const squatter = io(ready(server, 'server').url, {
     transports: ['websocket'],
     forceNew: true,
     reconnection: false
   })
   await new Promise<void>((resolve, reject) => {
-    squatter.once('connect', () => resolve())
+    squatter.once('connect', () => {
+      resolve()
+    })
     squatter.once('connect_error', reject)
   })
   squatter.emit('join-room', 'refused-waiting-call', room.peerId)
-  await server.waitForOutput(
+  await ready(server, 'server').waitForOutput(
     `user: ${room.peerId} - joined: refused-waiting-call`
   )
 
@@ -487,7 +512,9 @@ test('a refused Join turns down a call that was still waiting', async () => {
   // waits for a roster answer that never comes
   const caller = await openCaller()
   await room.page.click('#call')
-  await server.waitForOutput('join-room refused: id already in room')
+  await ready(server, 'server').waitForOutput(
+    'join-room refused: id already in room'
+  )
   await caller.call(room.peerId)
   const callerId = await caller.page.evaluate(() => window.caller.peer.id)
   await eventually(
@@ -514,7 +541,7 @@ test('a refused Join turns down a call that was still waiting', async () => {
   squatter.disconnect()
 })
 
-test('Leave closes a call that is still waiting for the roster answer', async () => {
+void test('Leave closes a call that is still waiting for the roster answer', async () => {
   const room = await openRoom('leave-waiting-call', [
     heldJoinAnswer,
     recordRoomCalls
@@ -545,7 +572,7 @@ test('Leave closes a call that is still waiting for the roster answer', async ()
   assert.deepEqual(await attendees(room.page)(), [])
 })
 
-test('a duplicate offer cannot make joining answer a retired call', async () => {
+void test('a duplicate offer cannot make joining answer a retired call', async () => {
   const room = await openRoom('replaced-waiting-call', [
     heldJoinAnswer,
     recordRoomCalls
@@ -594,7 +621,9 @@ test('a duplicate offer cannot make joining answer a retired call', async () => 
 
   // The roster answer arrives: the live replacement is answered, the
   // retired call is skipped, and the stranger's is turned down
-  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await room.page.evaluate(() => {
+    window.releaseJoinAnswer()
+  })
   await eventually(() => answeredCalls(room.page), [member])
   await eventually(() => closedCalls(room.page), [member, stranger])
   assert.deepEqual(errors, [])
@@ -616,7 +645,7 @@ test('a duplicate offer cannot make joining answer a retired call', async () => 
   memberRoom.disconnect()
 })
 
-test('one failing waiting call cannot abandon the rest', async () => {
+void test('one failing waiting call cannot abandon the rest', async () => {
   const failing = 'failing-member'
   const room = await openRoom('failing-waiting-call', [
     heldJoinAnswer,
@@ -648,7 +677,9 @@ test('one failing waiting call cannot abandon the rest', async () => {
 
   // The roster answer arrives: the failure is shown and retired, and
   // the waiting call behind it is still answered
-  await room.page.evaluate(() => window.releaseJoinAnswer())
+  await room.page.evaluate(() => {
+    window.releaseJoinAnswer()
+  })
   await eventually(() => answeredCalls(room.page), [failing, waiting])
   // A failed call is retired at once, not left for Leave to find
   await eventually(() => closedCalls(room.page), [failing])

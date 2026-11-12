@@ -18,8 +18,14 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 function canBind(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = net.createServer()
-    probe.once('error', () => resolve(false))
-    probe.once('listening', () => probe.close(() => resolve(true)))
+    probe.once('error', () => {
+      resolve(false)
+    })
+    probe.once('listening', () =>
+      probe.close(() => {
+        resolve(true)
+      })
+    )
     probe.listen(port, '0.0.0.0')
   })
 }
@@ -41,7 +47,7 @@ function run(script: string): { status: number | null; output: string } {
   })
   return {
     status: direct.status,
-    output: `${direct.stdout ?? ''}\n${direct.stderr ?? ''}`
+    output: `${direct.stdout}\n${direct.stderr}`
   }
 }
 
@@ -61,7 +67,7 @@ function runInNamespace(script: string): {
   )
   return {
     status: wrapped.status,
-    output: `${wrapped.stdout ?? ''}\n${wrapped.stderr ?? ''}`
+    output: `${wrapped.stdout}\n${wrapped.stderr}`
   }
 }
 
@@ -80,7 +86,7 @@ async function runner(): Promise<
   )
 }
 
-test(
+void test(
   'the server listens on port 443 when PORT is not configured',
   { timeout: 90_000 },
   async () => {
@@ -92,7 +98,7 @@ test(
   }
 )
 
-test(
+void test(
   'the room page connects on the default port when the URL has none',
   { timeout: 90_000 },
   async () => {
@@ -104,7 +110,7 @@ test(
   }
 )
 
-test(
+void test(
   'the room page connects with wss on the default port over HTTPS',
   { timeout: 90_000 },
   async () => {

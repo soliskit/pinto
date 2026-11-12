@@ -4,8 +4,8 @@
 // another take. These are observed-range totals, not a fixed syntax inventory
 // or exact invocation counts. Mixed function/block granularity retains the
 // library's containing-range interpretation.
-import libCoverage from 'istanbul-lib-coverage'
-import V8ToIstanbul from 'v8-to-istanbul'
+import { libCoverage, isPositive } from './runtime-coverage.mjs'
+import { createConverter as V8ToIstanbul } from './runtime-converter.mjs'
 
 const { createFileCoverage } = libCoverage
 
@@ -34,7 +34,7 @@ export function completeFunctionLists(coverageList) {
       if (!fn.ranges || fn.ranges.length === 0) continue
       const start = Math.min(...fn.ranges.map((r) => r.startOffset))
       const end = Math.max(...fn.ranges.map((r) => r.endOffset))
-      const key = `${fn.functionName}@${start}-${end}`
+      const key = `${fn.functionName}@${String(start)}-${String(end)}`
       if (!union.has(key)) union.set(key, { name: fn.functionName, start, end })
     }
   }
@@ -44,7 +44,7 @@ export function completeFunctionLists(coverageList) {
         .filter((fn) => fn.ranges && fn.ranges.length > 0)
         .map(
           (fn) =>
-            `${fn.functionName}@${Math.min(...fn.ranges.map((r) => r.startOffset))}-${Math.max(...fn.ranges.map((r) => r.endOffset))}`
+            `${fn.functionName}@${String(Math.min(...fn.ranges.map((r) => r.startOffset)))}-${String(Math.max(...fn.ranges.map((r) => r.endOffset)))}`
         )
     )
     // Partial writes can list a function that ran while omitting its
@@ -79,6 +79,7 @@ export function completeFunctionLists(coverageList) {
   })
 }
 
+/** @param {string} path */
 export async function toFileCoverage(merged, path) {
   if (typeof merged?.source !== 'string')
     throw new Error('coverage conversion requires a defined source')
@@ -89,12 +90,12 @@ export async function toFileCoverage(merged, path) {
         for (const range of fn.ranges || [])
           if (range.startOffset !== 0 || range.endOffset !== 0)
             throw new Error('coverage range exceeds empty source')
-    return createFileCoverage(path).toJSON()
+    return createFileCoverage(path).data
   }
   const coverages = []
   const lists = merged.coverageList || [merged.functions]
   for (const functions of completeFunctionLists(lists.map(zeroAsBlock))) {
-    const converter = new V8ToIstanbul(path, 0, {
+    const converter = V8ToIstanbul(path, 0, {
       source: merged.source
     })
     await converter.load()
@@ -103,7 +104,7 @@ export async function toFileCoverage(merged, path) {
   }
   const map = libCoverage.createCoverageMap({})
   for (const coverage of coverages) map.merge({ [path]: coverage })
-  return zeroUncalledFunctionBodies(map.fileCoverageFor(path).toJSON())
+  return zeroUncalledFunctionBodies(map.fileCoverageFor(path).data)
 }
 
 // A function no load invoked can never have executed a statement or branch
@@ -114,6 +115,11 @@ export async function toFileCoverage(merged, path) {
 // real coverage into a false negative. Locations compare by line and
 // column; a statement sharing a line with code outside the body keeps its
 // own count because containment uses both.
+/**
+ * @typedef {{ line: number, column?: number | null }} CoveragePosition
+ * @typedef {{ start: CoveragePosition, end: CoveragePosition }} CoverageSpan
+ */
+/** @param {CoverageSpan} outer @param {CoverageSpan} loc */
 function contains(outer, loc) {
   const startCol = loc.start.column ?? 0
   const outerStartCol = outer.start.column ?? 0
@@ -128,10 +134,11 @@ function contains(outer, loc) {
   return startsInside && endsInside
 }
 
+/** @param {import('./runtime-coverage.mjs').RuntimeCoverageData} coverage */
 export function zeroUncalledFunctionBodies(coverage) {
   const out = { ...coverage, s: { ...coverage.s }, b: { ...coverage.b } }
   for (const [k, fn] of Object.entries(coverage.fnMap)) {
-    if (coverage.f[k] > 0) continue
+    if (isPositive(coverage.f[k])) continue
     for (const [sk, stmt] of Object.entries(coverage.statementMap)) {
       if (contains(fn.loc, stmt)) out.s[sk] = 0
     }
@@ -142,8 +149,29 @@ export function zeroUncalledFunctionBodies(coverage) {
   return out
 }
 
+/**
+ * @typedef {object} MeasuredCounts
+ * @property {number} covered
+ * @property {number} total
+ */
+/**
+ * @typedef {object} FunctionCounts
+ * @property {number} covered
+ * @property {number} total
+ * @property {false} [measurable]
+ */
+/**
+ * @typedef {object} FileSummary
+ * @property {MeasuredCounts} lines
+ * @property {MeasuredCounts} branches
+ * @property {FunctionCounts} functions
+ */
 // files: [{ path, coverage }] -> per-file exact counts
+/**
+ * @param {{ path: string, coverage: import('./runtime-coverage.mjs').RuntimeCoverageData }[]} files
+ */
 export function summarize(files) {
+  /** @type {{ [path: string]: FileSummary | undefined }} */
   const perFile = {}
   for (const f of files) {
     const summary = createFileCoverage(f.coverage).toSummary()

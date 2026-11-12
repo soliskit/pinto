@@ -73,7 +73,7 @@ function showTime() {
   const weekday = WEEKDAYS[now.getDay()]
   const month = MONTHS[now.getMonth()]
   clock.dateTime = now.toISOString()
-  clock.textContent = `${hour}:${minute} ${ampm}\u00a0 • \u00a0${weekday}, \u00a0${month} ${now.getDate()}`
+  clock.textContent = `${String(hour)}:${minute} ${ampm}\u00a0 • \u00a0${weekday}, \u00a0${month} ${String(now.getDate())}`
 }
 
 /** @param {string[]} words */

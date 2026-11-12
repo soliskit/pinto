@@ -26,6 +26,8 @@ export async function getIceServers(): Promise<IceServer[]> {
 }
 
 async function fetchIceServers(): Promise<IceServer[]> {
+  // Called only with both credentials set; guard again so the types agree.
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return PUBLIC_STUN
   try {
     const credentials = Buffer.from(
       `${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`
@@ -35,7 +37,7 @@ async function fetchIceServers(): Promise<IceServer[]> {
       { method: 'POST', headers: { Authorization: `Basic ${credentials}` } }
     )
     if (!response.ok) {
-      throw Error(`Twilio responded with ${response.status}`)
+      throw Error(`Twilio responded with ${String(response.status)}`)
     }
     const token = (await response.json()) as {
       ice_servers: IceServer[]

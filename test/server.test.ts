@@ -12,17 +12,19 @@ import { eventually, freePort, startServer, type Server } from './helpers.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-describe('with the default settings', () => {
+void describe('with the default settings', () => {
   let server: Server
   before(async () => {
     server = await startServer()
   })
-  after(() => server?.stop())
+  after(async () => {
+    await server.stop()
+  })
 
   const get = (path: string) => fetch(server.url + path)
 
-  describe('web client', () => {
-    test('serves the home page at /', async () => {
+  void describe('web client', () => {
+    void test('serves the home page at /', async () => {
       const response = await get('/')
       assert.equal(response.status, 200)
       assert.match(response.headers.get('content-type') ?? '', /^text\/html/)
@@ -32,7 +34,7 @@ describe('with the default settings', () => {
       )
     })
 
-    test('serves the room page for any room name', async () => {
+    void test('serves the room page for any room name', async () => {
       for (const path of ['/room/lobby', '/room/Team%20%231%2F%C3%BC']) {
         const response = await get(path)
         assert.equal(response.status, 200, path)
@@ -43,7 +45,7 @@ describe('with the default settings', () => {
       }
     })
 
-    test('serves the files in public/', async () => {
+    void test('serves the files in public/', async () => {
       const types: Record<string, RegExp> = {
         '/home.js': /^text\/javascript/,
         '/room.js': /^text\/javascript/,
@@ -60,7 +62,7 @@ describe('with the default settings', () => {
       }
     })
 
-    test('serves the PeerJS browser client from node_modules', async () => {
+    void test('serves the PeerJS browser client from node_modules', async () => {
       const response = await get('/vendor/peerjs.min.js')
       assert.equal(response.status, 200)
       const file = fileURLToPath(
@@ -69,17 +71,17 @@ describe('with the default settings', () => {
       assert.equal(await response.text(), await readFile(file, 'utf8'))
     })
 
-    test('serves the Socket.IO browser client', async () => {
+    void test('serves the Socket.IO browser client', async () => {
       const response = await get('/socket.io/socket.io.min.js')
       assert.equal(response.status, 200)
       assert.match(response.headers.get('content-type') ?? '', /javascript/)
     })
 
-    test('answers other paths with 404', async () => {
+    void test('answers other paths with 404', async () => {
       assert.equal((await get('/nothing-here')).status, 404)
     })
 
-    test('the pages send the security headers', async () => {
+    void test('the pages send the security headers', async () => {
       for (const path of ['/', '/index.html', '/room/lobby', '/room.html']) {
         const response = await get(path)
         const csp = response.headers.get('content-security-policy') ?? ''
@@ -96,7 +98,7 @@ describe('with the default settings', () => {
       }
     })
 
-    test('the script policy pins the served inline script by hash', async () => {
+    void test('the script policy pins the served inline script by hash', async () => {
       const response = await get('/room/lobby')
       const html = await response.text()
       const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
@@ -113,7 +115,7 @@ describe('with the default settings', () => {
       )
     })
 
-    test('other responses stay outside the page policy', async () => {
+    void test('other responses stay outside the page policy', async () => {
       for (const path of ['/style.css', '/config']) {
         const response = await get(path)
         assert.equal(
@@ -130,7 +132,7 @@ describe('with the default settings', () => {
       )
     })
 
-    test('the socket sources come from authorized configuration', async () => {
+    void test('the socket sources come from authorized configuration', async () => {
       const port = new URL(server.url).port
       if (process.env.RENDER_EXTERNAL_HOSTNAME === undefined) {
         const csp =
@@ -173,31 +175,30 @@ describe('with the default settings', () => {
     })
   })
 
-  test('/config gives the PeerJS key and a public STUN server', async () => {
+  void test('/config gives a public STUN server', async () => {
     assert.deepEqual(await (await get('/config')).json(), {
-      key: 'pinto',
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     })
   })
 
-  describe('PeerJS', () => {
-    test('/pinto/id gives a new UUID each time', async () => {
-      const first = await (await get('/pinto/id')).text()
-      const second = await (await get('/pinto/id')).text()
+  void describe('PeerJS', () => {
+    void test('/peerjs/id gives a new UUID each time', async () => {
+      const first = await (await get('/peerjs/id')).text()
+      const second = await (await get('/peerjs/id')).text()
       assert.match(first, UUID)
       assert.match(second, UUID)
       assert.notEqual(first, second)
     })
 
-    test('the peer-list addresses answer 401 without the key', async () => {
+    void test('the peer-list addresses answer 401 without the key', async () => {
       for (const path of ['/pinto/peers', '/peerjs/peers']) {
         assert.equal((await get(path)).status, 401, path)
       }
     })
 
-    test('accepts WebSocket clients with the key and logs them', async () => {
-      const id = await (await get('/pinto/id')).text()
-      const peer = openPeerSocket(`key=pinto&id=${id}&token=t`)
+    void test('accepts WebSocket clients with the key and logs them', async () => {
+      const id = await (await get('/peerjs/id')).text()
+      const peer = openPeerSocket(`key=peerjs&id=${id}&token=t`)
       assert.deepEqual(await nextMessage(peer), { type: 'OPEN' })
       await server.waitForOutput(`PeerClient connected: ${id}`)
 
@@ -205,7 +206,7 @@ describe('with the default settings', () => {
       await server.waitForOutput(`PeerClient disconnected: ${id}`)
     })
 
-    test('rejects WebSocket clients with another key', async () => {
+    void test('rejects WebSocket clients with another key', async () => {
       const peer = openPeerSocket('key=wrong&id=someone&token=t')
       assert.deepEqual(await nextMessage(peer), {
         type: 'ERROR',
@@ -214,9 +215,9 @@ describe('with the default settings', () => {
       peer.close()
     })
 
-    test('survives a message that is not JSON and logs only its type', async () => {
-      const id = await (await get('/pinto/id')).text()
-      const peer = openPeerSocket(`key=pinto&id=${id}&token=t`)
+    void test('survives a message that is not JSON and logs only its type', async () => {
+      const id = await (await get('/peerjs/id')).text()
+      const peer = openPeerSocket(`key=peerjs&id=${id}&token=t`)
       assert.deepEqual(await nextMessage(peer), { type: 'OPEN' })
       peer.send('visitor text, not JSON')
       await server.waitForOutput('PeerServer error: SyntaxError')
@@ -226,7 +227,7 @@ describe('with the default settings', () => {
     })
   })
 
-  describe('Socket.IO', () => {
+  void describe('Socket.IO', () => {
     const sockets: Socket[] = []
     after(() => {
       for (const socket of sockets) socket.disconnect()
@@ -258,17 +259,16 @@ describe('with the default settings', () => {
     async function join(socket: Socket, room: string, peerId: string) {
       socket.emit('join-room', room, peerId)
       await server.waitForOutput(
-        `${socket.id} - user: ${peerId} - joined: ${room}`
+        `${String(socket.id)} - user: ${peerId} - joined: ${room}`
       )
     }
 
     /** Resolves when `socket` receives `event`, with its argument */
     function next(socket: Socket, event: string): Promise<string> {
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(Error(`${event} never arrived`)),
-          5_000
-        )
+        const timer = setTimeout(() => {
+          reject(Error(`${event} never arrived`))
+        }, 5_000)
         socket.once(event, (value: string) => {
           clearTimeout(timer)
           resolve(value)
@@ -276,7 +276,7 @@ describe('with the default settings', () => {
       })
     }
 
-    test('join-room tells everyone else in that room, and nobody else', async () => {
+    void test('join-room tells everyone else in that room, and nobody else', async () => {
       const [a, b, c, d, e] = await Promise.all(
         Array.from({ length: 5 }, connect)
       )
@@ -302,7 +302,7 @@ describe('with the default settings', () => {
       assert.deepEqual(c.events.connected, ['peer-d'])
     })
 
-    test('leaving tells the room', async () => {
+    void test('leaving tells the room', async () => {
       const [a, b, c, d] = await Promise.all(Array.from({ length: 4 }, connect))
       await join(a.socket, 'three', 'peer-a')
       await join(b.socket, 'three', 'peer-b')
@@ -322,7 +322,7 @@ describe('with the default settings', () => {
       assert.deepEqual(c.events.disconnected, ['peer-d'])
     })
 
-    test('ignores join-room without a room name and peer id', async () => {
+    void test('ignores join-room without a room name and peer id', async () => {
       const [a, late] = await Promise.all([connect(), connect()])
       await join(a.socket, 'five', 'peer-a')
 
@@ -343,13 +343,15 @@ describe('with the default settings', () => {
       assert.deepEqual(a.events.connected, ['peer-late'])
       assert.match(
         server.output(),
-        new RegExp(`${late.socket.id} - join-room needs a roomId and userId`)
+        new RegExp(
+          `${String(late.socket.id)} - join-room needs a roomId and userId`
+        )
       )
       // And the server is still up
       assert.equal((await get('/config')).status, 200)
     })
 
-    test('a second connection claiming an id already in the room is refused', async () => {
+    void test('a second connection claiming an id already in the room is refused', async () => {
       const [a, b, stranger] = await Promise.all(
         Array.from({ length: 3 }, connect)
       )
@@ -357,14 +359,14 @@ describe('with the default settings', () => {
       await join(b.socket, 'dup', 'peer-b')
 
       // The stranger is refused (answered with null) and never told to the room
-      const refused = await stranger.socket.emitWithAck(
+      const refused = (await stranger.socket.emitWithAck(
         'join-room',
         'dup',
         'peer-b'
-      )
+      )) as unknown
       assert.equal(refused, null)
       await server.waitForOutput(
-        `${stranger.socket.id} - join-room refused: id already in room`
+        `${String(stranger.socket.id)} - join-room refused: id already in room`
       )
       // Its disconnect ends nothing: b's membership belongs to b's socket.
       // A fresh connection as a different id works normally
@@ -383,7 +385,7 @@ describe('with the default settings', () => {
       await server.waitForOutput(`user: peer-b - left: dup (`)
       const [c] = await Promise.all([connect()])
       await join(c.socket, 'dup', 'peer-b')
-      await eventually(async () => a.events.connected.length, 3)
+      await eventually(() => Promise.resolve(a.events.connected.length), 3)
       assert.deepEqual(a.events.connected, [
         'peer-b',
         'peer-stranger',
@@ -392,15 +394,15 @@ describe('with the default settings', () => {
       assert.deepEqual(a.events.disconnected, ['peer-b'])
     })
 
-    test('join-room holds raw clients to the room-name rule', async () => {
+    void test('join-room holds raw clients to the room-name rule', async () => {
       const [a, b, c] = await Promise.all(Array.from({ length: 3 }, connect))
       await join(a.socket, 'validroom', 'peer-a')
       // Spaces are inside the rule: the boundary case stays accepted
-      const roster = await b.socket.emitWithAck(
+      const roster = (await b.socket.emitWithAck(
         'join-room',
         'bad name',
         'peer-b'
-      )
+      )) as string[]
       assert.deepEqual(roster, [])
       // Exactly 40 characters is inside the rule
       assert.deepEqual(
@@ -422,7 +424,11 @@ describe('with the default settings', () => {
         ['', 'peer-empty'] // empty: refused with the reason like any other
       ]
       for (const [name, id] of refused) {
-        const answer = await c.socket.emitWithAck('join-room', name, id)
+        const answer = (await c.socket.emitWithAck(
+          'join-room',
+          name,
+          id
+        )) as unknown
         assert.equal(
           answer,
           'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.',
@@ -435,33 +441,37 @@ describe('with the default settings', () => {
       assert.deepEqual(a.events.disconnected, [])
     })
 
-    test('join-room trims and lowercases names before applying the rule', async () => {
+    void test('join-room trims and lowercases names before applying the rule', async () => {
       const [a, b] = await Promise.all([connect(), connect()])
-      const roster = await a.socket.emitWithAck(
+      const roster = (await a.socket.emitWithAck(
         'join-room',
         '  UPPER Case-1  ',
         'peer-a'
-      )
+      )) as string[]
       assert.deepEqual(roster, [])
       await server.waitForOutput('user: peer-a - joined: upper case-1')
       // The normalized name is the room: the next page joins the same one
       const heard = next(a.socket, 'user-connected')
-      const roster2 = await b.socket.emitWithAck(
+      const roster2 = (await b.socket.emitWithAck(
         'join-room',
         'upper case-1',
         'peer-b'
-      )
+      )) as string[]
       assert.deepEqual(roster2, ['peer-a'])
       assert.equal(await heard, 'peer-b')
     })
 
-    test('a repeat join on the same connection changes nothing', async () => {
+    void test('a repeat join on the same connection changes nothing', async () => {
       const [a, b] = await Promise.all([connect(), connect()])
       await join(a.socket, 'rejoin', 'peer-a')
       await join(b.socket, 'rejoin', 'peer-b')
 
       // Answered with the roster again, but not logged or broadcast again
-      const roster = await b.socket.emitWithAck('join-room', 'rejoin', 'peer-b')
+      const roster = (await b.socket.emitWithAck(
+        'join-room',
+        'rejoin',
+        'peer-b'
+      )) as string[]
       assert.deepEqual(roster, ['peer-a'])
       assert.deepEqual(a.events.connected, ['peer-b'])
       assert.equal(
@@ -470,19 +480,23 @@ describe('with the default settings', () => {
       )
     })
 
-    test('a newcomer is told who is already in the room', async () => {
+    void test('a newcomer is told who is already in the room', async () => {
       const [a, b, c] = await Promise.all(Array.from({ length: 3 }, connect))
       await join(a.socket, 'roster', 'peer-a')
       await join(b.socket, 'roster', 'peer-b')
 
-      const roster = await c.socket.emitWithAck('join-room', 'roster', 'peer-c')
+      const roster = (await c.socket.emitWithAck(
+        'join-room',
+        'roster',
+        'peer-c'
+      )) as string[]
       assert.deepEqual([...roster].sort(), ['peer-a', 'peer-b'])
       // And the room still hears about the newcomer itself
-      await eventually(async () => a.events.connected.length, 2)
+      await eventually(() => Promise.resolve(a.events.connected.length), 2)
       assert.deepEqual(a.events.connected, ['peer-b', 'peer-c'])
     })
 
-    test('the current room call sites name the app room-key helper', async () => {
+    void test('the current room call sites name the app room-key helper', async () => {
       // A source-shape guard over the current socket.join / socket.to lines:
       // each must name appRoom. It does not check the helper's
       // implementation, other emit forms, or delivery behavior.
@@ -499,7 +513,7 @@ describe('with the default settings', () => {
       assert.deepEqual(bare, [])
     })
 
-    test('only one of two connections racing for the same id is let in', async () => {
+    void test('only one of two connections racing for the same id is let in', async () => {
       const [a, r1, r2, late] = await Promise.all(
         Array.from({ length: 4 }, connect)
       )
@@ -517,11 +531,11 @@ describe('with the default settings', () => {
       // The room heard about the winner exactly once: a trailing join, which
       // a hears about after everything before it, proves the order
       await join(late.socket, 'race', 'peer-late')
-      await eventually(async () => a.events.connected.length, 2)
+      await eventually(() => Promise.resolve(a.events.connected.length), 2)
       assert.deepEqual(a.events.connected, ['peer-race', 'peer-late'])
     })
 
-    test('disconnecting removes every id the connection claimed', async () => {
+    void test('disconnecting removes every id the connection claimed', async () => {
       const [a, b, c] = await Promise.all(Array.from({ length: 3 }, connect))
       await join(a.socket, 'multi', 'peer-a')
       await join(b.socket, 'multi', 'peer-b')
@@ -529,7 +543,7 @@ describe('with the default settings', () => {
       await join(c.socket, 'multi', 'peer-c2')
 
       c.socket.disconnect()
-      await eventually(async () => a.events.disconnected.length, 2)
+      await eventually(() => Promise.resolve(a.events.disconnected.length), 2)
       assert.deepEqual([...a.events.disconnected].sort(), [
         'peer-c1',
         'peer-c2'
@@ -547,16 +561,18 @@ describe('with the default settings', () => {
   }
 })
 
-test('KEY sets the PeerJS key', async () => {
+void test('legacy KEY cannot change the default PeerJS connection key', async () => {
   const server = await startServer({ KEY: 'secret' })
   try {
-    const config = await (await fetch(`${server.url}/config`)).json()
-    assert.equal(config.key, 'secret')
+    const config = (await (await fetch(`${server.url}/config`)).json()) as {
+      key?: unknown
+    }
+    assert.equal(config.key, undefined)
 
-    const id = await (await fetch(`${server.url}/secret/id`)).text()
+    const id = await (await fetch(`${server.url}/peerjs/id`)).text()
     assert.match(id, UUID)
 
-    const url = `${server.url.replace('http', 'ws')}/peerjs?key=secret&id=${id}&token=t`
+    const url = `${server.url.replace('http', 'ws')}/peerjs?key=peerjs&id=${id}&token=t`
     const peer = new WebSocket(url)
     assert.deepEqual(await nextMessage(peer), { type: 'OPEN' })
     peer.close()
@@ -566,13 +582,13 @@ test('KEY sets the PeerJS key', async () => {
 })
 
 async function nextMessage(socket: WebSocket) {
-  const [data] = await once(socket, 'message', {
+  const [data] = (await once(socket, 'message', {
     signal: AbortSignal.timeout(5_000)
-  })
-  return JSON.parse(String(data))
+  })) as [Buffer | string]
+  return JSON.parse(String(data)) as unknown
 }
 
-describe('with a partial Twilio configuration', () => {
+void describe('with a partial Twilio configuration', () => {
   const root = fileURLToPath(new URL('..', import.meta.url))
 
   async function boot(env: Record<string, string>) {
@@ -582,10 +598,16 @@ describe('with a partial Twilio configuration', () => {
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let output = ''
-    child.stdout.setEncoding('utf8').on('data', (data) => (output += data))
-    child.stderr.setEncoding('utf8').on('data', (data) => (output += data))
+    child.stdout
+      .setEncoding('utf8')
+      .on('data', (data: string) => (output += data))
+    child.stderr
+      .setEncoding('utf8')
+      .on('data', (data: string) => (output += data))
     // 'close' fires after the stdio streams close, so output is complete
-    const closed = once(child, 'close')
+    const closed = once(child, 'close') as Promise<
+      [number | null, NodeJS.Signals | null]
+    >
     const spawnFailed = once(child, 'error').then(([error]) => {
       throw error
     })
@@ -600,7 +622,7 @@ describe('with a partial Twilio configuration', () => {
       const result = await Promise.race([
         closed.then(([code]) => ({ code, output, timedOut: false })),
         spawnFailed,
-        deadline.then(async (state) => {
+        deadline.then((state) => {
           if (state === 'timed out') child.kill('SIGKILL')
           return { code: null, output, timedOut: state === 'timed out' }
         })
@@ -616,7 +638,7 @@ describe('with a partial Twilio configuration', () => {
     }
   }
 
-  test('refuses to start with only TWILIO_ACCOUNT_SID set', async () => {
+  void test('refuses to start with only TWILIO_ACCOUNT_SID set', async () => {
     const { code, output } = await boot({
       TWILIO_ACCOUNT_SID: 'AC' + '0'.repeat(32),
       TWILIO_AUTH_TOKEN: ''
@@ -626,7 +648,7 @@ describe('with a partial Twilio configuration', () => {
     assert.doesNotMatch(output, /Pinto listening/)
   })
 
-  test('refuses to start with only TWILIO_AUTH_TOKEN set', async () => {
+  void test('refuses to start with only TWILIO_AUTH_TOKEN set', async () => {
     const { code, output } = await boot({
       TWILIO_ACCOUNT_SID: '',
       TWILIO_AUTH_TOKEN: 'secret'

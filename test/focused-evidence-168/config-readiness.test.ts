@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { withBrowser } from './proposal-resources.ts'
 
-test('pending config disables Mute until its handler is installed', async () => {
+void test('pending config disables Mute until its handler is installed', async () => {
   await withBrowser(async (server, browser) => {
     const context = await browser.newContext({ baseURL: server.url })
     let release!: () => void
@@ -28,9 +28,9 @@ test('pending config disables Mute until its handler is installed', async () => 
       assert.equal(await page.locator('#camera').isDisabled(), true)
       assert.equal(await page.locator('#call').isDisabled(), true)
       const before = await page.locator('#mute').textContent()
-      await page
-        .locator('#mute')
-        .evaluate((el) => (el as HTMLButtonElement).click())
+      await page.locator('#mute').evaluate((el) => {
+        ;(el as HTMLButtonElement).click()
+      })
       assert.equal(await page.locator('#mute').textContent(), before)
       release()
       await page.locator('#call:enabled').waitFor()
@@ -44,7 +44,7 @@ test('pending config disables Mute until its handler is installed', async () => 
 })
 
 for (const format of ['json', 'html']) {
-  test(`HTTP 500 ${format} config is rejected before initialization`, async () => {
+  void test(`HTTP 500 ${format} config is rejected before initialization`, async () => {
     await withBrowser(async (server, browser) => {
       const context = await browser.newContext({ baseURL: server.url })
       try {
@@ -96,7 +96,7 @@ for (const format of ['json', 'html']) {
   })
 }
 
-test('aborted and unreadable config retains existing visible failure reporting', async () => {
+void test('aborted and unreadable config retains existing visible failure reporting', async () => {
   await withBrowser(async (server, browser) => {
     for (const mode of ['abort', 'invalid-json', '500-text']) {
       const context = await browser.newContext({ baseURL: server.url })

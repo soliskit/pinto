@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { ordinal } from '../public/ordinal.js'
 
-test('ordinal adds st, nd, rd and th', () => {
+void test('ordinal adds st, nd, rd and th', () => {
   const cases: [number, string][] = [
     [1, '1st'],
     [2, '2nd'],
@@ -21,8 +21,8 @@ test('ordinal adds st, nd, rd and th', () => {
   for (const [n, expected] of cases) assert.equal(ordinal(n), expected)
 })
 
-test('ordinal uses th for 11, 12 and 13 in every hundred', () => {
+void test('ordinal uses th for 11, 12 and 13 in every hundred', () => {
   for (const n of [11, 12, 13, 111, 112, 113, 1011, 1012, 1013]) {
-    assert.equal(ordinal(n), `${n}th`)
+    assert.equal(ordinal(n), `${String(n)}th`)
   }
 })

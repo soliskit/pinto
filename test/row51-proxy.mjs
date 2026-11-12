@@ -312,7 +312,9 @@ export function startProxy({
       emit({ ev: 'upstream-connect', conn: conn.id })
       onReady()
     })
-    up.on('data', (chunk) => onUpstreamData(conn, chunk))
+    up.on('data', (chunk) => {
+      onUpstreamData(conn, chunk)
+    })
     up.on('end', () => {
       emit({ ev: 'upstream-end', conn: conn.id })
       if (conn.killed || conn.closed) return
@@ -714,7 +716,7 @@ export function startProxy({
       cc.headText.split('\r\n')[0] +
       '\r\n' +
       kept.map(([k, v]) => `${k}: ${v}`).join('\r\n') +
-      `\r\ncontent-length: ${body.length}\r\n\r\n`
+      `\r\ncontent-length: ${String(body.length)}\r\n\r\n`
     emit({
       ev: 'config-intercept',
       conn: conn.id,
@@ -788,7 +790,7 @@ export function startProxy({
       res.end(JSON.stringify(obj))
     }
     if (url.pathname === '/conns') {
-      return answer(200, {
+      answer(200, {
         conns: [...proxy.conns.values()].map((c) => ({
           id: c.id,
           page: c.page,
@@ -799,22 +801,29 @@ export function startProxy({
           lastHeartbeatForwarded: c.lastHeartbeatForwarded
         }))
       })
+      return
     }
-    if (!conn) return answer(404, { error: 'unknown conn' })
-    if (req.method !== 'POST') return answer(405, { error: 'POST only' })
+    if (!conn) {
+      answer(404, { error: 'unknown conn' })
+      return
+    }
+    if (req.method !== 'POST') {
+      answer(405, { error: 'POST only' })
+      return
+    }
     if (url.pathname === '/kill') {
-      return answer(200, kill(conn, url.searchParams.get('mode') || 'fin'))
+      answer(200, kill(conn, url.searchParams.get('mode') || 'fin'))
+      return
     }
     if (url.pathname === '/deliver') {
-      return answer(
-        200,
-        deliver(conn, url.searchParams.get('mode') || 'close-frame')
-      )
+      answer(200, deliver(conn, url.searchParams.get('mode') || 'close-frame'))
+      return
     }
     if (url.pathname === '/tidy') {
-      return answer(200, tidy(conn))
+      answer(200, tidy(conn))
+      return
     }
-    return answer(404, { error: 'unknown control path' })
+    answer(404, { error: 'unknown control path' })
   })
 
   const ready = []
@@ -823,7 +832,9 @@ export function startProxy({
       const conn = new Connection(proxy, clientSock, label)
       proxy.conns.set(conn.id, conn)
       emit({ ev: 'connect', conn: conn.id, page: label })
-      clientSock.on('data', (chunk) => onClientData(conn, chunk))
+      clientSock.on('data', (chunk) => {
+        onClientData(conn, chunk)
+      })
       clientSock.on('end', () => {
         emit({ ev: 'client-end', conn: conn.id })
         if (conn.killed || conn.closed) return

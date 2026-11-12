@@ -1,7 +1,7 @@
 // Finite observations of stored takes. Never a capture-completeness claim.
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { rawHelperPositive, sourceMatch } from './source-stage.mjs'
+import { observeHelper } from './source-stage.mjs'
 export const reasons = [
   'before-goto',
   'before-click',
@@ -48,26 +48,16 @@ export const takeKeys = [
 export function emptyTakeSummary() {
   return Object.fromEntries(takeKeys.map((key) => [key, 'inconclusive']))
 }
+/** @param {unknown} entries @param {unknown} source */
 export function helperState(entries, source) {
   if (!Array.isArray(entries)) return 'inconclusive'
   if (!entries.length) return 'no-event-entry'
-  if (sourceMatch(entries, source) !== 'yes') return 'inconclusive'
-  const positive = rawHelperPositive(entries, source)
-  if (positive === 'inconclusive') return 'inconclusive'
-  if (positive === 'yes') return 'exact-positive'
-  const start = source.indexOf('function submitted()')
-  const end = source.indexOf('}', start) + 1
-  return entries.some((entry) =>
-    entry.functions.some(
-      (fn) =>
-        fn.functionName === 'submitted' &&
-        fn.ranges[0].startOffset === start &&
-        fn.ranges[0].endOffset === end
-    )
-  )
-    ? 'exact-zero'
-    : 'absent-exact'
+  const observation = observeHelper(entries, source)
+  if (observation === null) return 'inconclusive'
+  if (observation.raw === 'yes') return 'exact-positive'
+  return observation.exact ? 'exact-zero' : 'absent-exact'
 }
+/** @param {number} count */
 const cap = (count) => (count === 0 ? '0' : count === 1 ? '1' : '2plus')
 // Inputs are parsed data, not instructions. Failure yields no partial summary.
 export function summarizeTakes(records, index, source, mode) {
@@ -181,6 +171,7 @@ export function summarizeTakes(records, index, source, mode) {
   }
 }
 // Call only after the unchanged original capture validator has succeeded.
+/** @param {string} dir @param {string} source @param {string} mode */
 export function readTakeSummary(dir, source, mode) {
   try {
     const text = readFileSync(join(dir, 'captures.index'), 'utf8')

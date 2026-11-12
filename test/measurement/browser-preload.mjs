@@ -30,6 +30,7 @@ if (process.env.PINTO_MEASURE === '1') {
   // action API (click, dblclick, tap, press) returns.
   const AFTER_ACTION = process.env.PINTO_MEASURE_AFTER_ACTION === '1'
   const ACTION_APIS = new Set(['click', 'dblclick', 'tap', 'press'])
+  /** @type {Array<'goto' | 'reload' | 'goBack' | 'goForward' | 'click' | 'dblclick' | 'tap' | 'press'>} */
   const NAV_APIS = [
     'goto',
     'reload',
@@ -42,6 +43,7 @@ if (process.env.PINTO_MEASURE === '1') {
   ]
   let seq = 0
 
+  /** @param {import('playwright').Page} page @param {import('playwright').BrowserContext} context */
   async function instrument(page, context) {
     const session = await context.newCDPSession(page)
     await session.send('Page.enable')
@@ -52,16 +54,19 @@ if (process.env.PINTO_MEASURE === '1') {
       detailed: true
     })
 
+    /** @type {Map<string, string>} */
     const sources = new Map()
     session.on('Debugger.scriptParsed', (event) => {
       if (event.url) sources.set(event.scriptId, event.url)
     })
+    /** @type {{at: number, url: string}[]} */
     const navLog = []
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame())
         navLog.push({ at: Date.now(), url: page.url() })
     })
 
+    /** @param {string} scriptId */
     async function sourceFor(scriptId) {
       try {
         const r = await session.send('Debugger.getScriptSource', { scriptId })
@@ -71,10 +76,11 @@ if (process.env.PINTO_MEASURE === '1') {
       }
     }
 
+    /** @param {string} why */
     async function take(why) {
       const at = Date.now()
       seq += 1
-      const name = `${process.pid}-${seq}.json`
+      const name = `${String(process.pid)}-${String(seq)}.json`
       let result
       try {
         ;({ result } = await session.send('Profiler.takePreciseCoverage'))
@@ -124,6 +130,7 @@ if (process.env.PINTO_MEASURE === '1') {
         if (!AFTER_ACTION || !ACTION_APIS.has(api)) return original(...args)
         const settled = await original(...args).then(
           (value) => ({ value }),
+          /** @param {unknown} error */
           (error) => ({ error })
         )
         if (!page.isClosed()) {
@@ -134,7 +141,10 @@ if (process.env.PINTO_MEASURE === '1') {
             // failed capture the same way take() does so the run fails.
             seq += 1
             writeFileSync(
-              join(captureDir, `${process.pid}-${seq}.json.failed`),
+              join(
+                captureDir,
+                `${String(process.pid)}-${String(seq)}.json.failed`
+              ),
               `after:${api} capture threw: ${error}\n`
             )
           }
@@ -155,14 +165,20 @@ if (process.env.PINTO_MEASURE === '1') {
       }
       return originalClose(...args)
     }
-    page.once('close', () => clearInterval(poll))
+    page.once('close', () => {
+      clearInterval(poll)
+    })
     return { take }
   }
 
+  /** @type {WeakSet<import('playwright').Page>} */
   const instrumented = new WeakSet()
+  /** @type {WeakSet<import('playwright').Page>} */
   const closing = new WeakSet()
+  /** @type {WeakMap<import('playwright').Page, {take: (why: string) => Promise<void>}>} */
   const takesByPage = new WeakMap()
 
+  /** @param {import('playwright').BrowserContext} context */
   function watchContext(context) {
     const originalNewPage = context.newPage.bind(context)
     context.newPage = async (...args) => {

@@ -16,7 +16,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import libCoverage from 'istanbul-lib-coverage'
+import { libCoverage, isPositive } from '../runtime-coverage.mjs'
 import { chromium } from 'playwright'
 import { CoverageConflict, mergeV8Entries, uncovered } from '../v8merge.mjs'
 import { toFileCoverage, summarize } from '../convert.mjs'
@@ -30,20 +30,47 @@ import { stopWithTimeout } from '../stopwithtimeout.mjs'
 
 const { createFileCoverage } = libCoverage
 const here = fileURLToPath(new URL('.', import.meta.url))
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+const isRecord = (value) => typeof value === 'object' && value !== null
+/** @param {unknown} value @returns {value is unknown[]} */
+const isList = (value) => Array.isArray(value)
+/** @param {string} text */
+function parseJson(text) {
+  /** @type {unknown} */
+  const value = JSON.parse(text)
+  return value
+}
+/** @param {unknown} value @param {string} what */
+function recordList(value, what) {
+  if (!isList(value)) throw new Error(`${what} is not a list`)
+  /** @type {Record<string, unknown>[]} */
+  const records = []
+  for (const item of value) {
+    if (!isRecord(item)) throw new Error(`${what} has a non-object entry`)
+    records.push(item)
+  }
+  return records
+}
+/** @type {string[]} */
 const results = []
+/** @param {string} name @param {() => unknown} fn */
 async function proof(name, fn) {
   try {
     await fn()
     results.push(`ok - ${name}`)
   } catch (error) {
-    results.push(`FAIL - ${name}: ${error.message}`)
+    results.push(
+      `FAIL - ${name}: ${error instanceof Error ? error.message : String(error)}`
+    )
     process.exitCode = 1
   }
 }
 
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData} cov */
 const lineHits = (cov) => createFileCoverage(cov).getLineCoverage()
 
 // Runs a fixture program with coverage on and returns its converted coverage.
+/** @param {string} fileAbs @param {{preload?: boolean}} [options] */
 async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'fx-cov-'))
   const nodeOptions = preload
@@ -59,15 +86,21 @@ async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
       },
       stdio: 'ignore'
     })
-    child.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`fixture exited ${code}`))
-    )
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve()
+      } else {
+        reject(new Error(`fixture exited ${String(code)}`))
+      }
+    })
   })
   const url = 'file://' + fileAbs
   const entries = []
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
-    const d = JSON.parse(readFileSync(join(dir, f), 'utf8'))
-    for (const r of d.result) if (r.url === url) entries.push(r)
+    const d = parseJson(readFileSync(join(dir, f), 'utf8'))
+    if (!isRecord(d)) throw new Error(`coverage file ${f} is not an object`)
+    for (const r of recordList(d.result, `coverage file ${f} result`))
+      if (r.url === url) entries.push({ url, functions: r.functions })
   }
   assert(entries.length > 0, `no coverage entry for ${url}`)
   const source = readFileSync(fileAbs, 'utf8')
@@ -78,6 +111,7 @@ async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
 }
 
 // A temp file with fixture content, so the converter reads real paths.
+/** @param {string} name @param {string} content */
 function tempScript(name, content) {
   const dir = mkdtempSync(join(tmpdir(), 'fx-js-'))
   const abs = join(dir, name)
@@ -85,6 +119,10 @@ function tempScript(name, content) {
   return abs
 }
 
+/**
+ * @param {Partial<Record<string, { type: string, body: string }>>} routes
+ * @param {(base: string) => unknown} fn
+ */
 async function withFixtureServer(routes, fn) {
   const server = createServer((req, res) => {
     const pathname = new URL(req.url, 'http://x').pathname
@@ -99,7 +137,10 @@ async function withFixtureServer(routes, fn) {
   })
   await new Promise((resolve) => server.listen(0, resolve))
   try {
-    await fn(`http://localhost:${server.address().port}`)
+    const address = server.address()
+    if (address === null || typeof address === 'string')
+      throw new Error('fixture server has no TCP address')
+    await fn(`http://localhost:${String(address.port)}`)
   } finally {
     server.close()
   }
@@ -107,7 +148,9 @@ async function withFixtureServer(routes, fn) {
 
 const FX_JS =
   'function f() {\n  return 7\n}\nif (location.search.includes("run")) {\n  f()\n}\n'
+/** @param {string} src */
 const PAGE = (src) => `<html><body><script src="${src}"></script></body></html>`
+/** @param {Partial<Record<string, { type: string, body: string }>>} [extra] */
 const routesFor = (extra = {}) => ({
   '/fx.js': { type: 'text/javascript', body: FX_JS },
   ...extra
@@ -115,6 +158,7 @@ const routesFor = (extra = {}) => ({
 
 // Captures each document's coverage separately (the preload's job is capture
 // across navigation; these fixtures prove merge and conversion).
+/** @param {string[]} pages */
 async function capturePerDocument(pages) {
   const browser = await chromium.launch()
   const page = await browser.newPage()
@@ -139,7 +183,7 @@ await proof(
     const cov = await nodeCoverageFor(prog)
     const lines = lineHits(cov)
     assert.equal(lines[2], 0, 'line 2 (neverRuns body) must be uncovered')
-    assert(lines[5] > 0, 'line 5 (runs body) must be covered')
+    assert(isPositive(lines[5]), 'line 5 (runs body) must be covered')
   }
 )
 
@@ -169,7 +213,7 @@ await proof(
         )
         const cov = await toFileCoverage(merged.get('/fx.js'), abs)
         assert(
-          lineHits(cov)[2] > 0,
+          isPositive(lineHits(cov)[2]),
           'f body line must be covered after the second load'
         )
       }
@@ -206,7 +250,7 @@ await proof(
         )
         const a = await toFileCoverage(merged.get('/fx.js'), abs)
         const b = await toFileCoverage(merged.get('/b.js'), abs)
-        assert(lineHits(a)[2] > 0, 'fx.js f must be covered')
+        assert(isPositive(lineHits(a)[2]), 'fx.js f must be covered')
         assert.equal(lineHits(b)[2], 0, 'b.js f must stay uncovered')
       }
     )
@@ -217,6 +261,7 @@ await proof('a scope-listed file that never loads shows 0%', async () => {
   const abs = tempScript('never.js', FX_JS)
   const cov = await toFileCoverage(uncovered('file://' + abs, FX_JS), abs)
   const s = summarize([{ path: abs, coverage: cov }])[abs]
+  assert(s, 'the never-loaded file summary must be present')
   assert.equal(s.lines.covered, 0)
   assert(s.lines.total > 0, 'total lines must be counted')
   assert.equal(s.functions.covered, 0)
@@ -282,11 +327,12 @@ await proof(
     ]) {
       const merged = mergeV8Entries(order)
       const entry = merged.get('/fx.js')
+      assert(entry, 'the merged fixture URL must be present')
       assert.equal(entry.source, FX_JS)
       assert.equal(entry.coverageList.length, 2)
       const cov = await toFileCoverage(entry, abs)
       assert.ok(
-        Object.values(cov.s).some((hits) => hits > 0),
+        Object.values(cov.s).some((hits) => isPositive(hits)),
         "the undefined-source take's execution counts must reach the file coverage"
       )
     }
@@ -335,13 +381,14 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/fx.js'), abs)
     const fc = createFileCoverage(cov)
+    /** @type {Partial<Record<number, unknown>>} */
     const lines = fc.getLineCoverage()
     assert.equal(
       lines[2] ?? 0,
       0,
       'the return line inside never-called f must be uncovered'
     )
-    assert((lines[4] ?? 0) > 0, 'the top-level guard line stays covered')
+    assert(isPositive(lines[4] ?? 0), 'the top-level guard line stays covered')
   }
 )
 
@@ -381,10 +428,14 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/n.js'), abs)
     const fc = createFileCoverage(cov)
+    /** @type {Partial<Record<number, unknown>>} */
     const lines = fc.getLineCoverage()
     assert.equal(lines[3] ?? 0, 0, 'inner body must be uncovered')
     assert.equal(lines[5] ?? 0, 0, 'outer body statement must be uncovered')
-    assert((lines[7] ?? 0) > 0, 'the top-level reference line stays covered')
+    assert(
+      isPositive(lines[7] ?? 0),
+      'the top-level reference line stays covered'
+    )
     const outerEntry = Object.entries(cov.fnMap).find(
       ([, fn]) => fn.name === 'outer'
     )
@@ -426,11 +477,12 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/o.js'), abs)
     const fc = createFileCoverage(cov)
+    /** @type {Partial<Record<number, unknown>>} */
     const lines = fc.getLineCoverage()
     assert.equal(lines[3] ?? 0, 1, 'the executed return must stay covered')
     for (const [k, fn] of Object.entries(cov.fnMap)) {
       if (fn.name === 'outer')
-        assert.ok(cov.f[k] > 0, 'outer must read as invoked')
+        assert.ok(isPositive(cov.f[k]), 'outer must read as invoked')
       if (fn.name === 'inner')
         assert.equal(cov.f[k], 0, 'inner must read as never invoked')
     }
@@ -477,9 +529,13 @@ console.log('child done')
           },
           stdio: ['ignore', 'pipe', 'pipe']
         })
-        proc.on('exit', (code) =>
-          code === 0 ? resolve() : reject(new Error(`child exited ${code}`))
-        )
+        proc.on('exit', (code) => {
+          if (code === 0) {
+            resolve()
+          } else {
+            reject(new Error(`child exited ${String(code)}`))
+          }
+        })
         proc.on('error', reject)
       })
     } finally {
@@ -491,10 +547,20 @@ console.log('child done')
     assert(captures.length > 0, 'preload produced no captures')
     const entries = []
     for (const f of captures) {
-      const d = JSON.parse(readFileSync(join(dir, 'browser', f), 'utf8'))
-      entries.push(...d.entries)
+      const d = parseJson(readFileSync(join(dir, 'browser', f), 'utf8'))
+      if (!isRecord(d)) throw new Error(`capture ${f} is not an object`)
+      entries.push(...recordList(d.entries, `capture ${f} entries`))
     }
-    const js = entries.filter((e) => e.url.endsWith('/before.js'))
+    /** @type {{ url: string, source: string | undefined, functions: unknown }[]} */
+    const checked = []
+    for (const e of entries) {
+      if (typeof e.url !== 'string')
+        throw new Error('capture entry url is not a string')
+      if (e.source !== undefined && typeof e.source !== 'string')
+        throw new Error(`capture entry source is not a string: ${e.url}`)
+      checked.push({ url: e.url, source: e.source, functions: e.functions })
+    }
+    const js = checked.filter((e) => e.url.endsWith('/before.js'))
     assert(js.length > 0, 'the pre-navigation document must be captured')
     const abs = tempScript('before.js', 'function g() {\n  return 1\n}\ng()\n')
     const merged = mergeV8Entries(
@@ -505,7 +571,7 @@ console.log('child done')
       }))
     )
     const cov = await toFileCoverage(merged.get('/before.js'), abs)
-    assert(lineHits(cov)[2] > 0, 'g body line must be covered')
+    assert(isPositive(lineHits(cov)[2]), 'g body line must be covered')
   }
 )
 
@@ -518,15 +584,21 @@ await proof(
     )
     const cov = await nodeCoverageFor(prog, { preload: true })
     const lines = lineHits(cov)
-    assert(lines[2] > 0, 'beforeSignal body covered across snapshot and exit')
-    assert(lines[5] > 0, 'afterSignal body covered across snapshot and exit')
+    assert(
+      isPositive(lines[2]),
+      'beforeSignal body covered across snapshot and exit'
+    )
+    assert(
+      isPositive(lines[5]),
+      'afterSignal body covered across snapshot and exit'
+    )
   }
 )
 
 // --- Run-failing checks, each proven by making it fail ---------------------
 await proof(
   'one path loaded with two different contents fails the run and names the path',
-  async () => {
+  () => {
     assert.throws(
       () =>
         mergeV8Entries([
@@ -540,12 +612,13 @@ await proof(
 
 await proof(
   'a served script differing from its checked-in source fails the run',
-  async () => {
+  () => {
     assert.throws(
-      () =>
+      () => {
         checkServedScripts([
           { url: 'http://localhost:1/home.js', source: 'tampered()' }
-        ]),
+        ])
+      },
       (e) => e instanceof MeasurementFailure && e.message.includes('/home.js')
     )
   }
@@ -553,21 +626,22 @@ await proof(
 
 await proof(
   'a third-party script differing from its package fails the run',
-  async () => {
+  () => {
     assert.throws(
-      () =>
+      () => {
         checkServedScripts([
           {
             url: 'http://localhost:1/vendor/peerjs.min.js',
             source: 'tampered()'
           }
-        ]),
+        ])
+      },
       (e) => e instanceof MeasurementFailure && e.message.includes('peerjs')
     )
   }
 )
 
-await proof('a cut-off report is rejected', async () => {
+await proof('a cut-off report is rejected', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-cut-'))
   writeFileSync(join(dir, 'coverage-1-1-0.json'), '{"result": [')
   assert.throws(
@@ -576,7 +650,7 @@ await proof('a cut-off report is rejected', async () => {
   )
 })
 
-await proof('a stale report left by an earlier run is rejected', async () => {
+await proof('a stale report left by an earlier run is rejected', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-stale-'))
   const f = join(dir, 'coverage-1-1-0.json')
   writeFileSync(f, '{"result": []}')
@@ -611,7 +685,7 @@ await proof(
 
 await proof(
   'a page carrying script inside its HTML, including an event-handler attribute, is detected',
-  async () => {
+  () => {
     assert(
       findInlineScripts('<html><script>alert(1)</script></html>', 'p.html')
         .length > 0,
@@ -631,7 +705,7 @@ await proof(
   }
 )
 
-await proof('dropping one capture among many fails the run', async () => {
+await proof('dropping one capture among many fails the run', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-drop-'))
   writeFileSync(
     join(dir, 'captures.index'),
@@ -647,5 +721,5 @@ await proof('dropping one capture among many fails the run', async () => {
 
 console.log(results.join('\n'))
 console.log(
-  `${results.filter((r) => r.startsWith('ok')).length}/${results.length} fixture proofs passed`
+  `${String(results.filter((r) => r.startsWith('ok')).length)}/${String(results.length)} fixture proofs passed`
 )

@@ -3,9 +3,15 @@ import { after, afterEach, before, describe, test } from 'node:test'
 import type { Browser, BrowserContext, Page } from 'playwright'
 import { launchBrowser, startServer, type Server } from './helpers.ts'
 
-let server: Server
-let browser: Browser
-let context: BrowserContext
+let server: Server | undefined
+let browser: Browser | undefined
+let context: BrowserContext | undefined
+
+// Test bodies require successful setup; cleanup may also run after failure.
+function ready<T>(resource: T | undefined, name: string): T {
+  assert.ok(resource, `${name} setup did not complete`)
+  return resource
+}
 
 before(async () => {
   ;[server, browser] = await Promise.all([startServer(), launchBrowser()])
@@ -14,11 +20,16 @@ after(async () => {
   await browser?.close()
   await server?.stop()
 })
-afterEach(() => context?.close())
+afterEach(async () => {
+  await context?.close()
+})
 
 /** Opens the home page, in UTC, with the clock stopped at `time` if given */
 async function openHome(time?: Date) {
-  context = await browser.newContext({ baseURL: server.url, timezoneId: 'UTC' })
+  context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url,
+    timezoneId: 'UTC'
+  })
   context.setDefaultTimeout(10_000)
   const page = await context.newPage()
   if (time) {
@@ -36,8 +47,8 @@ const clockText = (page: Page) => page.textContent('#clock')
 const clock = (time: string, date: string) =>
   `${time}\u00a0 • \u00a0${date.replace(' ', ', \u00a0')}`
 
-describe('clock', () => {
-  test('shows the time, weekday and date', async () => {
+void describe('clock', () => {
+  void test('shows the time, weekday and date', async () => {
     const page = await openHome(new Date('2026-09-27T10:15:00Z'))
     assert.equal(await clockText(page), clock('10:15 AM', 'Sun Sept 27'))
     assert.equal(
@@ -46,7 +57,7 @@ describe('clock', () => {
     )
   })
 
-  test('uses 12 hour time and every weekday', async () => {
+  void test('uses 12 hour time and every weekday', async () => {
     const page = await openHome(new Date('2026-09-27T10:15:00Z'))
     const cases: [string, string, string][] = [
       ['2026-09-27T00:05:00Z', '12:05 AM', 'Sun Sept 27'],
@@ -64,7 +75,7 @@ describe('clock', () => {
     }
   })
 
-  test('updates every second', async () => {
+  void test('updates every second', async () => {
     const page = await openHome(new Date('2026-09-27T10:15:59Z'))
     assert.equal(await clockText(page), clock('10:15 AM', 'Sun Sept 27'))
     await page.clock.runFor(1000)
@@ -72,7 +83,7 @@ describe('clock', () => {
   })
 })
 
-describe('room name form', () => {
+void describe('room name form', () => {
   /** Submits `name` and returns the path of the room it opens */
   async function open(page: Page, name: string, submit: 'click' | 'enter') {
     await page.fill('#room-name', name)
@@ -82,17 +93,17 @@ describe('room name form', () => {
     return new URL(page.url()).pathname
   }
 
-  test('Open goes to the typed room, trimmed and in lower case', async () => {
+  void test('Open goes to the typed room, trimmed and in lower case', async () => {
     const page = await openHome()
     assert.equal(await open(page, '  Standup ', 'click'), '/room/standup')
   })
 
-  test('Enter also opens the room', async () => {
+  void test('Enter also opens the room', async () => {
     const page = await openHome()
     assert.equal(await open(page, 'standup', 'enter'), '/room/standup')
   })
 
-  test('encodes the room name, and the room page decodes it', async () => {
+  void test('encodes the room name, and the room page decodes it', async () => {
     const page = await openHome()
     const path = await open(page, 'Team #1/Ü', 'click')
     assert.equal(path, '/room/team%20%231%2F%C3%BC')
@@ -100,7 +111,7 @@ describe('room name form', () => {
     assert.equal(await page.textContent('#title'), 'Join team #1/ü')
   })
 
-  test('makes up a room name when none is typed', async () => {
+  void test('makes up a room name when none is typed', async () => {
     for (const [random, name] of [
       [0, 'autumn-bird'],
       [0.999, 'wild-wave']
@@ -108,17 +119,17 @@ describe('room name form', () => {
       const page = await openHome()
       await page.evaluate((random) => (Math.random = () => random), random)
       assert.equal(await open(page, '   ', 'click'), `/room/${name}`)
-      await context.close()
+      await ready(context, 'context').close()
     }
   })
 
-  test('makes up a different room name each time', async () => {
+  void test('makes up a different room name each time', async () => {
     const names = new Set<string>()
     const page = await openHome()
     for (let i = 0; i < 5; i++) {
       names.add(await open(page, '', 'click'))
       await page.goto('/')
     }
-    assert.ok(names.size > 1, `always ${[...names]}`)
+    assert.ok(names.size > 1, `always ${String([...names])}`)
   })
 })

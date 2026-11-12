@@ -25,7 +25,6 @@ function resolvePort(): number {
 }
 
 const PORT = resolvePort()
-const KEY = process.env.KEY || 'pinto'
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url))
 const peerjsClient = fileURLToPath(
   import.meta.resolve('peerjs/dist/peerjs.min.js')
@@ -52,7 +51,7 @@ function socketSources(): string[] {
   if (deployed !== undefined) {
     return HOSTNAME_SHAPE.test(deployed) ? [`wss://${deployed}`] : []
   }
-  return [`ws://localhost:${PORT}`, `ws://127.0.0.1:${PORT}`]
+  return [`ws://localhost:${String(PORT)}`, `ws://127.0.0.1:${String(PORT)}`]
 }
 
 const CONTENT_SECURITY_POLICY = [
@@ -78,7 +77,6 @@ const app = express()
 const server = http.createServer(app)
 const io = new SocketServer(server)
 const peerServer = ExpressPeerServer(server, {
-  key: KEY,
   // By default PeerJS attaches a WebSocket server that answers every upgrade
   // request on `server` and rejects paths other than its own, which breaks
   // Socket.IO's WebSocket transport. Only hand it upgrades for its own path.
@@ -132,7 +130,7 @@ app.get('/room/:roomId', (_req, res) => {
   res.sendFile('room.html', { root: publicDir })
 })
 app.get('/config', async (_req, res) => {
-  res.json({ key: KEY, iceServers: await getIceServers() })
+  res.json({ iceServers: await getIceServers() })
 })
 app.use(peerServer)
 
@@ -155,6 +153,10 @@ io.on('connection', (socket: Socket) => {
   console.log(`${socket.id} - connected`)
 
   socket.on('join-room', (roomId: unknown, userId: unknown, reply: unknown) => {
+    const answer =
+      typeof reply === 'function'
+        ? (reply as (value: unknown) => void)
+        : undefined
     // Malformed requests (a non-string name or a missing id) get no answer;
     // a well-formed name outside the rule is refused with its reason below.
     if (typeof roomId !== 'string' || typeof userId !== 'string' || !userId) {
@@ -167,7 +169,7 @@ io.on('connection', (socket: Socket) => {
       // name can never join, but the answered refusal keeps the
       // acknowledgement contract the duplicate-id refusal uses.
       console.error(`${socket.id} - join-room refused: name outside the rule`)
-      if (typeof reply === 'function') reply(ROOM_NAME_REASON)
+      answer?.(ROOM_NAME_REASON)
       return
     }
     let members = rooms.get(room)
@@ -178,7 +180,7 @@ io.on('connection', (socket: Socket) => {
       // answered so a page can try again once the other connection is
       // really gone.
       console.error(`${socket.id} - join-room refused: id already in room`)
-      if (typeof reply === 'function') reply(null)
+      answer?.(null)
       return
     }
     if (!members) {
@@ -191,13 +193,11 @@ io.on('connection', (socket: Socket) => {
         `${socket.id} - user: ${escapeLogId(userId)} - joined: ${room}`
       )
       members.set(userId, socket.id)
-      socket.join(appRoom(room))
+      void socket.join(appRoom(room))
     }
     // Every valid join, first or repeat, learns who is in the room, so
     // every member id a page calls or answers comes from the server
-    if (typeof reply === 'function') {
-      reply([...members.keys()].filter((id) => id !== userId))
-    }
+    answer?.([...members.keys()].filter((id) => id !== userId))
     if (firstJoin) {
       socket.to(appRoom(room)).emit('user-connected', userId)
     }
@@ -235,14 +235,14 @@ peerServer.on('disconnect', (client: IClient) => {
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EACCES') {
     console.error(
-      `Pinto cannot listen on port ${PORT}: permission denied. ` +
+      `Pinto cannot listen on port ${String(PORT)}: permission denied. ` +
         `Set PORT to a port the server is permitted to use, for example PORT=3000.`
     )
     process.exit(1)
   }
   if (error.code === 'EADDRINUSE') {
     console.error(
-      `Pinto cannot listen on port ${PORT}: the port is already in use. ` +
+      `Pinto cannot listen on port ${String(PORT)}: the port is already in use. ` +
         `Set PORT to a free port.`
     )
     process.exit(1)
@@ -261,5 +261,5 @@ if (missingTwilio) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Pinto listening on http://localhost:${PORT}`)
+  console.log(`Pinto listening on http://localhost:${String(PORT)}`)
 })

@@ -17,8 +17,8 @@ before(async () => {
   ;[server, browser] = await Promise.all([startServer(), launchBrowser()])
 })
 after(async () => {
-  await browser?.close()
-  await server?.stop()
+  await browser.close()
+  await server.stop()
 })
 
 function fakeCameraHook() {
@@ -50,8 +50,8 @@ async function joinRoom(context: BrowserContext, room: string) {
   return page
 }
 
-describe('Attendee video width (REQ 13)', () => {
-  test('a 400px remote stream fits a 390px page without sideways scrolling', async () => {
+void describe('Attendee video width (REQ 13)', () => {
+  void test('a 400px remote stream fits a 390px page without sideways scrolling', async () => {
     const room = 'video-width-test'
     const ctxA = await browser.newContext({
       baseURL: server.url,
@@ -85,14 +85,15 @@ describe('Attendee video width (REQ 13)', () => {
           document.querySelector<HTMLElement>('.presenter video')
         if (!container || !tile || !presenter) return null
         return {
-          containerRect: container.getBoundingClientRect().toJSON(),
-          tileRect: tile.getBoundingClientRect().toJSON(),
-          presenterRect: presenter.getBoundingClientRect().toJSON(),
+          containerRect: container.getBoundingClientRect().toJSON() as DOMRect,
+          tileRect: tile.getBoundingClientRect().toJSON() as DOMRect,
+          presenterRect: presenter.getBoundingClientRect().toJSON() as DOMRect,
           scrollWidth: document.documentElement.scrollWidth,
           clientWidth: document.documentElement.clientWidth,
           innerWidth: window.innerWidth
         }
       })
+      assert.ok(measured)
       assert.ok(
         measured,
         'expected a remote attendee tile and the presenter preview'
@@ -101,21 +102,21 @@ describe('Attendee video width (REQ 13)', () => {
       // The tile's actual rendered bounds fit inside its container and the viewport
       assert.ok(
         measured.tileRect.right <= measured.containerRect.right + 0.5,
-        `tile right ${measured.tileRect.right} exceeds container right ${measured.containerRect.right}`
+        `tile right ${String(measured.tileRect.right)} exceeds container right ${String(measured.containerRect.right)}`
       )
       assert.ok(
         measured.tileRect.left >= measured.containerRect.left - 0.5,
-        `tile left ${measured.tileRect.left} is outside container left ${measured.containerRect.left}`
+        `tile left ${String(measured.tileRect.left)} is outside container left ${String(measured.containerRect.left)}`
       )
       assert.ok(
         measured.tileRect.right <= measured.innerWidth + 0.5,
-        `tile right ${measured.tileRect.right} exceeds viewport width ${measured.innerWidth}`
+        `tile right ${String(measured.tileRect.right)} exceeds viewport width ${String(measured.innerWidth)}`
       )
 
       // The page never grows wider than its viewport
       assert.ok(
         measured.scrollWidth <= measured.clientWidth,
-        `document scrollWidth ${measured.scrollWidth} exceeds clientWidth ${measured.clientWidth}`
+        `document scrollWidth ${String(measured.scrollWidth)} exceeds clientWidth ${String(measured.clientWidth)}`
       )
 
       // The attendee-only limit does not shrink the presenter's fixed-size preview

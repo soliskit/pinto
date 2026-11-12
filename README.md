@@ -13,7 +13,7 @@ The Node server serves the app and helps browsers connect. A STUN server finds a
 
 ## Run locally
 
-- [Node.js](https://nodejs.org) `26` or newer in the 26 line (npm comes with it). Node runs the TypeScript source directly, so nothing needs building
+- [Node.js](https://nodejs.org) `26.13.0` (npm comes with it). Node runs the TypeScript source directly, so nothing needs building
 
 ### Start the server
 
@@ -33,7 +33,7 @@ Open [http://localhost:4000](http://localhost:4000). Type a room name, or press 
 
 ## How a call works
 
-1. The room page fetches `/config` for the PeerJS key and the STUN and TURN servers.
+1. The room page fetches `/config` for the STUN and TURN servers.
 2. It connects to the PeerJS server, which gives it a random peer id, and to Socket.IO.
 3. **Join** sends the room name and peer id. The server rejects an id already held by another connection in the same room, returns the room roster, and tells existing members about the newcomer. The page answers calls only from that roster.
 4. Media usually flows directly between browsers, or through a TURN relay when a direct link is blocked. **Leave** stops capture and reconnects the room socket; when the server sees a disconnect, it tells the room which ids that connection owned.
@@ -63,11 +63,12 @@ Before joining, the camera and microphone buttons choose how you join; they do n
 | Variable             | Default | Purpose                                                          |
 | -------------------- | ------- | ---------------------------------------------------------------- |
 | `PORT`               | `443`   | Port the HTTP server listens on                                  |
-| `KEY`                | `pinto` | PeerJS key; the PeerJS API lives under `/<KEY>`                  |
 | `TWILIO_ACCOUNT_SID` |         | With `TWILIO_AUTH_TOKEN`, enables Twilio's STUN and TURN servers |
 | `TWILIO_AUTH_TOKEN`  |         | Twilio auth token                                                |
 
 Without both Twilio settings, or if the request to Twilio fails, the server returns Google's public STUN server. A direct connection may work without a relay. Networks that block it need a TURN relay.
+
+Pinto uses PeerServer's default connection key, `peerjs`, on both sides. The `KEY` environment variable is no longer used. Existing clients using the previous key must reload after an upgrade.
 
 ## Endpoints
 
@@ -75,8 +76,8 @@ Without both Twilio settings, or if the request to Twilio fails, the server retu
 | ----------------------------- | ---------------------------------------------------------------------- |
 | `/`                           | Home page                                                              |
 | `/room/<name>`                | Room page                                                              |
-| `/config`                     | `{ key, iceServers }` for the client                                   |
-| `/<KEY>/id`                   | New PeerJS client id                                                   |
+| `/config`                     | `{ iceServers }` for the client                                        |
+| `/peerjs/id`                  | New PeerJS client id                                                   |
 | `/peerjs`                     | PeerJS WebSocket                                                       |
 | `/socket.io`                  | Socket.IO, with `join-room`, `user-connected`, and `user-disconnected` |
 | `/vendor/peerjs.min.js`       | PeerJS browser client, served from `node_modules`                      |
@@ -125,7 +126,7 @@ GitHub Actions runs type checks, lint and the regular suite on pushes to `main` 
 | `npm run dev`       | Run with `node --watch`                                |
 | `npm start`         | Run the server                                         |
 | `npm test`          | Run the regular tests                                  |
-| `npm run test:slow` | Run the capture and call-access diagnostics             |
+| `npm run test:slow` | Run the capture and call-access diagnostics            |
 | `npm run typecheck` | Type check the server and the client (no output files) |
 | `npm run lint`      | Lint with ESLint                                       |
 | `npm run format`    | Format files with Prettier                             |
@@ -146,7 +147,7 @@ To add TURN relays, set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` under the s
 
 ### Other hosts
 
-Other hosts need to run Node 26 or newer in the 26 line as one long-running process.
+Other hosts need to run Node 26.13.0 as one long-running process.
 
 ## License
 

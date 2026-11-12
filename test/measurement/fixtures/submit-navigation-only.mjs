@@ -6,8 +6,8 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import libCoverage from 'istanbul-lib-coverage'
-import V8ToIstanbul from 'v8-to-istanbul'
+import { libCoverage, isPositive } from '../runtime-coverage.mjs'
+import { createConverter as V8ToIstanbul } from '../runtime-converter.mjs'
 import {
   sourceMatch,
   rawHelperPositive,
@@ -48,6 +48,7 @@ const childPhases = new Set([
   'server-close',
   'done'
 ])
+/** @param {string} name @param {() => unknown} fn */
 async function proof(name, fn) {
   try {
     await fn()
@@ -68,7 +69,9 @@ async function proof(name, fn) {
     process.exitCode = 1
   }
 }
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData | undefined} cov */
 const lineHits = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
+/** @param {string} name @param {string} content */
 function tempScript(name, content) {
   const abs = join(mkdtempSync(join(tmpdir(), 'fx-js-')), name)
   writeFileSync(abs, content)
@@ -168,6 +171,7 @@ mark('done')
             }
           )
           let settled = false
+          /** @param {(Error & {code?: string}) | undefined} error */
           function finish(error) {
             if (settled) return
             settled = true
@@ -191,18 +195,19 @@ mark('done')
               reject(error)
             } else resolve()
           }
-          const watchdog = setTimeout(
-            () => finish(new Error('child cleanup deadline exceeded')),
-            100_000
-          )
-          proc.once('exit', (code, signal) =>
+          const watchdog = setTimeout(() => {
+            finish(new Error('child cleanup deadline exceeded'))
+          }, 100_000)
+          proc.once('exit', (code, signal) => {
             finish(
               code === 0
                 ? undefined
                 : new Error(`child exited ${code}/${signal}`)
             )
-          )
-          proc.once('error', (error) => finish(error))
+          })
+          proc.once('error', (error) => {
+            finish(error)
+          })
         })
       } finally {
         rmSync(child, { force: true })
@@ -226,7 +231,7 @@ mark('done')
         entries,
         src,
         async (entry) => {
-          const direct = new V8ToIstanbul(abs, 0, { source: src })
+          const direct = V8ToIstanbul(abs, 0, { source: src })
           await direct.load()
           direct.applyCoverage(entry.functions)
           return lineHits(direct.toIstanbul()[abs])[2]
@@ -246,27 +251,27 @@ mark('done')
       observed['wrapper-line2-positive'] = wrapperLine2Positive(lines[2])
       phase = 'credit-line-2'
       assert(
-        lines[2] > 0,
+        isPositive(lines[2]),
         'helper body must be credited after synchronous navigation'
       )
       phase = 'credit-line-5'
       assert(
-        lines[5] > 0,
+        isPositive(lines[5]),
         'submit callback must be credited after synchronous navigation'
       )
       phase = 'credit-line-6'
       assert(
-        lines[6] > 0,
+        isPositive(lines[6]),
         'helper call must be credited after synchronous navigation'
       )
       phase = 'credit-line-7'
-      assert(lines[7] > 0, 'navigation statement must be credited')
+      assert(isPositive(lines[7]), 'navigation statement must be credited')
       const helper = Object.entries(cov.fnMap).find(
         ([, fn]) => fn.name === 'submitted'
       )
       phase = 'credit-function'
       assert(
-        helper && cov.f[helper[0]] > 0,
+        helper && isPositive(cov.f[helper[0]]),
         'named helper function must be credited'
       )
     }

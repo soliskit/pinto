@@ -26,12 +26,24 @@ export const OPCODES = {
 
 const MAX_PAYLOAD = 64 * 1024 * 1024
 
+/**
+ * @typedef {{ fin: boolean, rsv1: boolean, opcode: number, masked: boolean,
+ *   len: number, payload: Buffer }} Frame
+ * @typedef {{ opcode: number, rsv1: boolean, payload: Buffer }} Message
+ * @typedef {{ opcode: number, rsv1: boolean, parts: Buffer[] }} Fragment
+ */
+
 export class WsFrameParser {
   constructor() {
+    /** @type {Buffer} */
     this.buf = Buffer.alloc(0)
   }
 
-  /** Feed bytes; returns an array of complete frames. */
+  /**
+   * Feed bytes; returns an array of complete frames.
+   * @param {Buffer} chunk
+   * @returns {Frame[]}
+   */
   push(chunk) {
     this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk
     const frames = []
@@ -43,6 +55,7 @@ export class WsFrameParser {
     return frames
   }
 
+  /** @returns {Frame | null} */
   #tryParse() {
     const b = this.buf
     if (b.length < 2) return null
@@ -63,7 +76,7 @@ export class WsFrameParser {
       offset += 8
     }
     if (!Number.isSafeInteger(len) || len > MAX_PAYLOAD) {
-      throw new Error(`frame payload length ${len} over cap`)
+      throw new Error(`frame payload length ${String(len)} over cap`)
     }
     let maskKey = null
     if (masked) {
@@ -72,8 +85,8 @@ export class WsFrameParser {
       offset += 4
     }
     if (b.length < offset + len) return null
-    let payload = Buffer.from(b.subarray(offset, offset + len))
-    if (masked) {
+    const payload = Buffer.from(b.subarray(offset, offset + len))
+    if (maskKey !== null) {
       for (let i = 0; i < len; i++) payload[i] ^= maskKey[i & 3]
     }
     this.buf = b.subarray(offset + len)
@@ -84,10 +97,15 @@ export class WsFrameParser {
 /** Folds fragmented messages; control frames pass through complete. */
 export class MessageReassembler {
   constructor() {
+    /** @type {Fragment | null} */
     this.frag = null
   }
 
-  /** Feed frames from WsFrameParser; returns complete messages. */
+  /**
+   * Feed frames from WsFrameParser; returns complete messages.
+   * @param {Frame[]} frames
+   * @returns {Message[]}
+   */
   push(frames) {
     const messages = []
     for (const f of frames) {
@@ -122,6 +140,9 @@ export class MessageReassembler {
 /**
  * Serialize one frame. mask: false (server-to-client) or true (a random
  * client mask key); client-to-server frames must be masked per RFC 6455.
+ * @param {{ fin?: boolean, rsv1?: boolean, opcode: number,
+ *   payload?: Buffer, mask?: boolean }} options
+ * @returns {Buffer}
  */
 export function encodeFrame({
   fin = true,
