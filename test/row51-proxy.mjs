@@ -280,7 +280,7 @@ export function startProxy({
   /**
    * @param {Connection} conn
    * @param {string} dir
-   * @param {import('./ws-frame-parser.mjs').Frame} frame
+   * @param {{ opcode: number, fin: boolean, rsv1: boolean, len: number }} frame
    * @param {import('./ws-frame-parser.mjs').Message | null} message
    */
   function logFrame(conn, dir, frame, message) {
