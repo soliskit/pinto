@@ -30,6 +30,27 @@ import { stopWithTimeout } from '../stopwithtimeout.mjs'
 
 const { createFileCoverage } = libCoverage
 const here = fileURLToPath(new URL('.', import.meta.url))
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+const isRecord = (value) => typeof value === 'object' && value !== null
+/** @param {unknown} value @returns {value is unknown[]} */
+const isList = (value) => Array.isArray(value)
+/** @param {string} text */
+function parseJson(text) {
+  /** @type {unknown} */
+  const value = JSON.parse(text)
+  return value
+}
+/** @param {unknown} value @param {string} what */
+function recordList(value, what) {
+  if (!isList(value)) throw new Error(`${what} is not a list`)
+  /** @type {Record<string, unknown>[]} */
+  const records = []
+  for (const item of value) {
+    if (!isRecord(item)) throw new Error(`${what} has a non-object entry`)
+    records.push(item)
+  }
+  return records
+}
 /** @type {string[]} */
 const results = []
 /** @param {string} name @param {() => unknown} fn */
@@ -38,7 +59,9 @@ async function proof(name, fn) {
     await fn()
     results.push(`ok - ${name}`)
   } catch (error) {
-    results.push(`FAIL - ${name}: ${error.message}`)
+    results.push(
+      `FAIL - ${name}: ${error instanceof Error ? error.message : String(error)}`
+    )
     process.exitCode = 1
   }
 }
@@ -67,15 +90,17 @@ async function nodeCoverageFor(fileAbs, { preload = false } = {}) {
       if (code === 0) {
         resolve()
       } else {
-        reject(new Error(`fixture exited ${code}`))
+        reject(new Error(`fixture exited ${String(code)}`))
       }
     })
   })
   const url = 'file://' + fileAbs
   const entries = []
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
-    const d = JSON.parse(readFileSync(join(dir, f), 'utf8'))
-    for (const r of d.result) if (r.url === url) entries.push(r)
+    const d = parseJson(readFileSync(join(dir, f), 'utf8'))
+    if (!isRecord(d)) throw new Error(`coverage file ${f} is not an object`)
+    for (const r of recordList(d.result, `coverage file ${f} result`))
+      if (r.url === url) entries.push({ url, functions: r.functions })
   }
   assert(entries.length > 0, `no coverage entry for ${url}`)
   const source = readFileSync(fileAbs, 'utf8')
@@ -112,7 +137,10 @@ async function withFixtureServer(routes, fn) {
   })
   await new Promise((resolve) => server.listen(0, resolve))
   try {
-    await fn(`http://localhost:${server.address().port}`)
+    const address = server.address()
+    if (address === null || typeof address === 'string')
+      throw new Error('fixture server has no TCP address')
+    await fn(`http://localhost:${String(address.port)}`)
   } finally {
     server.close()
   }
@@ -505,7 +533,7 @@ console.log('child done')
           if (code === 0) {
             resolve()
           } else {
-            reject(new Error(`child exited ${code}`))
+            reject(new Error(`child exited ${String(code)}`))
           }
         })
         proc.on('error', reject)
@@ -519,10 +547,20 @@ console.log('child done')
     assert(captures.length > 0, 'preload produced no captures')
     const entries = []
     for (const f of captures) {
-      const d = JSON.parse(readFileSync(join(dir, 'browser', f), 'utf8'))
-      entries.push(...d.entries)
+      const d = parseJson(readFileSync(join(dir, 'browser', f), 'utf8'))
+      if (!isRecord(d)) throw new Error(`capture ${f} is not an object`)
+      entries.push(...recordList(d.entries, `capture ${f} entries`))
     }
-    const js = entries.filter((e) => e.url.endsWith('/before.js'))
+    /** @type {{ url: string, source: string | undefined, functions: unknown }[]} */
+    const checked = []
+    for (const e of entries) {
+      if (typeof e.url !== 'string')
+        throw new Error('capture entry url is not a string')
+      if (e.source !== undefined && typeof e.source !== 'string')
+        throw new Error(`capture entry source is not a string: ${e.url}`)
+      checked.push({ url: e.url, source: e.source, functions: e.functions })
+    }
+    const js = checked.filter((e) => e.url.endsWith('/before.js'))
     assert(js.length > 0, 'the pre-navigation document must be captured')
     const abs = tempScript('before.js', 'function g() {\n  return 1\n}\ng()\n')
     const merged = mergeV8Entries(

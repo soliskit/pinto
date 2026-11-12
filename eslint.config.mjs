@@ -15,6 +15,7 @@ const helperFiles = [
   'test/measurement/server-preload.mjs',
   'test/measurement/fixtures/screen-stage-controls.mjs',
   'test/measurement/fixtures/fixture-src.js',
+  'test/measurement/fixtures/run-fixtures.mjs',
   'test/measurement/fixtures/take-screen-controls.mjs',
   'test/measurement/v8merge.mjs',
   'test/measurement/runtime-coverage.mjs',
