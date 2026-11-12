@@ -13,12 +13,17 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import libCoverage from 'istanbul-lib-coverage'
-import V8ToIstanbul from 'v8-to-istanbul'
+import {
+  libCoverage,
+  isPositive,
+  isFiniteNonnegative
+} from '../runtime-coverage.mjs'
+import { createConverter as V8ToIstanbul } from '../runtime-converter.mjs'
 import { sourceMatch, rawHelperPositive } from './source-stage.mjs'
 import { mergeV8Entries } from '../v8merge.mjs'
 import { toFileCoverage } from '../convert.mjs'
 const here = fileURLToPath(new URL('.', import.meta.url))
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData | undefined} cov */
 const lineHits = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
 const finite = (x) => Number.isFinite(x) && x >= 0 && x <= 500000
 const parse = (path) => {
@@ -380,11 +385,11 @@ mark('done')
           // Exactly the same take input, no cross-take merge.
           let directHit = 0
           for (const entry of entries) {
-            const converter = new V8ToIstanbul(abs, 0, { source: src })
+            const converter = V8ToIstanbul(abs, 0, { source: src })
             await converter.load()
             converter.applyCoverage(entry.functions)
             const hit = lineHits(converter.toIstanbul()[abs])[2]
-            assert(Number.isFinite(hit) && hit >= 0)
+            assert(isFiniteNonnegative(hit))
             directHit += hit
           }
           row.direct = directHit > 0 ? 'yes' : 'no'
@@ -393,12 +398,13 @@ mark('done')
           )
           const cov = await toFileCoverage(merged.get('/event.js'), abs)
           const hit = lineHits(cov)[2]
-          assert(Number.isFinite(hit) && hit >= 0)
+          assert(isFiniteNonnegative(hit))
           row.wrapper = hit > 0 ? 'yes' : 'no'
           const helper = Object.entries(cov.fnMap).find(
             ([, fn]) => fn.name === 'submitted'
           )
-          row.helperCredit = helper && cov.f[helper[0]] > 0 ? 'yes' : 'no'
+          row.helperCredit =
+            helper && isPositive(cov.f[helper[0]]) ? 'yes' : 'no'
           if (
             eligible &&
             row.raw === 'yes' &&

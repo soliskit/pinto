@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import libCoverage from 'istanbul-lib-coverage'
+import { libCoverage, isPositive } from '../runtime-coverage.mjs'
 import V8ToIstanbul from 'v8-to-istanbul'
 import { toFileCoverage } from '../convert.mjs'
 import { mergeV8Entries } from '../v8merge.mjs'
@@ -43,15 +43,15 @@ const coldTake = [root, span('cold', 0), span('hot', 0)]
 const absentTake = [root, span('cold', 0)]
 /** @param {import('node:inspector').Profiler.FunctionCoverage[][]} takes */
 const merged = (takes) => ({ url: '/input.js', source, coverageList: takes })
-/** @param {import('istanbul-lib-coverage').FileCoverageData} cov */
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData | undefined} cov */
 const lines = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
-/** @param {import('istanbul-lib-coverage').FileCoverageData} cov @param {string} name */
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData} cov @param {string} name */
 const functionHit = (cov, name) => {
   const found = Object.entries(cov.fnMap).find(([, fn]) => fn.name === name)
   assert(found, 'expected named function is present')
   return cov.f[found[0]]
 }
-/** @param {import('istanbul-lib-coverage').FileCoverageData} cov */
+/** @param {import('../runtime-coverage.mjs').RuntimeCoverageData} cov */
 const shape = (cov) => ({
   statementMap: cov.statementMap,
   s: cov.s,
@@ -155,7 +155,7 @@ try {
         0,
         'an uncalled take cannot credit the child'
       )
-      assert(functionHit(cov, 'g') > 0, 'the other take did call g')
+      assert(isPositive(functionHit(cov, 'g')), 'the other take did call g')
     }
   })
   await proof('empty-source', async () => {

@@ -17,6 +17,8 @@ const helperFiles = [
   'test/measurement/fixtures/fixture-src.js',
   'test/measurement/fixtures/take-screen-controls.mjs',
   'test/measurement/v8merge.mjs',
+  'test/measurement/runtime-coverage.mjs',
+  'test/measurement/runtime-converter.mjs',
   'test/measurement/fixtures/screen-stage.mjs',
   'test/measurement/node-source-identity.mjs',
   'test/measurement/validate.mjs',

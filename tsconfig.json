@@ -14,5 +14,9 @@
     "allowImportingTsExtensions": true,
     "allowJs": true
   },
+  "files": [
+    "test/measurement/runtime-coverage.mjs",
+    "test/measurement/runtime-converter.mjs"
+  ],
   "include": ["src", "test", "eslint.config.mjs"]
 }

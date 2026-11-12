@@ -4,8 +4,8 @@
 // another take. These are observed-range totals, not a fixed syntax inventory
 // or exact invocation counts. Mixed function/block granularity retains the
 // library's containing-range interpretation.
-import libCoverage from 'istanbul-lib-coverage'
-import V8ToIstanbul from 'v8-to-istanbul'
+import { libCoverage, isPositive } from './runtime-coverage.mjs'
+import { createConverter as V8ToIstanbul } from './runtime-converter.mjs'
 
 const { createFileCoverage } = libCoverage
 
@@ -79,6 +79,7 @@ export function completeFunctionLists(coverageList) {
   })
 }
 
+/** @param {string} path */
 export async function toFileCoverage(merged, path) {
   if (typeof merged?.source !== 'string')
     throw new Error('coverage conversion requires a defined source')
@@ -94,7 +95,7 @@ export async function toFileCoverage(merged, path) {
   const coverages = []
   const lists = merged.coverageList || [merged.functions]
   for (const functions of completeFunctionLists(lists.map(zeroAsBlock))) {
-    const converter = new V8ToIstanbul(path, 0, {
+    const converter = V8ToIstanbul(path, 0, {
       source: merged.source
     })
     await converter.load()
@@ -133,11 +134,11 @@ function contains(outer, loc) {
   return startsInside && endsInside
 }
 
-/** @param {import('istanbul-lib-coverage').FileCoverageData} coverage */
+/** @param {import('./runtime-coverage.mjs').RuntimeCoverageData} coverage */
 export function zeroUncalledFunctionBodies(coverage) {
   const out = { ...coverage, s: { ...coverage.s }, b: { ...coverage.b } }
   for (const [k, fn] of Object.entries(coverage.fnMap)) {
-    if (coverage.f[k] > 0) continue
+    if (isPositive(coverage.f[k])) continue
     for (const [sk, stmt] of Object.entries(coverage.statementMap)) {
       if (contains(fn.loc, stmt)) out.s[sk] = 0
     }
@@ -167,7 +168,7 @@ export function zeroUncalledFunctionBodies(coverage) {
  */
 // files: [{ path, coverage }] -> per-file exact counts
 /**
- * @param {{ path: string, coverage: import('istanbul-lib-coverage').FileCoverageData }[]} files
+ * @param {{ path: string, coverage: import('./runtime-coverage.mjs').RuntimeCoverageData }[]} files
  */
 export function summarize(files) {
   /** @type {{ [path: string]: FileSummary | undefined }} */

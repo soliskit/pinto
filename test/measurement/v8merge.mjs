@@ -5,17 +5,28 @@
 // V8 refines block ranges as code executes - so counts are not zipped here;
 // the converter accumulates every load onto the file's own structure.
 
-/** @typedef {import('node:inspector').Profiler.FunctionCoverage} FunctionCoverage */
-/** @typedef {{url?: string, source?: string, functions?: FunctionCoverage[]}} CoverageEntry */
-/** @typedef {{url: string, source: string | undefined, coverageList: (FunctionCoverage[] | undefined)[]}} MergedCoverage */
+/**
+ * @template Functions
+ * @typedef {object} CoverageEntry
+ * @property {string} [url]
+ * @property {string} [source]
+ * @property {Functions} [functions]
+ */
+/**
+ * @template Functions
+ * @typedef {object} MergedCoverage
+ * @property {string} url
+ * @property {string | undefined} source
+ * @property {(Functions | undefined)[]} coverageList
+ */
 
 export class CoverageConflict extends Error {}
 
 // entries: [{ url, source, functions: [...] }]
 // returns Map url -> { url, source, coverageList: [functions, ...] }
-/** @param {CoverageEntry[]} entries */
+/** @template Functions @param {CoverageEntry<Functions>[]} entries */
 export function mergeV8Entries(entries) {
-  /** @type {Map<string, MergedCoverage>} */
+  /** @type {Map<string, MergedCoverage<Functions>>} */
   const byUrl = new Map()
   for (const entry of entries) {
     if (!entry.url) continue
