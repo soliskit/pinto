@@ -9,9 +9,23 @@ import { createConverter as V8ToIstanbul } from './runtime-converter.mjs'
 
 const { createFileCoverage } = libCoverage
 
+/**
+ * @typedef {object} V8Range
+ * @property {number} startOffset
+ * @property {number} endOffset
+ * @property {number} count
+ */
+/**
+ * @typedef {object} V8FunctionCoverage
+ * @property {string} functionName
+ * @property {boolean} isBlockCoverage
+ * @property {V8Range[]} [ranges]
+ */
+
 // A function-only zero is not evidence for any location inside that function.
 // Give the library a zero root branch so it cannot inherit outer-block hits
 // past this uncalled function. Positive function-only samples stay unchanged.
+/** @param {V8FunctionCoverage[] | undefined} functions */
 const zeroAsBlock = (functions) =>
   (functions || []).map((fn) =>
     !fn.isBlockCoverage && fn.ranges?.length === 1 && fn.ranges[0].count === 0
@@ -27,7 +41,9 @@ const zeroAsBlock = (functions) =>
 // functions other loads of the same source observed removes only credit no
 // execution could have produced. This happens at the V8 level because the
 // converter's own function map drops anonymous functions entirely.
+/** @param {(V8FunctionCoverage[] | undefined)[]} coverageList */
 export function completeFunctionLists(coverageList) {
+  /** @type {Map<string, { name: string, start: number, end: number }>} */
   const union = new Map()
   for (const functions of coverageList) {
     for (const fn of functions || []) {
@@ -57,6 +73,7 @@ export function completeFunctionLists(coverageList) {
         start: Math.min(...f.ranges.map((r) => r.startOffset)),
         end: Math.max(...f.ranges.map((r) => r.endOffset))
       }))
+    /** @type {V8FunctionCoverage[]} */
     const added = []
     for (const [key, fn] of union) {
       if (present.has(key)) continue
@@ -79,7 +96,10 @@ export function completeFunctionLists(coverageList) {
   })
 }
 
-/** @param {string} path */
+/**
+ * @param {{ url?: string, source?: unknown, coverageList?: (V8FunctionCoverage[] | undefined)[], functions?: V8FunctionCoverage[] } | undefined} merged
+ * @param {string} path
+ */
 export async function toFileCoverage(merged, path) {
   if (typeof merged?.source !== 'string')
     throw new Error('coverage conversion requires a defined source')

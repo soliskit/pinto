@@ -28,6 +28,17 @@ import {
 import { checkLockfile, checkPages, checkServedScripts } from './checks.mjs'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
+// Property read with ordinary [[Get]] semantics: null/undefined yield
+// undefined, primitives box for the holder but stay the getter receiver.
+/**
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+const readKey = (value, key) =>
+  value === null || value === undefined
+    ? undefined
+    : Reflect.get(Object(value), key, value)
 const args = process.argv.slice(2)
 const suite = args.includes('--slow') ? 'slow' : 'fast'
 const outDir =
@@ -150,9 +161,9 @@ checkServedScripts(browserCaptures)
 // the clean-tree check above ties to the pinned commit.
 const serverMerged = mergeV8Entries(
   serverEntries.map((e) => ({
-    url: e.url,
-    source: readFile(fileURLToPath(e.url)),
-    functions: e.functions
+    url: readKey(e, 'url'),
+    source: readFile(fileURLToPath(readKey(e, 'url'))),
+    functions: readKey(e, 'functions')
   }))
 )
 // Suite servers listen on different ports; browser scripts key by path,
@@ -160,7 +171,11 @@ const serverMerged = mergeV8Entries(
 const browserMerged = mergeV8Entries(
   browserCaptures.map((e) => {
     try {
-      return { ...e, url: new URL(e.url).pathname }
+      return {
+        url: new URL(readKey(e, 'url')).pathname,
+        source: readKey(e, 'source'),
+        functions: readKey(e, 'functions')
+      }
     } catch {
       return e
     }
