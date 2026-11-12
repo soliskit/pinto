@@ -24,6 +24,7 @@ const helperFiles = [
   'test/ws-frame-parser.mjs',
   'test/measurement/stop-measured-server.mjs',
   'test/measurement/fixtures/source-contract.mjs',
+  'test/measurement/fixtures/identity-and-stop.mjs',
   'eslint.config.mjs'
 ]
 
