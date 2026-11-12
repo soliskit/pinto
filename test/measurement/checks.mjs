@@ -66,7 +66,15 @@ export function checkLockfile() {
 // Every served own-code script in the captures must equal its checked-in
 // source, and each served third-party script must equal the installed
 // package. A mismatch that is not a declared server-built script fails the run.
-/** @param {{ url: string, source?: string }[]} browserEntries */
+// Property read with ordinary [[Get]] semantics: null/undefined yield
+// undefined, primitives box for the holder but stay the getter receiver.
+/** @param {unknown} value @param {string} key @returns {unknown} */
+const readKey = (value, key) =>
+  value === null || value === undefined
+    ? undefined
+    : Reflect.get(Object(value), key, value)
+
+/** @param {unknown[]} browserEntries */
 export function checkServedScripts(browserEntries) {
   const own = new Map(
     browserFiles().map((f) => [f.servedPath, readFileSync(f.abs, 'utf8')])
@@ -88,7 +96,7 @@ export function checkServedScripts(browserEntries) {
   for (const entry of browserEntries) {
     let pathname
     try {
-      pathname = new URL(entry.url).pathname
+      pathname = new URL(String(readKey(entry, 'url'))).pathname
     } catch {
       continue
     }
@@ -98,11 +106,11 @@ export function checkServedScripts(browserEntries) {
         ? third.get(pathname)
         : undefined
     if (expected === undefined) continue
-    if (entry.source === undefined) {
+    if (readKey(entry, 'source') === undefined) {
       if (!seenVerified.has(pathname)) seenUnverifiable.add(pathname)
       continue
     }
-    if (entry.source !== expected) {
+    if (readKey(entry, 'source') !== expected) {
       throw new MeasurementFailure(
         own.has(pathname)
           ? `served script differs from its checked-in source: ${pathname}`

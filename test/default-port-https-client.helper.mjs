@@ -82,8 +82,10 @@ async function finish(code) {
   if (process.env.PINTO_MEASURE === '1') {
     const { stopMeasuredServer } =
       await import('./measurement/stop-measured-server.mjs')
+    const coverageDir = process.env.NODE_V8_COVERAGE
+    if (!coverageDir) throw new Error('NODE_V8_COVERAGE is not set')
     await stopMeasuredServer(app, {
-      dir: process.env.NODE_V8_COVERAGE,
+      dir: coverageDir,
       startedAt: measurementStart,
       sourceUrl: new URL('../src/index.ts', import.meta.url).href
     })

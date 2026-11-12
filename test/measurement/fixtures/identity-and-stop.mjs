@@ -16,6 +16,13 @@ import {
   validateProcessReceipt
 } from '../stop-measured-server.mjs'
 const dir = mkdtempSync(join(tmpdir(), 'pinto-identity-stop-'))
+// Property read with ordinary [[Get]] semantics: null/undefined yield
+// undefined, primitives box for the holder but stay the getter receiver.
+/** @param {unknown} value @param {string} key @returns {unknown} */
+const readKey = (value, key) =>
+  value === null || value === undefined
+    ? undefined
+    : Reflect.get(Object(value), key, value)
 let proofs = 0
 /** @param {string} name @param {() => unknown} fn */
 async function proof(name, fn) {
@@ -115,10 +122,27 @@ await proof(
     )
     const entries = validateServerDir(reports, 0, new Set([url]), bindings)
     assert.equal(entries.length, 1)
-    const cov = await toFileCoverage(mergeV8Entries(entries).get(url), a)
+    const cov = await toFileCoverage(
+      mergeV8Entries(
+        entries.map((e) => ({
+          url: readKey(e, 'url'),
+          source: readKey(e, 'source'),
+          functions: readKey(e, 'functions')
+        }))
+      ).get(url),
+      a
+    )
     const cold = Object.entries(cov.fnMap).find(([, v]) => v.name === 'cold')
     assert(cold)
     assert.equal(cov.f[cold[0]], 0)
+    // cold === 0 alone cannot catch a dropped functions list: every function
+    // reports zero then. hot ran, so it must carry a positive count.
+    const hot = Object.entries(cov.fnMap).find(([, v]) => v.name === 'hot')
+    assert(hot)
+    assert(
+      Number(cov.f[hot[0]]) > 0,
+      'hot must be covered: functions list dropped'
+    )
   }
 )
 /** @param {string} mode @param {string} coverage */

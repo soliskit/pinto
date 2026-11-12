@@ -206,11 +206,11 @@ for (const mode of modes) {
     const eligible =
       clean.receipt === 'complete' &&
       timeline.explicitOrdinal !== null &&
-      clean.ordinal <= timeline.explicitOrdinal &&
+      Number(clean.ordinal) <= timeline.explicitOrdinal &&
       timeline.actionStartedAt !== null &&
-      clean.respondedAt >= timeline.actionStartedAt &&
+      Number(clean.respondedAt) >= timeline.actionStartedAt &&
       (timeline.releaseIssuedAt === null ||
-        clean.respondedAt <= timeline.releaseIssuedAt)
+        Number(clean.respondedAt) <= timeline.releaseIssuedAt)
     if ((clean.eligible === 'yes') !== eligible) complete = false
     if (
       !enumsValid ||
@@ -219,17 +219,17 @@ for (const mode of modes) {
       clean.sessionId !== timeline.sessionId ||
       clean.receipt !== 'complete' ||
       times.some((x) => x === null) ||
-      times.some((x, j) => j > 0 && times[j - 1] > x) ||
-      priorWritten > clean.initiatedAt ||
+      times.some((x, j) => j > 0 && Number(times[j - 1]) > Number(x)) ||
+      priorWritten > Number(clean.initiatedAt) ||
       (clean.relation === 'post-marker' &&
         !(
           timeline.markerObservedAt !== null &&
-          clean.initiatedAt >= timeline.markerObservedAt
+          Number(clean.initiatedAt) >= timeline.markerObservedAt
         )) ||
       (clean.relation === 'pre-action' &&
         !(
           timeline.actionStartedAt !== null &&
-          clean.respondedAt < timeline.actionStartedAt
+          Number(clean.respondedAt) < timeline.actionStartedAt
         )) ||
       (clean.source === 'yes' &&
         !(
@@ -256,13 +256,13 @@ for (const mode of modes) {
       timeline.explicitWrittenAt
     ].some((x) => x === null) ||
     !(
-      timeline.actionStartedAt <= timeline.actionResolvedAt &&
-      timeline.actionResolvedAt <= timeline.markerObservedAt &&
-      timeline.markerObservedAt <= timeline.explicitWrittenAt
+      Number(timeline.actionStartedAt) <= Number(timeline.actionResolvedAt) &&
+      Number(timeline.actionResolvedAt) <= Number(timeline.markerObservedAt) &&
+      Number(timeline.markerObservedAt) <= Number(timeline.explicitWrittenAt)
     ) ||
     !(mode.startsWith('released-')
       ? timeline.releaseIssuedAt !== null &&
-        timeline.releaseIssuedAt >= timeline.explicitWrittenAt
+        timeline.releaseIssuedAt >= Number(timeline.explicitWrittenAt)
       : timeline.releaseIssuedAt === null) ||
     rows.filter(
       (row) =>
@@ -282,10 +282,10 @@ for (const mode of modes) {
   const proven = rows.some(
     (row) =>
       row.eligible === 'yes' &&
-      row.ordinal <= timeline.explicitOrdinal &&
-      row.respondedAt >= timeline.actionStartedAt &&
+      Number(row.ordinal) <= Number(timeline.explicitOrdinal) &&
+      Number(row.respondedAt) >= Number(timeline.actionStartedAt) &&
       (timeline.releaseIssuedAt === null ||
-        row.respondedAt <= timeline.releaseIssuedAt) &&
+        Number(row.respondedAt) <= timeline.releaseIssuedAt) &&
       row.relation === 'post-marker' &&
       row.source === 'yes' &&
       row.sourceHash === expectedHash &&
@@ -297,7 +297,7 @@ for (const mode of modes) {
   const discrepancy = rows.some(
     (row) =>
       row.eligible === 'yes' &&
-      row.ordinal <= timeline.explicitOrdinal &&
+      Number(row.ordinal) <= Number(timeline.explicitOrdinal) &&
       row.raw === 'yes' &&
       (row.direct !== 'yes' ||
         row.wrapper !== 'yes' ||
@@ -306,7 +306,7 @@ for (const mode of modes) {
   const intervalPositive = rows.some(
     (row) =>
       row.eligible === 'yes' &&
-      row.ordinal <= timeline.explicitOrdinal &&
+      Number(row.ordinal) <= Number(timeline.explicitOrdinal) &&
       row.raw === 'yes' &&
       row.relation !== 'pre-action'
   )

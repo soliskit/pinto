@@ -85,6 +85,7 @@ function now() {
 /** Incremental chunked-body boundary scanner (pass-through; logs only). */
 class ChunkedScanner {
   constructor() {
+    /** @type {Buffer<ArrayBufferLike>} */
     this.buf = Buffer.alloc(0)
     this.state = 'size' // size | data | data-crlf | trailers | done
     this.remaining = 0
@@ -173,57 +174,61 @@ function headerValue(headers, name) {
   return undefined
 }
 
-class Connection {
-  /**
-   * @param {{ connSeq: number }} proxy
-   * @param {import('node:net').Socket} clientSock
-   * @param {string} page
-   */
-  constructor(proxy, clientSock, page) {
-    this.proxy = proxy
-    this.id = ++proxy.connSeq
-    this.page = page
-    this.clientSock = clientSock
+/**
+ * @param {{ connSeq: number }} proxy
+ * @param {import('node:net').Socket} clientSock
+ * @param {string} page
+ */
+function createConnection(proxy, clientSock, page) {
+  return {
+    proxy,
+    id: ++proxy.connSeq,
+    page,
+    clientSock,
     /** @type {import('node:net').Socket | null} */
-    this.upstreamSock = null
-    this.kind = 'http' // http | peer | socketio | other-upgrade
-    this.killed = false
-    this.tidied = false
-    this.forwardCS = true // client -> server
-    this.forwardSC = true // server -> client
-    this.discardedCS = 0
-    this.discardedSC = 0
-    this.seenOpen = false
-    this.decisionLogged = false
+    upstreamSock: null,
+    kind: 'http', // http | peer | socketio | other-upgrade
+    killed: false,
+    tidied: false,
+    forwardCS: true, // client -> server
+    forwardSC: true, // server -> client
+    discardedCS: 0,
+    discardedSC: 0,
+    seenOpen: false,
+    decisionLogged: false,
     /** @type {string | null} */
-    this.lastHeartbeatForwarded = null
+    lastHeartbeatForwarded: null,
     /** @type {number | null} */
-    this.rTs = null // 101 completion timestamp (R for a replacement conn)
+    rTs: null, // 101 completion timestamp (R for a replacement conn)
     /** @type {Array<{ method: string | null, url?: string | null, isConfig: boolean }>} */
-    this.pending = [] // FIFO of in-flight requests awaiting responses
-    this.clientBuf = Buffer.alloc(0)
-    this.clientState = 'head' // head | body-length | body-chunked | websocket
-    this.clientRemaining = 0
+    pending: [], // FIFO of in-flight requests awaiting responses
+    /** @type {Buffer<ArrayBufferLike>} */
+    clientBuf: Buffer.alloc(0),
+    clientState: 'head', // head | body-length | body-chunked | websocket
+    clientRemaining: 0,
     /** @type {ChunkedScanner | null} */
-    this.clientChunked = null
-    this.upstreamBuf = Buffer.alloc(0)
-    this.upstreamState = 'head' // head | body-length | body-chunked | body-close | config-body | websocket | ws-101-head
-    this.upstreamRemaining = 0
+    clientChunked: null,
+    /** @type {Buffer<ArrayBufferLike>} */
+    upstreamBuf: Buffer.alloc(0),
+    upstreamState: 'head', // head | body-length | body-chunked | body-close | config-body | websocket | ws-101-head
+    upstreamRemaining: 0,
     /** @type {ChunkedScanner | null} */
-    this.upstreamChunked = null
+    upstreamChunked: null,
     /** @type {{ headText: string, headers: Array<[string, string]>, status: number, body: Buffer, chunkedScanner: ChunkedScanner | null, total: number | null } | null} */
-    this.configCollect = null
+    configCollect: null,
     /** @type {WsFrameParser | null} */
-    this.wsParserCS = null
+    wsParserCS: null,
     /** @type {WsFrameParser | null} */
-    this.wsParserSC = null
+    wsParserSC: null,
     /** @type {MessageReassembler | null} */
-    this.reasmCS = null
+    reasmCS: null,
     /** @type {MessageReassembler | null} */
-    this.reasmSC = null
-    this.closed = false
+    reasmSC: null,
+    closed: false
   }
 }
+
+/** @typedef {ReturnType<typeof createConnection>} Connection */
 
 /**
  * @param {{
@@ -248,6 +253,7 @@ export function startProxy({
   if (targetPort == null || !pages?.length || controlPort == null) {
     throw new Error('targetPort, pages and controlPort are required')
   }
+  const port = targetPort
   if (targetHost !== '127.0.0.1' && targetHost !== 'localhost') {
     throw new Error('refusing non-loopback target (local-only containment)')
   }
@@ -353,6 +359,7 @@ export function startProxy({
     const reasm = dir === 'cs' ? conn.reasmCS : conn.reasmSC
     let frames
     try {
+      if (!parser || !reasm) throw new Error('row51: websocket parser missing')
       frames = parser.push(chunk)
       const messages = reasm.push(frames)
       for (const f of frames) logFrame(conn, dir, f, null)
@@ -366,7 +373,7 @@ export function startProxy({
         ev: 'parse-error',
         conn: conn.id,
         dir,
-        error: String(error && error.message)
+        error: error instanceof Error ? error.message : String(error)
       })
       const fresh = new WsFrameParser()
       const freshReasm = new MessageReassembler()
@@ -382,17 +389,27 @@ export function startProxy({
 
   /**
    * @param {Connection} conn
+   * @returns {import('node:net').Socket}
+   */
+  function requireUpstream(conn) {
+    const up = conn.upstreamSock
+    if (!up) throw new Error('row51: upstream socket missing')
+    return up
+  }
+
+  /**
+   * @param {Connection} conn
    * @param {() => void} onReady
    */
   function connectUpstream(conn, onReady) {
-    const up = net.connect(targetPort, targetHost)
+    const up = net.connect(port, targetHost)
     conn.upstreamSock = up
     up.on('connect', () => {
       emit({ ev: 'upstream-connect', conn: conn.id })
       onReady()
     })
     up.on('data', (chunk) => {
-      onUpstreamData(conn, chunk)
+      onUpstreamData(conn, Buffer.from(chunk))
     })
     up.on('end', () => {
       emit({ ev: 'upstream-end', conn: conn.id })
@@ -452,7 +469,7 @@ export function startProxy({
       hasToken: 'token' in query
     })
     connectUpstream(conn, () => {
-      conn.upstreamSock.write(headBytes)
+      requireUpstream(conn).write(headBytes)
       if (leftover.length) onClientData(conn, leftover)
     })
   }
@@ -476,7 +493,7 @@ export function startProxy({
     }
     if (conn.clientState === 'websocket') {
       teeWs(conn, 'cs', chunk)
-      conn.upstreamSock.write(chunk)
+      requireUpstream(conn).write(chunk)
       return
     }
     conn.clientBuf = conn.clientBuf.length
@@ -519,7 +536,7 @@ export function startProxy({
           const { headers: h } = { headers }
           const len = Number(headerValue(h, 'content-length') || 0)
           connectUpstream(conn, () => {
-            conn.upstreamSock.write(headBytes)
+            requireUpstream(conn).write(headBytes)
             if (body.length) onClientBodyBytes(conn, body)
           })
           conn.clientState = len > 0 ? 'body-length' : 'head'
@@ -547,7 +564,7 @@ export function startProxy({
         const part = conn.clientBuf.subarray(0, take)
         conn.clientBuf = conn.clientBuf.subarray(take)
         conn.clientRemaining -= take
-        conn.upstreamSock.write(part)
+        requireUpstream(conn).write(part)
         if (conn.clientRemaining > 0) return
         conn.clientState = 'head'
       } else if (conn.clientState === 'body-chunked') {
@@ -556,11 +573,17 @@ export function startProxy({
         conn.clientBuf = Buffer.alloc(0)
         let done = false
         try {
-          done = conn.clientChunked.push(part)
+          const scanner = conn.clientChunked
+          if (!scanner) throw new Error('row51: client chunked scanner missing')
+          done = scanner.push(part)
         } catch (error) {
-          emit({ ev: 'error', conn: conn.id, error: String(error.message) })
+          emit({
+            ev: 'error',
+            conn: conn.id,
+            error: error instanceof Error ? error.message : String(error)
+          })
         }
-        conn.upstreamSock.write(part)
+        requireUpstream(conn).write(part)
         if (!done) return
         conn.clientState = 'head'
       } else {
@@ -581,7 +604,7 @@ export function startProxy({
       const part = conn.clientBuf.subarray(0, take)
       conn.clientBuf = conn.clientBuf.subarray(take)
       conn.clientRemaining -= take
-      conn.upstreamSock.write(part)
+      requireUpstream(conn).write(part)
       if (conn.clientRemaining === 0) conn.clientState = 'head'
     }
     if (conn.clientBuf.length) onClientData(conn, Buffer.alloc(0))
@@ -713,9 +736,16 @@ export function startProxy({
         conn.upstreamBuf = Buffer.alloc(0)
         let done = false
         try {
-          done = conn.upstreamChunked.push(part)
+          const scanner = conn.upstreamChunked
+          if (!scanner)
+            throw new Error('row51: upstream chunked scanner missing')
+          done = scanner.push(part)
         } catch (error) {
-          emit({ ev: 'error', conn: conn.id, error: String(error.message) })
+          emit({
+            ev: 'error',
+            conn: conn.id,
+            error: error instanceof Error ? error.message : String(error)
+          })
         }
         conn.clientSock.write(part)
         if (!done) return
@@ -727,6 +757,7 @@ export function startProxy({
       } else if (conn.upstreamState === 'config-body') {
         if (conn.upstreamBuf.length === 0) return
         const cc = conn.configCollect
+        if (!cc) throw new Error('row51: config collect missing')
         const part = conn.upstreamBuf
         conn.upstreamBuf = Buffer.alloc(0)
         let done
@@ -737,16 +768,16 @@ export function startProxy({
             emit({
               ev: 'config-intercept-fail',
               conn: conn.id,
-              error: String(error.message)
+              error: error instanceof Error ? error.message : String(error)
             })
             conn.clientSock.destroy()
-            conn.upstreamSock.destroy()
+            requireUpstream(conn).destroy()
             return
           }
           cc.body = Buffer.concat([cc.body, part])
         } else {
           cc.body = Buffer.concat([cc.body, part])
-          done = cc.body.length >= cc.total
+          done = cc.body.length >= (cc.total ?? 0)
         }
         if (!done) return
         interceptConfig(conn)
@@ -760,6 +791,7 @@ export function startProxy({
   /** @param {Connection} conn */
   function interceptConfig(conn) {
     const cc = conn.configCollect
+    if (!cc) throw new Error('row51: config collect missing')
     conn.configCollect = null
     let raw = cc.body
     if (cc.chunkedScanner) {
@@ -791,7 +823,7 @@ export function startProxy({
         error: `non-JSON /config body: ${error instanceof Error ? error.message : String(error)}`
       })
       conn.clientSock.destroy()
-      conn.upstreamSock.destroy()
+      requireUpstream(conn).destroy()
       return
     }
     if (!json || typeof json !== 'object' || !('iceServers' in json)) {
@@ -801,7 +833,7 @@ export function startProxy({
         error: 'no iceServers field in /config body'
       })
       conn.clientSock.destroy()
-      conn.upstreamSock.destroy()
+      requireUpstream(conn).destroy()
       return
     }
     const beforeCount = Array.isArray(json.iceServers)
@@ -868,12 +900,12 @@ export function startProxy({
     conn.forwardSC = false
     emit({ ev: 'deliver', conn: conn.id, mode })
     if (mode === 'close-frame') {
-      conn.upstreamSock.write(
+      requireUpstream(conn).write(
         encodeFrame({ opcode: OPCODES.CLOSE, payload: CLOSE_1001, mask: true })
       )
       emit({ ev: 'deliver-close-frame-sent', conn: conn.id })
     } else {
-      conn.upstreamSock.end()
+      requireUpstream(conn).end()
       emit({ ev: 'deliver-fin-sent', conn: conn.id })
     }
     conn.clientSock.end()
@@ -886,13 +918,14 @@ export function startProxy({
     if (conn.tidied) return { error: 'already tidied' }
     conn.tidied = true
     emit({ ev: 'tidy', conn: conn.id })
-    if (!conn.upstreamSock.destroyed) conn.upstreamSock.end()
+    const up = requireUpstream(conn)
+    if (!up.destroyed) up.end()
     return { ok: true }
   }
 
   // Control endpoint (loopback only): the tester's named interface
   proxy.control = http.createServer((req, res) => {
-    const url = new URL(req.url, 'http://localhost')
+    const url = new URL(String(req.url), 'http://localhost')
     const conn = proxy.conns.get(Number(url.searchParams.get('conn')))
     /** @param {number} code @param {object} obj */
     const answer = (code, obj) => {
@@ -939,11 +972,11 @@ export function startProxy({
   const ready = []
   for (const { label, port } of pages) {
     const server = net.createServer((clientSock) => {
-      const conn = new Connection(proxy, clientSock, label)
+      const conn = createConnection(proxy, clientSock, label)
       proxy.conns.set(conn.id, conn)
       emit({ ev: 'connect', conn: conn.id, page: label })
       clientSock.on('data', (chunk) => {
-        onClientData(conn, chunk)
+        onClientData(conn, Buffer.from(chunk))
       })
       clientSock.on('end', () => {
         emit({ ev: 'client-end', conn: conn.id })
@@ -963,21 +996,32 @@ export function startProxy({
     })
     proxy.servers.push(server)
     ready.push(
+      /** @type {Promise<void>} */
       new Promise((resolve, reject) => {
         server.once('error', reject)
         server.listen(port, '127.0.0.1', () => {
           emit({ ev: 'listen', page: label, port })
-          resolve()
+          resolve(undefined)
         })
       })
     )
   }
+  /**
+   * Read the control server through its declared nullable type: the proxy
+   * object starts with control null, so the missing-server guard below
+   * stays a real check.
+   * @param {{ control: import('node:http').Server | null }} p
+   */
+  const controlOf = (p) => p.control
+  const control = controlOf(proxy)
+  if (!control) throw new Error('row51: control server missing')
   ready.push(
+    /** @type {Promise<void>} */
     new Promise((resolve, reject) => {
-      proxy.control.once('error', reject)
-      proxy.control.listen(controlPort, '127.0.0.1', () => {
+      control.once('error', reject)
+      control.listen(controlPort, '127.0.0.1', () => {
         emit({ ev: 'control-listen', port: controlPort })
-        resolve()
+        resolve(undefined)
       })
     })
   )
@@ -991,7 +1035,7 @@ export function startProxy({
         if (c.upstreamSock) c.upstreamSock.destroy()
       }
       for (const s of proxy.servers) s.close()
-      proxy.control.close()
+      control.close()
       if (proxy.logStream) proxy.logStream.end()
     }
   }))
