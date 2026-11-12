@@ -21,6 +21,7 @@ const source = [
   ''
 ].join('\n')
 const diskOther = 'throw new Error("different disk source")\n'
+/** @param {string} name @param {number} count */
 const span = (name, count) => ({
   functionName: name,
   isBlockCoverage: true,
@@ -40,13 +41,17 @@ const root = {
 const full = [root, span('cold', 0), span('hot', 1)]
 const coldTake = [root, span('cold', 0), span('hot', 0)]
 const absentTake = [root, span('cold', 0)]
+/** @param {import('node:inspector').Profiler.FunctionCoverage[][]} takes */
 const merged = (takes) => ({ url: '/input.js', source, coverageList: takes })
+/** @param {import('istanbul-lib-coverage').FileCoverageData} cov */
 const lines = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
+/** @param {import('istanbul-lib-coverage').FileCoverageData} cov @param {string} name */
 const functionHit = (cov, name) => {
   const found = Object.entries(cov.fnMap).find(([, fn]) => fn.name === name)
   assert(found, 'expected named function is present')
   return cov.f[found[0]]
 }
+/** @param {import('istanbul-lib-coverage').FileCoverageData} cov */
 const shape = (cov) => ({
   statementMap: cov.statementMap,
   s: cov.s,
@@ -55,6 +60,7 @@ const shape = (cov) => ({
   branchMap: cov.branchMap,
   b: cov.b
 })
+/** @param {string} name @param {() => unknown} run */
 async function proof(name, run) {
   await run()
   console.log(name + '=pass')
@@ -71,7 +77,7 @@ try {
   })
   await proof('same-source', async () => {
     writeFileSync(path, source)
-    const direct = new V8ToIstanbul(path, 0, { source })
+    const direct = V8ToIstanbul(path, 0, { source })
     await direct.load()
     direct.applyCoverage(full)
     const cov = await toFileCoverage(merged([full]), path)
