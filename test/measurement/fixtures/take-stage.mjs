@@ -59,7 +59,24 @@ export function helperState(entries, source) {
 }
 /** @param {number} count */
 const cap = (count) => (count === 0 ? '0' : count === 1 ? '1' : '2plus')
+// Property read with ordinary [[Get]] semantics: null/undefined yield
+// undefined, primitives box for the holder but stay the getter receiver.
+/**
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+const readKey = (value, key) =>
+  value === null || value === undefined
+    ? undefined
+    : Reflect.get(Object(value), key, value)
 // Inputs are parsed data, not instructions. Failure yields no partial summary.
+/**
+ * @param {unknown} records
+ * @param {unknown} index
+ * @param {unknown} source
+ * @param {unknown} mode
+ */
 export function summarizeTakes(records, index, source, mode) {
   const result = emptyTakeSummary()
   try {
@@ -71,34 +88,36 @@ export function summarizeTakes(records, index, source, mode) {
       index.length !== records.length
     )
       return result
+    /** @type {Map<unknown, unknown>} */
     const indexed = new Map()
     for (const item of index) {
       if (
-        typeof item?.name !== 'string' ||
-        typeof item.why !== 'string' ||
-        indexed.has(item.name)
+        typeof readKey(item, 'name') !== 'string' ||
+        typeof readKey(item, 'why') !== 'string' ||
+        indexed.has(readKey(item, 'name'))
       )
         return result
-      indexed.set(item.name, item.why)
+      indexed.set(readKey(item, 'name'), readKey(item, 'why'))
     }
+    /** @type {Set<unknown>} */
     const seen = new Set()
     const sequences = new Set()
     let childPid
     const takes = []
     for (const record of records) {
       const match =
-        typeof record?.name === 'string' &&
-        /^(\d+)-(\d+)\.json$/.exec(record.name)
-      const data = record?.data
+        typeof readKey(record, 'name') === 'string' &&
+        /^(\d+)-(\d+)\.json$/.exec(readKey(record, 'name'))
+      const data = readKey(record, 'data')
       if (
         !match ||
-        seen.has(record.name) ||
+        seen.has(readKey(record, 'name')) ||
         !data ||
         typeof data !== 'object' ||
         Array.isArray(data)
       )
         return result
-      seen.add(record.name)
+      seen.add(readKey(record, 'name'))
       const pid = Number(match[1])
       const sequence = Number(match[2])
       if (
@@ -107,36 +126,37 @@ export function summarizeTakes(records, index, source, mode) {
         !Number.isSafeInteger(sequence) ||
         sequence <= 0 ||
         sequences.has(sequence) ||
-        !Number.isSafeInteger(data.pid) ||
-        data.pid !== pid ||
+        !Number.isSafeInteger(readKey(data, 'pid')) ||
+        readKey(data, 'pid') !== pid ||
         (childPid !== undefined && childPid !== pid) ||
-        !Number.isFinite(data.at) ||
-        !Array.isArray(data.entries) ||
-        !Array.isArray(data.navigations) ||
-        !reasonMap.has(data.why) ||
-        indexed.get(record.name) !== data.why
+        !Number.isFinite(readKey(data, 'at')) ||
+        !Array.isArray(readKey(data, 'entries')) ||
+        !Array.isArray(readKey(data, 'navigations')) ||
+        !reasonMap.has(readKey(data, 'why')) ||
+        indexed.get(readKey(record, 'name')) !== readKey(data, 'why')
       )
         return result
       childPid = pid
       sequences.add(sequence)
-      for (const navigation of data.navigations) {
+      for (const navigation of readKey(data, 'navigations')) {
         if (
           !navigation ||
-          !Number.isFinite(navigation.at) ||
-          typeof navigation.url !== 'string'
+          !Number.isFinite(readKey(navigation, 'at')) ||
+          typeof readKey(navigation, 'url') !== 'string'
         )
           return result
-        new URL(navigation.url)
+        new URL(readKey(navigation, 'url'))
       }
       const entries = []
-      for (const entry of data.entries) {
-        if (!entry || typeof entry.url !== 'string') return result
-        if (new URL(entry.url).pathname === '/event.js') entries.push(entry)
+      for (const entry of readKey(data, 'entries')) {
+        if (!entry || typeof readKey(entry, 'url') !== 'string') return result
+        if (new URL(readKey(entry, 'url')).pathname === '/event.js')
+          entries.push(entry)
       }
       takes.push({
         sequence,
-        why: data.why,
-        reason: reasonMap.get(data.why),
+        why: readKey(data, 'why'),
+        reason: reasonMap.get(readKey(data, 'why')),
         state: helperState(entries, source)
       })
     }
