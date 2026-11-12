@@ -90,7 +90,10 @@ class ChunkedScanner {
     this.remaining = 0
   }
 
-  /** Feed bytes; returns true once the terminal chunk + trailers ended. */
+  /**
+   * Feed bytes; returns true once the terminal chunk + trailers ended.
+   * @param {Buffer} chunk
+   */
   push(chunk) {
     this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk
     for (;;) {
@@ -129,9 +132,26 @@ class ChunkedScanner {
   }
 }
 
+/**
+ * Ordinary [[Get]] of one property on parsed data (same form as the
+ * take-stage measurement helper); returns unknown.
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+const readKey = (value, key) =>
+  value === null || value === undefined
+    ? undefined
+    : Reflect.get(Object(value), key, value)
+
+/**
+ * @param {string} text
+ * @returns {{ start: string, headers: Array<[string, string]> }}
+ */
 function parseHead(text) {
   const lines = text.split('\r\n')
   const start = lines[0]
+  /** @type {Array<[string, string]>} */
   const headers = []
   for (let i = 1; i < lines.length; i++) {
     const colon = lines[i].indexOf(':')
@@ -144,17 +164,27 @@ function parseHead(text) {
   return { start, headers }
 }
 
+/**
+ * @param {Array<[string, string]>} headers
+ * @param {string} name
+ */
 function headerValue(headers, name) {
   for (const [k, v] of headers) if (k === name) return v
   return undefined
 }
 
 class Connection {
+  /**
+   * @param {{ connSeq: number }} proxy
+   * @param {import('node:net').Socket} clientSock
+   * @param {string} page
+   */
   constructor(proxy, clientSock, page) {
     this.proxy = proxy
     this.id = ++proxy.connSeq
     this.page = page
     this.clientSock = clientSock
+    /** @type {import('node:net').Socket | null} */
     this.upstreamSock = null
     this.kind = 'http' // http | peer | socketio | other-upgrade
     this.killed = false
@@ -165,26 +195,47 @@ class Connection {
     this.discardedSC = 0
     this.seenOpen = false
     this.decisionLogged = false
+    /** @type {string | null} */
     this.lastHeartbeatForwarded = null
+    /** @type {number | null} */
     this.rTs = null // 101 completion timestamp (R for a replacement conn)
+    /** @type {Array<{ method: string | null, url?: string | null, isConfig: boolean }>} */
     this.pending = [] // FIFO of in-flight requests awaiting responses
     this.clientBuf = Buffer.alloc(0)
     this.clientState = 'head' // head | body-length | body-chunked | websocket
     this.clientRemaining = 0
+    /** @type {ChunkedScanner | null} */
     this.clientChunked = null
     this.upstreamBuf = Buffer.alloc(0)
     this.upstreamState = 'head' // head | body-length | body-chunked | body-close | config-body | websocket | ws-101-head
     this.upstreamRemaining = 0
+    /** @type {ChunkedScanner | null} */
     this.upstreamChunked = null
+    /** @type {{ headText: string, headers: Array<[string, string]>, status: number, body: Buffer, chunkedScanner: ChunkedScanner | null, total: number | null } | null} */
     this.configCollect = null
+    /** @type {WsFrameParser | null} */
     this.wsParserCS = null
+    /** @type {WsFrameParser | null} */
     this.wsParserSC = null
+    /** @type {MessageReassembler | null} */
     this.reasmCS = null
+    /** @type {MessageReassembler | null} */
     this.reasmSC = null
     this.closed = false
   }
 }
 
+/**
+ * @param {{
+ *   targetHost?: string,
+ *   targetPort?: number,
+ *   pages?: Array<{ label: string, port: number }>,
+ *   controlPort?: number,
+ *   logPath?: string | null,
+ *   onEvent?: ((ev: Record<string, unknown>) => void) | null,
+ *   quiet?: boolean
+ * }} options
+ */
 export function startProxy({
   targetHost = '127.0.0.1',
   targetPort,
@@ -203,13 +254,18 @@ export function startProxy({
 
   const proxy = {
     connSeq: 0,
+    /** @type {Map<number, Connection>} */
     conns: new Map(),
+    /** @type {Array<import('node:net').Server>} */
     servers: [],
+    /** @type {import('node:http').Server | null} */
     control: null,
+    /** @type {import('node:fs').WriteStream | null} */
     logStream: null,
     closed: false
   }
 
+  /** @param {Record<string, unknown>} ev */
   function emit(ev) {
     const line = JSON.stringify({ ts: now(), ...ev })
     if (proxy.logStream) proxy.logStream.write(line + '\n')
@@ -221,7 +277,14 @@ export function startProxy({
     proxy.logStream = fs.createWriteStream(logPath, { flags: 'wx' })
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {string} dir
+   * @param {{ opcode: number, fin: boolean, rsv1: boolean, len: number }} frame
+   * @param {import('./ws-frame-parser.mjs').Message | null} message
+   */
   function logFrame(conn, dir, frame, message) {
+    /** @type {Record<string, unknown>} */
     const ev = {
       ev: 'ws-frame',
       conn: conn.id,
@@ -241,11 +304,18 @@ export function startProxy({
     emit(ev)
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {string} dir
+   * @param {import('./ws-frame-parser.mjs').Message} message
+   */
   function inspectPeerMessage(conn, dir, message) {
     if (conn.kind !== 'peer' || message.opcode !== OPCODES.TEXT) return
     let type
     try {
-      type = JSON.parse(message.payload.toString('utf8')).type
+      /** @type {unknown} */
+      const parsed = JSON.parse(message.payload.toString('utf8'))
+      type = readKey(parsed, 'type')
     } catch {
       return
     }
@@ -273,6 +343,11 @@ export function startProxy({
     }
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {string} dir
+   * @param {Buffer} chunk
+   */
   function teeWs(conn, dir, chunk) {
     const parser = dir === 'cs' ? conn.wsParserCS : conn.wsParserSC
     const reasm = dir === 'cs' ? conn.reasmCS : conn.reasmSC
@@ -305,6 +380,10 @@ export function startProxy({
     }
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {() => void} onReady
+   */
   function connectUpstream(conn, onReady) {
     const up = net.connect(targetPort, targetHost)
     conn.upstreamSock = up
@@ -331,12 +410,19 @@ export function startProxy({
     })
   }
 
+  /** @param {string} pathname */
   function classifyUpgrade(pathname) {
     if (pathname === '/peerjs') return 'peer'
     if (pathname.startsWith('/socket.io/')) return 'socketio'
     return 'other-upgrade'
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {string} headText
+   * @param {Buffer} headBytes
+   * @param {Buffer} leftover
+   */
   function handleUpgrade(conn, headText, headBytes, leftover) {
     const { start } = parseHead(headText)
     const target = start.split(' ')[1] || ''
@@ -371,6 +457,10 @@ export function startProxy({
     })
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {Buffer} chunk
+   */
   function onClientData(conn, chunk) {
     if (conn.closed) return
     if (!conn.forwardCS) {
@@ -479,6 +569,10 @@ export function startProxy({
     }
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {Buffer} bytes
+   */
   function onClientBodyBytes(conn, bytes) {
     conn.clientBuf = bytes
     const state = conn.clientState
@@ -493,6 +587,10 @@ export function startProxy({
     if (conn.clientBuf.length) onClientData(conn, Buffer.alloc(0))
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {Buffer} chunk
+   */
   function onUpstreamData(conn, chunk) {
     if (!conn.forwardSC) {
       conn.discardedSC += chunk.length
@@ -659,6 +757,7 @@ export function startProxy({
     }
   }
 
+  /** @param {Connection} conn */
   function interceptConfig(conn) {
     const cc = conn.configCollect
     conn.configCollect = null
@@ -681,14 +780,15 @@ export function startProxy({
       }
       raw = Buffer.concat(chunks)
     }
+    /** @type {unknown} */
     let json
     try {
       json = JSON.parse(raw.toString('utf8'))
-    } catch (error) {
+    } catch (/** @type {unknown} */ error) {
       emit({
         ev: 'config-intercept-fail',
         conn: conn.id,
-        error: `non-JSON /config body: ${error.message}`
+        error: `non-JSON /config body: ${error instanceof Error ? error.message : String(error)}`
       })
       conn.clientSock.destroy()
       conn.upstreamSock.destroy()
@@ -727,6 +827,10 @@ export function startProxy({
     conn.clientSock.write(Buffer.concat([Buffer.from(head, 'latin1'), body]))
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {string} mode
+   */
   function kill(conn, mode) {
     if (conn.kind !== 'peer') return { error: 'kill is for peer conns only' }
     if (conn.killed) return { error: 'already killed' }
@@ -749,6 +853,10 @@ export function startProxy({
     return { ok: true }
   }
 
+  /**
+   * @param {Connection} conn
+   * @param {string} mode
+   */
   function deliver(conn, mode) {
     if (conn.kind !== 'peer') return { error: 'deliver is for peer conns only' }
     if (conn.killed) return { error: 'already ended' }
@@ -772,6 +880,7 @@ export function startProxy({
     return { ok: true }
   }
 
+  /** @param {Connection} conn */
   function tidy(conn) {
     if (!conn.killed) return { error: 'not killed' }
     if (conn.tidied) return { error: 'already tidied' }
@@ -785,6 +894,7 @@ export function startProxy({
   proxy.control = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost')
     const conn = proxy.conns.get(Number(url.searchParams.get('conn')))
+    /** @param {number} code @param {object} obj */
     const answer = (code, obj) => {
       res.writeHead(code, { 'content-type': 'application/json' })
       res.end(JSON.stringify(obj))
@@ -887,7 +997,11 @@ export function startProxy({
   }))
 }
 
+/**
+ * @param {Array<string>} argv
+ */
 function parseArgs(argv) {
+  /** @type {{ pages: Array<{ label: string, port: number }>, targetHost?: string, targetPort?: number, controlPort?: number, logPath?: string }} */
   const args = { pages: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -905,7 +1019,7 @@ function parseArgs(argv) {
 
 if (process.argv[1] && process.argv[1].endsWith('row51-proxy.mjs')) {
   const args = parseArgs(process.argv.slice(2))
-  startProxy(args).catch((error) => {
+  startProxy(args).catch((/** @type {unknown} */ error) => {
     console.error(error)
     process.exit(1)
   })
