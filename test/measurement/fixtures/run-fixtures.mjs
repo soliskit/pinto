@@ -30,6 +30,7 @@ import { stopWithTimeout } from '../stopwithtimeout.mjs'
 
 const { createFileCoverage } = libCoverage
 const here = fileURLToPath(new URL('.', import.meta.url))
+/** @type {string[]} */
 const results = []
 /** @param {string} name @param {() => unknown} fn */
 async function proof(name, fn) {
@@ -93,6 +94,10 @@ function tempScript(name, content) {
   return abs
 }
 
+/**
+ * @param {Partial<Record<string, { type: string, body: string }>>} routes
+ * @param {(base: string) => unknown} fn
+ */
 async function withFixtureServer(routes, fn) {
   const server = createServer((req, res) => {
     const pathname = new URL(req.url, 'http://x').pathname
@@ -117,6 +122,7 @@ const FX_JS =
   'function f() {\n  return 7\n}\nif (location.search.includes("run")) {\n  f()\n}\n'
 /** @param {string} src */
 const PAGE = (src) => `<html><body><script src="${src}"></script></body></html>`
+/** @param {Partial<Record<string, { type: string, body: string }>>} [extra] */
 const routesFor = (extra = {}) => ({
   '/fx.js': { type: 'text/javascript', body: FX_JS },
   ...extra
@@ -347,6 +353,7 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/fx.js'), abs)
     const fc = createFileCoverage(cov)
+    /** @type {Partial<Record<number, number>>} */
     const lines = fc.getLineCoverage()
     assert.equal(
       lines[2] ?? 0,
@@ -393,6 +400,7 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/n.js'), abs)
     const fc = createFileCoverage(cov)
+    /** @type {Partial<Record<number, number>>} */
     const lines = fc.getLineCoverage()
     assert.equal(lines[3] ?? 0, 0, 'inner body must be uncovered')
     assert.equal(lines[5] ?? 0, 0, 'outer body statement must be uncovered')
@@ -438,6 +446,7 @@ await proof(
     ])
     const cov = await toFileCoverage(merged.get('/o.js'), abs)
     const fc = createFileCoverage(cov)
+    /** @type {Partial<Record<number, number>>} */
     const lines = fc.getLineCoverage()
     assert.equal(lines[3] ?? 0, 1, 'the executed return must stay covered')
     for (const [k, fn] of Object.entries(cov.fnMap)) {
