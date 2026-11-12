@@ -39,6 +39,7 @@ const RESPONSE_101 =
   'Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n' +
   '\r\n'
 
+/** @param {string} path */
 function upgradeRequest(path) {
   return Buffer.from(
     `GET ${path} HTTP/1.1\r\n` +
@@ -51,6 +52,10 @@ function upgradeRequest(path) {
   )
 }
 
+/**
+ * @param {() => unknown} fn
+ * @param {{ timeout?: number, interval?: number }} [options]
+ */
 async function waitFor(fn, { timeout = 3000, interval = 25 } = {}) {
   const deadline = Date.now() + timeout
   for (;;) {
@@ -119,7 +124,12 @@ void test('parser: OPEN split at every possible byte', () => {
 
 // ---- synthetic upstreams and clients (loopback only) ----
 
+/**
+ * @param {import('node:test').TestContext} t
+ * @param {{ coalesceOpen?: boolean }} [options]
+ */
 async function startWsUpstream(t, { coalesceOpen = false } = {}) {
+  /** @type {{ sockets: Array<import('node:net').Socket>, dataEvents: Array<number>, frames: Array<import('./ws-frame-parser.mjs').Message>, ended: number }} */
   const state = { sockets: [], dataEvents: [], frames: [], ended: 0 }
   const server = net.createServer((sock) => {
     state.sockets.push(sock)
@@ -127,6 +137,7 @@ async function startWsUpstream(t, { coalesceOpen = false } = {}) {
     let upgraded = false
     const parser = new WsFrameParser()
     const reasm = new MessageReassembler()
+    /** @param {Buffer} chunk */
     const handle = (chunk) => {
       state.dataEvents.push(chunk.length)
       for (const m of reasm.push(parser.push(chunk))) {
@@ -166,12 +177,24 @@ async function startWsUpstream(t, { coalesceOpen = false } = {}) {
     for (const s of state.sockets) s.destroy()
     server.close()
   })
-  return { state, port: server.address().port }
+  const addr = server.address()
+  if (addr === null || typeof addr === 'string') {
+    throw new Error('upstream server has no port')
+  }
+  return { state, port: addr.port }
 }
 
+/**
+ * @param {import('node:test').TestContext} t
+ * @param {number} port
+ * @param {string} path
+ * @param {Partial<import('node:net').NetConnectOpts>} [options]
+ */
 async function wsClient(t, port, path, options = {}) {
   const sock = net.connect({ port, host: '127.0.0.1', ...options })
-  t.after(() => sock.destroy())
+  t.after(() => {
+    sock.destroy()
+  })
   let buf = Buffer.alloc(0)
   sock.on('data', (c) => {
     buf = Buffer.concat([buf, c])
@@ -183,6 +206,11 @@ async function wsClient(t, port, path, options = {}) {
   return { sock, leftover }
 }
 
+/**
+ * @param {import('node:net').Socket} sock
+ * @param {string} event
+ * @param {number} [timeout]
+ */
 function onceEvent(sock, event, timeout = 1500) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -195,9 +223,14 @@ function onceEvent(sock, event, timeout = 1500) {
   })
 }
 
+/**
+ * @param {import('node:test').TestContext} t
+ * @param {number} upstreamPort
+ */
 async function startTestProxy(t, upstreamPort) {
+  /** @type {Array<Record<string, unknown>>} */
   const events = []
-  const { proxy, close } = await startProxy({
+  const started = await startProxy({
     targetHost: '127.0.0.1',
     targetPort: upstreamPort,
     pages: [
@@ -208,20 +241,39 @@ async function startTestProxy(t, upstreamPort) {
     quiet: true,
     onEvent: (e) => events.push(e)
   })
-  t.after(close)
+  const proxy = started.proxy
+  t.after(() => {
+    started.close()
+  })
+  const pageAddr = proxy.servers[0].address()
+  const controlAddr = proxy.control ? proxy.control.address() : null
+  if (
+    pageAddr === null ||
+    typeof pageAddr === 'string' ||
+    controlAddr === null ||
+    typeof controlAddr === 'string'
+  ) {
+    throw new Error('proxy servers not listening')
+  }
   return {
     events,
     proxy,
-    pagePort: proxy.servers[0].address().port,
-    controlPort: proxy.control.address().port
+    pagePort: pageAddr.port,
+    controlPort: controlAddr.port
   }
 }
 
+/**
+ * @param {number} port
+ * @param {string} path
+ */
 async function control(port, path) {
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+  const res = await fetch(`http://127.0.0.1:${String(port)}${path}`, {
     method: 'POST'
   })
-  return res.json()
+  /** @type {unknown} */
+  const data = await res.json()
+  return data
 }
 
 const PEER_PATH = '/peerjs?key=pinto&id=test-id&token=test-token'
@@ -316,6 +368,7 @@ void test('proxy: kill close-frame - close goes client-ward only', async (t) => 
   )
   const { sock, leftover } = await wsClient(t, pagePort, PEER_PATH)
   const parser = new WsFrameParser()
+  /** @type {Array<import('./ws-frame-parser.mjs').Frame>} */
   const frames = []
   if (leftover.length) frames.push(...parser.push(leftover))
   sock.on('data', (c) => frames.push(...parser.push(c)))
@@ -406,10 +459,15 @@ void test('proxy: upgrade classification peer vs socket.io vs other', async (t) 
 
 // ---- /config interception ----
 
+/**
+ * @param {import('node:test').TestContext} t
+ * @param {{ configResponder?: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void }} [options]
+ */
 async function startHttpUpstream(t, { configResponder } = {}) {
   const server = http.createServer((req, res) => {
     if (req.url === '/config') {
-      return configResponder(req, res)
+      configResponder(req, res)
+      return
     }
     if (req.url === '/bundle.js') {
       res.writeHead(200, {
@@ -428,9 +486,18 @@ async function startHttpUpstream(t, { configResponder } = {}) {
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   t.after(() => server.close())
-  return { port: server.address().port }
+  const addr = server.address()
+  if (addr === null || typeof addr === 'string') {
+    throw new Error('upstream server has no port')
+  }
+  return { port: addr.port }
 }
 
+/**
+ * @param {number} port
+ * @param {string} path
+ * @param {{ close?: boolean }} [options]
+ */
 async function httpGet(port, path, { close = false } = {}) {
   const sock = net.connect(port, '127.0.0.1')
   await new Promise((resolve) => sock.once('connect', resolve))
@@ -447,23 +514,28 @@ async function httpGet(port, path, { close = false } = {}) {
         buf = buf.subarray(end + 4)
         return head
       }
-      const chunk = await new Promise((resolve, reject) => {
-        sock.once('data', resolve)
-        sock.once('error', reject)
-      })
+      const chunk = await new Promise(
+        (/** @type {(value: Buffer) => void} */ resolve, reject) => {
+          sock.once('data', resolve)
+          sock.once('error', reject)
+        }
+      )
       buf = Buffer.concat([buf, chunk])
     }
   }
   const head = await readHead()
   const match = /content-length:\s*(\d+)/i.exec(head)
+  /** @type {Buffer} */
   let body
   if (match) {
     const total = Number(match[1])
     while (buf.length < total) {
-      const chunk = await new Promise((resolve, reject) => {
-        sock.once('data', resolve)
-        sock.once('error', reject)
-      })
+      const chunk = await new Promise(
+        (/** @type {(value: Buffer) => void} */ resolve, reject) => {
+          sock.once('data', resolve)
+          sock.once('error', reject)
+        }
+      )
       buf = Buffer.concat([buf, chunk])
     }
     body = buf.subarray(0, total)
@@ -484,7 +556,7 @@ async function httpGet(port, path, { close = false } = {}) {
     body,
     readHead,
     getBuf: () => buf,
-    setBuf: (b) => (buf = b)
+    setBuf: (/** @type {Buffer} */ b) => (buf = b)
   }
 }
 
@@ -504,10 +576,13 @@ void test('proxy: /config interception rewrites iceServers only', async (t) => {
   })
   const { events, pagePort } = await startTestProxy(t, upstream.port)
   const first = await httpGet(pagePort, '/config')
+  /** @type {unknown} */
   const json = JSON.parse(first.body.toString('utf8'))
   assert.equal(json.key, 'pinto', 'key unchanged')
   assert.deepEqual(json.iceServers, [], 'iceServers emptied')
-  const declared = Number(/content-length: (\d+)/i.exec(first.head)[1])
+  const m = /content-length: (\d+)/i.exec(first.head)
+  assert.ok(m !== null)
+  const declared = Number(m[1])
   assert.equal(
     declared,
     first.body.length,
@@ -523,10 +598,12 @@ void test('proxy: /config interception rewrites iceServers only', async (t) => {
   assert.ok(/content-length: 4/i.test(head2))
   let body2 = first.getBuf()
   while (body2.length < 4) {
-    const chunk = await new Promise((resolve, reject) => {
-      first.sock.once('data', resolve)
-      first.sock.once('error', reject)
-    })
+    const chunk = await new Promise(
+      (/** @type {(value: Buffer) => void} */ resolve, reject) => {
+        first.sock.once('data', resolve)
+        first.sock.once('error', reject)
+      }
+    )
     body2 = Buffer.concat([body2, chunk])
   }
   assert.equal(body2.subarray(0, 4).toString(), 'AAAA', 'bundle byte-identical')
