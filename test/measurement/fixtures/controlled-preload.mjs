@@ -19,7 +19,16 @@ import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { chromium } from 'playwright'
 
+/**
+ * @typedef {import('playwright').Page} FixturePage
+ * @typedef {import('playwright').BrowserContext} FixtureContext
+ * @typedef {{saved: true, name: string, sessionId: number, ordinal: number, queuedAt: number, initiatedAt: number, respondedAt: number, sourceFetchedAt: number, writtenAt: number}} SavedReceipt
+ * @typedef {SavedReceipt | {saved: false} | undefined} CaptureReceipt
+ * @typedef {(why: string) => Promise<CaptureReceipt>} FixtureTake
+ */
+/** @type {WeakMap<FixturePage, FixtureTake>} */
 const fixtureTakes = new WeakMap()
+/** @param {FixturePage} page */
 export async function takeAfterFixtureAction(page) {
   if (process.env.PINTO_FIXTURE_EXPLICIT_TAKE !== '1')
     throw new Error('fixture take disabled')
@@ -37,6 +46,7 @@ if (process.env.PINTO_MEASURE === '1') {
   mkdirSync(captureDir, { recursive: true })
   const indexFile = join(captureDir, 'captures.index')
   const POLL_MS = 250
+  /** @type {Array<'goto' | 'reload' | 'goBack' | 'goForward' | 'click' | 'dblclick' | 'tap' | 'press'>} */
   const NAV_APIS = [
     'goto',
     'reload',
@@ -50,6 +60,7 @@ if (process.env.PINTO_MEASURE === '1') {
   let seq = 0
   let sessionSeq = 0
 
+  /** @param {FixturePage} page @param {FixtureContext} context */
   async function instrument(page, context) {
     const session = await context.newCDPSession(page)
     await session.send('Page.enable')
@@ -60,16 +71,19 @@ if (process.env.PINTO_MEASURE === '1') {
       detailed: true
     })
 
+    /** @type {Map<string, string>} */
     const sources = new Map()
     session.on('Debugger.scriptParsed', (event) => {
       if (event.url) sources.set(event.scriptId, event.url)
     })
+    /** @type {{at: number, url: string}[]} */
     const navLog = []
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame())
         navLog.push({ at: Date.now(), url: page.url() })
     })
 
+    /** @param {string} scriptId */
     async function sourceFor(scriptId) {
       try {
         const r = await session.send('Debugger.getScriptSource', { scriptId })
@@ -79,9 +93,11 @@ if (process.env.PINTO_MEASURE === '1') {
       }
     }
 
+    /** @type {Promise<unknown>} */
     let queue = Promise.resolve()
     let pageOrdinal = 0
     const sessionId = ++sessionSeq
+    /** @param {string} why @returns {Promise<CaptureReceipt>} */
     function take(why) {
       const queuedAt = performance.now()
       const ordinal = ++pageOrdinal
@@ -89,6 +105,7 @@ if (process.env.PINTO_MEASURE === '1') {
       queue = operation.catch(() => {})
       return operation
     }
+    /** @param {string} why @param {{queuedAt: number, ordinal: number}} timing @returns {Promise<CaptureReceipt>} */
     async function capture(why, { queuedAt, ordinal }) {
       const initiatedAt = performance.now()
       const at = Date.now()
@@ -186,10 +203,14 @@ if (process.env.PINTO_MEASURE === '1') {
     return { take }
   }
 
+  /** @type {WeakSet<FixturePage>} */
   const instrumented = new WeakSet()
+  /** @type {WeakSet<FixturePage>} */
   const closing = new WeakSet()
+  /** @type {WeakMap<FixturePage, {take: FixtureTake}>} */
   const takesByPage = new WeakMap()
 
+  /** @param {FixtureContext} context */
   function watchContext(context) {
     const originalNewPage = context.newPage.bind(context)
     context.newPage = async (...args) => {
