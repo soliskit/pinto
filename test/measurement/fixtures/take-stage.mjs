@@ -24,7 +24,8 @@ export const relations = [
   'later-initiation'
 ]
 /** @type {Map<unknown, unknown>} */
-const reasonMap = new Map([
+const reasonMap = new Map()
+for (const [k, v] of [
   ['before:goto', 'before-goto'],
   ['before:click', 'before-click'],
   ['before:press', 'before-press'],
@@ -36,6 +37,7 @@ const reasonMap = new Map([
     'other-known-api'
   ])
 ])
+  reasonMap.set(k, v)
 export const takeKeys = [
   'take-metadata',
   'take-order',
@@ -82,6 +84,7 @@ export function summarizeTakes(records, index, source, mode) {
   const result = emptyTakeSummary()
   try {
     if (
+      typeof mode !== 'string' ||
       !['click', 'enter'].includes(mode) ||
       !Array.isArray(records) ||
       !records.length ||
@@ -106,9 +109,9 @@ export function summarizeTakes(records, index, source, mode) {
     let childPid
     const takes = []
     for (const record of records) {
+      const recordName = readKey(record, 'name')
       const match =
-        typeof readKey(record, 'name') === 'string' &&
-        /^(\d+)-(\d+)\.json$/.exec(readKey(record, 'name'))
+        typeof recordName === 'string' && /^(\d+)-(\d+)\.json$/.exec(recordName)
       const data = readKey(record, 'data')
       if (
         !match ||
@@ -139,20 +142,26 @@ export function summarizeTakes(records, index, source, mode) {
         return result
       childPid = pid
       sequences.add(sequence)
-      for (const navigation of readKey(data, 'navigations')) {
+      const navigations = readKey(data, 'navigations')
+      if (!Array.isArray(navigations)) return result
+      for (const navigation of navigations) {
+        const navUrl = readKey(navigation, 'url')
         if (
           !navigation ||
           !Number.isFinite(readKey(navigation, 'at')) ||
-          typeof readKey(navigation, 'url') !== 'string'
+          typeof navUrl !== 'string'
         )
           return result
-        new URL(readKey(navigation, 'url'))
+        new URL(navUrl)
       }
+      /** @type {unknown[]} */
       const entries = []
-      for (const entry of readKey(data, 'entries')) {
-        if (!entry || typeof readKey(entry, 'url') !== 'string') return result
-        if (new URL(readKey(entry, 'url')).pathname === '/event.js')
-          entries.push(entry)
+      const dataEntries = readKey(data, 'entries')
+      if (!Array.isArray(dataEntries)) return result
+      for (const entry of dataEntries) {
+        const entryUrl = readKey(entry, 'url')
+        if (!entry || typeof entryUrl !== 'string') return result
+        if (new URL(entryUrl).pathname === '/event.js') entries.push(entry)
       }
       takes.push({
         sequence,

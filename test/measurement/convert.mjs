@@ -22,16 +22,70 @@ const { createFileCoverage } = libCoverage
  * @property {V8Range[]} [ranges]
  */
 
+// Coverage data is JSON.parse output: plain data only, no getters or custom
+// methods. On plain data Array.isArray is exactly "has .map and iterates",
+// Number() is the coercion Math.min/max apply, and a boxed property read is
+// Reflect.get over Object(value). The helpers below keep the exact base
+// semantics at each read while giving every value an honest type. Where the
+// base read threw a TypeError (a null holder, .map on a non-array), the
+// helper throws an Error at the same point - the failure remains, its kind
+// changes.
+/** @param {unknown} value @param {string} key @returns {unknown} */
+const readProp = (value, key) => {
+  if (value === null || value === undefined)
+    throw new Error(`coverage data is missing the holder of ${key}`)
+  return Reflect.get(Object(value), key, value)
+}
+// `(value || []).map(...)`: falsy maps as empty, a JSON array maps, any other
+// truthy JSON value (strings included) threw TypeError at .map.
+/** @param {unknown} value @returns {unknown[]} */
+const arrayOrEmpty = (value) => {
+  if (Array.isArray(value)) return value
+  if (value) throw new Error('coverage data is not a list where .map was used')
+  return []
+}
+// `for (const x of value || [])`: falsy iterates empty, a JSON array or
+// string iterates, any other truthy JSON value threw TypeError "not
+// iterable".
+/** @param {unknown} value @returns {Iterable<unknown>} */
+const iterateOrEmpty = (value) => {
+  if (Array.isArray(value) || typeof value === 'string') return value
+  if (value)
+    throw new Error('coverage data is not iterable where a list is required')
+  return []
+}
+// `{...value}` on JSON data: records and arrays spread their own entries,
+// strings spread their characters, numbers and booleans spread to {}.
+/** @param {unknown} value @returns {Record<string, unknown>} */
+const spreadData = (value) => {
+  /** @type {Record<string, unknown>} */
+  const out = {}
+  if (
+    value === null ||
+    (typeof value !== 'object' && typeof value !== 'string')
+  )
+    return out
+  for (const key of Object.keys(value)) out[key] = readProp(value, key)
+  return out
+}
+
 // A function-only zero is not evidence for any location inside that function.
 // Give the library a zero root branch so it cannot inherit outer-block hits
 // past this uncalled function. Positive function-only samples stay unchanged.
-/** @param {V8FunctionCoverage[] | undefined} functions */
+/** @param {unknown} functions @returns {unknown[]} */
 const zeroAsBlock = (functions) =>
-  (functions || []).map((fn) =>
-    !fn.isBlockCoverage && fn.ranges?.length === 1 && fn.ranges[0].count === 0
-      ? { ...fn, isBlockCoverage: true }
+  arrayOrEmpty(functions).map((fn) => {
+    const ranges = readProp(fn, 'ranges')
+    const onlyCount =
+      ranges === null || ranges === undefined
+        ? undefined
+        : readProp(ranges, 'length') === 1
+          ? readProp(Reflect.get(Object(ranges), '0'), 'count')
+          : undefined
+    return !readProp(fn, 'isBlockCoverage') && onlyCount === 0
+      ? { ...spreadData(fn), isBlockCoverage: true }
       : fn
-  )
+  })
 
 // merged: { url, source, coverageList: [functions, ...] } ; path for the report
 // V8 lists a function only once it is compiled, so a load where a function
@@ -41,63 +95,84 @@ const zeroAsBlock = (functions) =>
 // functions other loads of the same source observed removes only credit no
 // execution could have produced. This happens at the V8 level because the
 // converter's own function map drops anonymous functions entirely.
-/** @param {(V8FunctionCoverage[] | undefined)[]} coverageList */
+/** @param {unknown[]} coverageList @returns {unknown[]} */
 export function completeFunctionLists(coverageList) {
-  /** @type {Map<string, { name: string, start: number, end: number }>} */
+  /** @type {Map<string, { name: unknown, start: number, end: number }>} */
   const union = new Map()
   for (const functions of coverageList) {
-    for (const fn of functions || []) {
-      if (!fn.ranges || fn.ranges.length === 0) continue
-      const start = Math.min(...fn.ranges.map((r) => r.startOffset))
-      const end = Math.max(...fn.ranges.map((r) => r.endOffset))
-      const key = `${fn.functionName}@${String(start)}-${String(end)}`
-      if (!union.has(key)) union.set(key, { name: fn.functionName, start, end })
+    for (const fn of iterateOrEmpty(functions)) {
+      const fnRanges = readProp(fn, 'ranges')
+      if (!fnRanges || readProp(fnRanges, 'length') === 0) continue
+      const start = Math.min(
+        ...arrayOrEmpty(fnRanges).map((r) => Number(readProp(r, 'startOffset')))
+      )
+      const end = Math.max(
+        ...arrayOrEmpty(fnRanges).map((r) => Number(readProp(r, 'endOffset')))
+      )
+      const key = `${String(readProp(fn, 'functionName'))}@${String(start)}-${String(end)}`
+      if (!union.has(key))
+        union.set(key, { name: readProp(fn, 'functionName'), start, end })
     }
   }
-  return coverageList.map((functions) => {
-    const present = new Set(
-      (functions || [])
-        .filter((fn) => fn.ranges && fn.ranges.length > 0)
-        .map(
-          (fn) =>
-            `${fn.functionName}@${String(Math.min(...fn.ranges.map((r) => r.startOffset)))}-${String(Math.max(...fn.ranges.map((r) => r.endOffset)))}`
-        )
-    )
-    // Partial writes can list a function that ran while omitting its
-    // ancestors; a zero span containing a present function's span would
-    // erase real credit, so it is never inserted. The ancestor's own
-    // statements are carried by complete takes.
-    const presentSpans = (functions || [])
-      .filter((f) => f.ranges && f.ranges.length > 0)
-      .map((f) => ({
-        start: Math.min(...f.ranges.map((r) => r.startOffset)),
-        end: Math.max(...f.ranges.map((r) => r.endOffset))
-      }))
-    /** @type {V8FunctionCoverage[]} */
-    const added = []
-    for (const [key, fn] of union) {
-      if (present.has(key)) continue
-      if (
-        presentSpans.some(
-          (p) =>
-            fn.start <= p.start &&
-            p.end <= fn.end &&
-            (fn.start < p.start || p.end < fn.end)
-        )
+  return coverageList.map(
+    /** @param {unknown} functions @returns {unknown} */ (functions) => {
+      const present = new Set(
+        arrayOrEmpty(functions)
+          .filter((fn) => {
+            const fnRanges = readProp(fn, 'ranges')
+            return fnRanges ? Number(readProp(fnRanges, 'length')) > 0 : false
+          })
+          .map((fn) => {
+            const ranges = arrayOrEmpty(readProp(fn, 'ranges') || [])
+            return `${String(readProp(fn, 'functionName'))}@${String(Math.min(...ranges.map((r) => Number(readProp(r, 'startOffset')))))}-${String(Math.max(...ranges.map((r) => Number(readProp(r, 'endOffset')))))}`
+          })
       )
-        continue
-      added.push({
-        functionName: fn.name,
-        isBlockCoverage: true,
-        ranges: [{ startOffset: fn.start, endOffset: fn.end, count: 0 }]
-      })
+      // Partial writes can list a function that ran while omitting its
+      // ancestors; a zero span containing a present function's span would
+      // erase real credit, so it is never inserted. The ancestor's own
+      // statements are carried by complete takes.
+      const presentSpans = arrayOrEmpty(functions)
+        .filter((f) => {
+          const fRanges = readProp(f, 'ranges')
+          return fRanges ? Number(readProp(fRanges, 'length')) > 0 : false
+        })
+        .map((f) => {
+          const ranges = arrayOrEmpty(readProp(f, 'ranges') || [])
+          return {
+            start: Math.min(
+              ...ranges.map((r) => Number(readProp(r, 'startOffset')))
+            ),
+            end: Math.max(
+              ...ranges.map((r) => Number(readProp(r, 'endOffset')))
+            )
+          }
+        })
+      /** @type {unknown[]} */
+      const added = []
+      for (const [key, fn] of union) {
+        if (present.has(key)) continue
+        if (
+          presentSpans.some(
+            (p) =>
+              fn.start <= p.start &&
+              p.end <= fn.end &&
+              (fn.start < p.start || p.end < fn.end)
+          )
+        )
+          continue
+        added.push({
+          functionName: fn.name,
+          isBlockCoverage: true,
+          ranges: [{ startOffset: fn.start, endOffset: fn.end, count: 0 }]
+        })
+      }
+      return added.length ? [...iterateOrEmpty(functions), ...added] : functions
     }
-    return added.length ? [...(functions || []), ...added] : functions
-  })
+  )
 }
 
 /**
- * @param {{ url?: string, source?: unknown, coverageList?: (V8FunctionCoverage[] | undefined)[], functions?: V8FunctionCoverage[] } | undefined} merged
+ * @param {{ url?: unknown, source?: unknown, coverageList?: unknown, functions?: unknown } | undefined} merged
  * @param {string} path
  */
 export async function toFileCoverage(merged, path) {
@@ -105,16 +180,21 @@ export async function toFileCoverage(merged, path) {
     throw new Error('coverage conversion requires a defined source')
   if (merged.source.length === 0) {
     const lists = merged.coverageList || [merged.functions]
-    for (const functions of lists)
-      for (const fn of functions || [])
-        for (const range of fn.ranges || [])
-          if (range.startOffset !== 0 || range.endOffset !== 0)
+    for (const functions of iterateOrEmpty(lists))
+      for (const fn of iterateOrEmpty(functions))
+        for (const range of iterateOrEmpty(readProp(fn, 'ranges')))
+          if (
+            readProp(range, 'startOffset') !== 0 ||
+            readProp(range, 'endOffset') !== 0
+          )
             throw new Error('coverage range exceeds empty source')
     return createFileCoverage(path).data
   }
   const coverages = []
   const lists = merged.coverageList || [merged.functions]
-  for (const functions of completeFunctionLists(lists.map(zeroAsBlock))) {
+  for (const functions of completeFunctionLists(
+    arrayOrEmpty(lists).map(zeroAsBlock)
+  )) {
     const converter = V8ToIstanbul(path, 0, {
       source: merged.source
     })

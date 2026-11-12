@@ -25,7 +25,9 @@ import { toFileCoverage } from '../convert.mjs'
 const here = fileURLToPath(new URL('.', import.meta.url))
 /** @param {import('../runtime-coverage.mjs').RuntimeCoverageData | undefined} cov */
 const lineHits = (cov) => libCoverage.createFileCoverage(cov).getLineCoverage()
-const finite = (x) => Number.isFinite(x) && x >= 0 && x <= 500000
+/** @param {unknown} x @returns {x is number} */
+const finite = (x) =>
+  typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 500000
 // Ordinary [[Get]] semantics for reads on unknown JSON data; mirrors the
 // take-stage helper (primitive receiver preserved, nullish yields undefined).
 /** @param {unknown} value @param {string} key @returns {unknown} */
@@ -124,10 +126,10 @@ for (const controlArm of ['no-navigation', 'released-navigation'])
       childPhase = 'unavailable',
       complete = true,
       cleanup
-    let timeline = {},
-      explicitOrdinal = null,
-      sessionId = null,
-      expectedCount = null
+    /** @type {unknown} */
+    let explicitOrdinal = null
+    let sessionId = null
+    let expectedCount = null
     let sawProvenCredit = false,
       intervalPositive = false,
       explicitPositive = 'inconclusive',
@@ -222,7 +224,7 @@ mark('done')
     } catch {
       // ignore
     }
-    timeline = parse(join(dir, 'timeline.json')) || {}
+    const timeline = parse(join(dir, 'timeline.json')) || {}
     phase = 'receipts'
     try {
       const browserDir = join(dir, 'browser')
@@ -292,6 +294,7 @@ mark('done')
         readdirSync(browserDir).some((name) => name.endsWith('.failed'))
       )
         complete = false
+      /** @type {unknown} */
       let priorWritten = 0
       for (let i = 0; i < records.length; i++) {
         const { name, data: d } = records[i]
@@ -300,6 +303,17 @@ mark('done')
           ([n, why]) => n === name && why === readKey(d, 'why')
         )
         const w = ws.length === 1 ? ws[0] : null
+        /**
+         * @type {{
+         *   mode: string, sessionId: unknown, ordinal: unknown, why: unknown,
+         *   queuedAt: unknown, initiatedAt: unknown, respondedAt: unknown,
+         *   sourceFetchedAt: unknown, writtenAt: unknown, relation: string,
+         *   eligible: string, source: string, sourceHash: string | null,
+         *   helperStart: number | null, helperEnd: number | null,
+         *   helperCount: unknown, raw: string, direct: string,
+         *   wrapper: string, helperCredit: string, receipt: string
+         * }}
+         */
         const row = {
           mode,
           sessionId: readKey(d, 'sessionId') ?? null,
@@ -341,7 +355,7 @@ mark('done')
           ix.length === 1 &&
           times.every(finite) &&
           times.every((x, j) => j === 0 || times[j - 1] <= x) &&
-          priorWritten <= readKey(d, 'initiatedAt') &&
+          Number(priorWritten) <= Number(readKey(d, 'initiatedAt')) &&
           ['queuedAt', 'initiatedAt', 'respondedAt', 'sourceFetchedAt'].every(
             (k) => readKey(w, k) === readKey(d, k)
           )
@@ -350,30 +364,33 @@ mark('done')
           priorWritten = readKey(w, 'writtenAt')
           row.receipt = 'complete'
         }
-        if (
-          finite(readKey(timeline, 'markerObservedAt')) &&
-          readKey(d, 'initiatedAt') >= readKey(timeline, 'markerObservedAt')
-        )
+        const dInit = readKey(d, 'initiatedAt')
+        const dResp = readKey(d, 'respondedAt')
+        const tlMarker = readKey(timeline, 'markerObservedAt')
+        const tlStarted = readKey(timeline, 'actionStartedAt')
+        const tlReleased = readKey(timeline, 'releaseIssuedAt')
+        if (finite(tlMarker) && Number(dInit) >= tlMarker)
           row.relation = 'post-marker'
-        else if (
-          finite(readKey(timeline, 'actionStartedAt')) &&
-          readKey(d, 'respondedAt') < readKey(timeline, 'actionStartedAt')
-        )
+        else if (finite(tlStarted) && Number(dResp) < tlStarted)
           row.relation = 'pre-action'
-        const eligible =
+        const dOrdinal = readKey(d, 'ordinal')
+        const eligible = Boolean(
           metadata &&
+          typeof explicitOrdinal === 'number' &&
           Number.isInteger(explicitOrdinal) &&
-          readKey(d, 'ordinal') <= explicitOrdinal &&
-          finite(readKey(timeline, 'actionStartedAt')) &&
-          readKey(d, 'respondedAt') >= readKey(timeline, 'actionStartedAt') &&
-          (!finite(readKey(timeline, 'releaseIssuedAt')) ||
-            readKey(d, 'respondedAt') <= readKey(timeline, 'releaseIssuedAt'))
+          Number(dOrdinal) <= explicitOrdinal &&
+          finite(tlStarted) &&
+          Number(dResp) >= tlStarted &&
+          (!finite(tlReleased) || Number(dResp) <= tlReleased)
+        )
         row.eligible = eligible ? 'yes' : 'no'
         const entriesValue = readKey(d, 'entries')
         const entries = Array.isArray(entriesValue)
           ? entriesValue.filter((e) => {
               try {
-                return new URL(readKey(e, 'url')).pathname === '/event.js'
+                return (
+                  new URL(String(readKey(e, 'url'))).pathname === '/event.js'
+                )
               } catch {
                 return false
               }
@@ -467,30 +484,30 @@ mark('done')
       complete = false
     }
     const tr = readKey(timeline, 'explicitReceipt')
+    const tStarted = readKey(timeline, 'actionStartedAt')
+    const tResolved = readKey(timeline, 'actionResolvedAt')
+    const tMarker2 = readKey(timeline, 'markerObservedAt')
+    const tReleased2 = readKey(timeline, 'releaseIssuedAt')
+    const trWritten = readKey(tr, 'writtenAt')
     const timelineValid =
-      [
-        readKey(timeline, 'actionStartedAt'),
-        readKey(timeline, 'actionResolvedAt'),
-        readKey(timeline, 'markerObservedAt'),
-        readKey(tr, 'writtenAt')
-      ].every(finite) &&
-      readKey(timeline, 'actionStartedAt') <=
-        readKey(timeline, 'actionResolvedAt') &&
-      readKey(timeline, 'actionResolvedAt') <=
-        readKey(timeline, 'markerObservedAt') &&
+      finite(tStarted) &&
+      finite(tResolved) &&
+      finite(tMarker2) &&
+      finite(trWritten) &&
+      tStarted <= tResolved &&
+      tResolved <= tMarker2 &&
       readKey(tr, 'ordinal') === explicitOrdinal &&
       readKey(tr, 'sessionId') === sessionId &&
       rows.some(
         (row) =>
           row.ordinal === explicitOrdinal &&
           row.receipt === 'complete' &&
-          row.initiatedAt >= readKey(timeline, 'markerObservedAt') &&
-          row.writtenAt === readKey(tr, 'writtenAt')
+          Number(row.initiatedAt) >= tMarker2 &&
+          row.writtenAt === trWritten
       ) &&
       (controlArm === 'released-navigation'
-        ? finite(readKey(timeline, 'releaseIssuedAt')) &&
-          readKey(timeline, 'releaseIssuedAt') >= readKey(tr, 'writtenAt')
-        : readKey(timeline, 'releaseIssuedAt') === undefined)
+        ? finite(tReleased2) && tReleased2 >= trWritten
+        : tReleased2 === undefined)
     if (!timelineValid) complete = false
     // Emit every bounded surviving row BEFORE status decisions. No source or URL.
     for (const row of rows)

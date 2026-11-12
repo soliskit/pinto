@@ -161,10 +161,10 @@ async function startWsUpstream(t, { coalesceOpen = false } = {}) {
     }
     sock.on('data', (chunk) => {
       if (upgraded) {
-        handle(chunk)
+        handle(Buffer.from(chunk))
         return
       }
-      buf = Buffer.concat([buf, chunk])
+      buf = Buffer.concat([buf, Buffer.from(chunk)])
       const end = buf.indexOf('\r\n\r\n')
       if (end === -1) return
       upgraded = true
@@ -184,7 +184,11 @@ async function startWsUpstream(t, { coalesceOpen = false } = {}) {
     sock.on('end', () => state.ended++)
     sock.on('error', () => {})
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  await new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => {
+      resolve(undefined)
+    })
+  )
   t.after(() => {
     for (const s of state.sockets) s.destroy()
     server.close()
@@ -209,9 +213,13 @@ async function wsClient(t, port, path, options = {}) {
   })
   let buf = Buffer.alloc(0)
   sock.on('data', (c) => {
-    buf = Buffer.concat([buf, c])
+    buf = Buffer.concat([buf, Buffer.from(c)])
   })
-  await new Promise((resolve) => sock.once('connect', resolve))
+  await new Promise((resolve) =>
+    sock.once('connect', () => {
+      resolve(undefined)
+    })
+  )
   sock.write(upgradeRequest(path))
   await waitFor(() => buf.indexOf('\r\n\r\n') !== -1)
   const leftover = buf.subarray(buf.indexOf('\r\n\r\n') + 4)
@@ -230,7 +238,7 @@ function onceEvent(sock, event, timeout = 1500) {
     }, timeout)
     sock.once(event, () => {
       clearTimeout(timer)
-      resolve()
+      resolve(undefined)
     })
   })
 }
@@ -273,6 +281,11 @@ async function startTestProxy(t, upstreamPort) {
     pagePort: pageAddr.port,
     controlPort: controlAddr.port
   }
+}
+
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+function isRecord(value) {
+  return typeof value === 'object' && value !== null
 }
 
 /**
@@ -324,6 +337,7 @@ void test('proxy: no-OPEN decision point at first post-resume heartbeat', async 
   )
   await waitFor(() => events.some((e) => e.ev === 'decision-point'))
   const dp = events.find((e) => e.ev === 'decision-point')
+  assert.ok(dp)
   assert.equal(dp.result, 'no-open-resume')
   assert.equal(dp.derived, true)
   assert.equal(typeof dp.rPlusMs, 'number')
@@ -364,6 +378,7 @@ void test('proxy: kill fin - no close leak server-ward until tidy', async (t) =>
     'discard recorded'
   )
   const killEvent = events.find((e) => e.ev === 'kill')
+  assert.ok(killEvent)
   assert.equal(killEvent.mode, 'fin')
 
   const tidyRes = await control(controlPort, '/tidy?conn=1')
@@ -383,7 +398,7 @@ void test('proxy: kill close-frame - close goes client-ward only', async (t) => 
   /** @type {Array<import('./ws-frame-parser.mjs').Frame>} */
   const frames = []
   if (leftover.length) frames.push(...parser.push(leftover))
-  sock.on('data', (c) => frames.push(...parser.push(c)))
+  sock.on('data', (c) => frames.push(...parser.push(Buffer.from(c))))
   sock.write(
     encodeFrame({ opcode: 1, payload: Buffer.from(HB_TEXT), mask: true })
   )
@@ -393,6 +408,7 @@ void test('proxy: kill close-frame - close goes client-ward only', async (t) => 
   assert.deepEqual(res, { ok: true })
   await waitFor(() => frames.some((f) => f.opcode === OPCODES.CLOSE))
   const closeFrame = frames.find((f) => f.opcode === OPCODES.CLOSE)
+  assert.ok(closeFrame)
   assert.equal(closeFrame.masked, false, 'server-ward frames are unmasked')
   assert.deepEqual(closeFrame.payload, Buffer.from([0x03, 0xe9]))
   await sleep(300)
@@ -421,6 +437,7 @@ void test('proxy: deliver close-frame - server-SEEN drop (scenario B)', async (t
   const closeFrame = upstream.state.frames.find(
     (f) => f.opcode === OPCODES.CLOSE
   )
+  assert.ok(closeFrame)
   assert.deepEqual(closeFrame.payload, Buffer.from([0x03, 0xe9]))
   assert.ok(events.some((e) => e.ev === 'deliver-close-frame-sent'))
 })
@@ -448,6 +465,7 @@ void test('proxy: kill refused for non-peer connections', async (t) => {
   const { pagePort, controlPort } = await startTestProxy(t, upstream.port)
   await wsClient(t, pagePort, '/socket.io/?EIO=4&transport=websocket')
   const res = await control(controlPort, '/kill?conn=1&mode=fin')
+  assert.ok(isRecord(res))
   assert.equal(res.error, 'kill is for peer conns only')
 })
 
@@ -463,6 +481,7 @@ void test('proxy: upgrade classification peer vs socket.io vs other', async (t) 
   const peerUpgrade = events.find(
     (e) => e.ev === 'upgrade' && e.kind === 'peer'
   )
+  assert.ok(peerUpgrade)
   assert.deepEqual(
     [peerUpgrade.hasKey, peerUpgrade.hasId, peerUpgrade.hasToken],
     [true, true, true]
@@ -478,6 +497,7 @@ void test('proxy: upgrade classification peer vs socket.io vs other', async (t) 
 async function startHttpUpstream(t, { configResponder } = {}) {
   const server = http.createServer((req, res) => {
     if (req.url === '/config') {
+      if (!configResponder) throw new Error('config responder missing')
       configResponder(req, res)
       return
     }
@@ -496,7 +516,11 @@ async function startHttpUpstream(t, { configResponder } = {}) {
     res.writeHead(404, { 'content-length': 0 })
     res.end()
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  await new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => {
+      resolve(undefined)
+    })
+  )
   t.after(() => server.close())
   const addr = server.address()
   if (addr === null || typeof addr === 'string') {
@@ -517,6 +541,7 @@ async function httpGet(port, path, { close = false } = {}) {
     `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
       `Connection: ${close ? 'close' : 'keep-alive'}\r\n\r\n`
   )
+  /** @type {Buffer<ArrayBufferLike>} */
   let buf = Buffer.alloc(0)
   const readHead = async () => {
     for (;;) {
@@ -556,7 +581,7 @@ async function httpGet(port, path, { close = false } = {}) {
     // chunk-delimited read until close
     body = await new Promise((resolve) => {
       const parts = [buf]
-      sock.on('data', (c) => parts.push(c))
+      sock.on('data', (c) => parts.push(Buffer.from(c)))
       sock.once('close', () => {
         resolve(Buffer.concat(parts))
       })
@@ -568,7 +593,7 @@ async function httpGet(port, path, { close = false } = {}) {
     body,
     readHead,
     getBuf: () => buf,
-    setBuf: (/** @type {Buffer} */ b) => (buf = b)
+    setBuf: (/** @type {Buffer<ArrayBufferLike>} */ b) => (buf = b)
   }
 }
 
@@ -601,6 +626,7 @@ void test('proxy: /config interception rewrites iceServers only', async (t) => {
     're-serialized content-length matches the delivered body'
   )
   const intercept = events.find((e) => e.ev === 'config-intercept')
+  assert.ok(intercept)
   assert.equal(intercept.iceServersBefore, 1)
   assert.equal(intercept.iceServersAfter, 0)
 

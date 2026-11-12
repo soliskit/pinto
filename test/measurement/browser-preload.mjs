@@ -123,34 +123,81 @@ if (process.env.PINTO_MEASURE === '1') {
     }, POLL_MS)
     poll.unref()
 
-    for (const api of NAV_APIS) {
-      const original = page[api].bind(page)
-      page[api] = async (...args) => {
+    /**
+     * Settle an action API call, take the after-capture without replacing
+     * the action's own result or error, then rethrow or return it.
+     * @template T
+     * @param {string} api
+     * @param {Promise<T>} action
+     * @returns {Promise<T>}
+     */
+    const settleAction = async (api, action) => {
+      const settled = await action.then(
+        (value) => ({ value }),
+        /** @param {unknown} error */
+        (error) => ({ error })
+      )
+      if (!page.isClosed()) {
+        try {
+          await take(`after:${api}`)
+        } catch (error) {
+          // Never replace the action's own result or error; record the
+          // failed capture the same way take() does so the run fails.
+          seq += 1
+          writeFileSync(
+            join(
+              captureDir,
+              `${String(process.pid)}-${String(seq)}.json.failed`
+            ),
+            `after:${api} capture threw: ${String(error)}\n`
+          )
+        }
+      }
+      if ('error' in settled) throw settled.error
+      return settled.value
+    }
+    /**
+     * Wrap one navigation-capable page API so a capture is taken before it
+     * (and after it, when PINTO_MEASURE_AFTER_ACTION=1 and it is an action).
+     * @template {unknown[]} A
+     * @template T
+     * @param {'goto' | 'reload' | 'goBack' | 'goForward' | 'click' | 'dblclick' | 'tap' | 'press'} api
+     * @param {(...args: A) => Promise<T>} original
+     * @returns {(...args: A) => Promise<T>}
+     */
+    const wrapNav = (api, original) => {
+      return async (...args) => {
         await take(`before:${api}`)
         if (!AFTER_ACTION || !ACTION_APIS.has(api)) return original(...args)
-        const settled = await original(...args).then(
-          (value) => ({ value }),
-          /** @param {unknown} error */
-          (error) => ({ error })
-        )
-        if (!page.isClosed()) {
-          try {
-            await take(`after:${api}`)
-          } catch (error) {
-            // Never replace the action's own result or error; record the
-            // failed capture the same way take() does so the run fails.
-            seq += 1
-            writeFileSync(
-              join(
-                captureDir,
-                `${String(process.pid)}-${String(seq)}.json.failed`
-              ),
-              `after:${api} capture threw: ${String(error)}\n`
-            )
-          }
-        }
-        if ('error' in settled) throw settled.error
-        return settled.value
+        return settleAction(api, original(...args))
+      }
+    }
+    for (const api of NAV_APIS) {
+      switch (api) {
+        case 'goto':
+          page.goto = wrapNav(api, page.goto.bind(page))
+          break
+        case 'reload':
+          page.reload = wrapNav(api, page.reload.bind(page))
+          break
+        case 'goBack':
+          page.goBack = wrapNav(api, page.goBack.bind(page))
+          break
+        case 'goForward':
+          page.goForward = wrapNav(api, page.goForward.bind(page))
+          break
+        case 'click':
+          page.click = wrapNav(api, page.click.bind(page))
+          break
+        case 'dblclick':
+          page.dblclick = wrapNav(api, page.dblclick.bind(page))
+          break
+        case 'tap':
+          page.tap = wrapNav(api, page.tap.bind(page))
+          break
+        case 'press':
+          page.press = wrapNav(api, page.press.bind(page))
+          break
       }
     }
 

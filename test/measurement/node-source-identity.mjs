@@ -21,14 +21,14 @@ export function scopedSourceBindings(files) {
   )
 }
 /**
- * @template {{url: string, source?: string}} Entry
+ * @template {{url?: unknown, source?: unknown}} Entry
  * @param {Entry} entry
  * @param {Map<string, SourceBinding>} bindings
  */
 export function normalizeOwnNodeEntry(entry, bindings) {
   let u, physical
   try {
-    u = new URL(entry.url)
+    u = new URL(String(entry.url))
     if (u.protocol !== 'file:') return null
     physical = realpathSync(fileURLToPath(u))
   } catch {
@@ -44,6 +44,11 @@ export function normalizeOwnNodeEntry(entry, bindings) {
   if (currentHash !== binding.sha256)
     throw new Error('source changed during measurement for ' + physical)
   const source = entry.source === undefined ? binding.source : entry.source
+  // A non-string source threw a TypeError from update() before; say it here.
+  if (typeof source !== 'string')
+    throw new TypeError(
+      'source conflict for ' + physical + ': source is not a string'
+    )
   const hash = createHash('sha256').update(source).digest('hex')
   if (hash !== binding.sha256)
     throw new Error('source conflict for ' + physical)
