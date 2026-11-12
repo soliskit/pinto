@@ -73,7 +73,7 @@ function runSuite() {
       else
         reject(
           new MeasurementFailure(
-            `${suite} suite exited ${code}; measurement run failed`
+            `${suite} suite exited ${String(code)}; measurement run failed`
           )
         )
     })
@@ -98,8 +98,8 @@ async function withVerificationServer(fn) {
     stdio: ['ignore', 'pipe', 'pipe']
   })
   let output = ''
-  child.stdout.on('data', (d) => (output += d))
-  child.stderr.on('data', (d) => (output += d))
+  child.stdout.on('data', (d) => (output += String(d)))
+  child.stderr.on('data', (d) => (output += String(d)))
   const deadline = Date.now() + 15000
   while (!output.includes('Pinto listening')) {
     if (Date.now() > deadline) {
