@@ -18,3 +18,5 @@ results
 *.coveragexml
 # Local measurement output (raw reports stay private)
 .measurement/
+__pycache__/
+*.pyc
