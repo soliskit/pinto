@@ -202,16 +202,12 @@ jobs:
   # [PINTO] Mutation matrix, single-sourced from .github/mutation-ranges.json:
   # six whole-file shards plus line-range slices for the two dense targets
   # (public/room.js, src/index.ts). The guard job validates every ranged
-  # target's slices before any mutation run.
+  # target's slices before any mutation run; the completeness job reconciles
+  # each ranged target's slice reports against a full-file instrumentation.
   # Each slice runs ONLY the test files that exercise its target (the Tetris
   # per-file philosophy). Consequence, stated honestly: a mutant whose only
   # killing test lives in an unmapped file survives; the per-slice kill gate
-  # (added with the live runs in qualification stage 2) proves each mapping
-  # kills before merge.
-  # QUALIFICATION STAGE 1 of 3: this push runs every slice's mapped tests
-  # against unmutated code only. Live mutation runs, per-slice gates, report
-  # uploads and the completeness job arrive in stage 2 once this baseline
-  # qualifies; the temporary baseline step leaves in stage 3.
+  # proves each mapping kills before merge.
   mutation-plan:
     name: Mutation matrix
     needs: plan
@@ -289,7 +285,81 @@ jobs:
         if: matrix.browser == 'chromium'
         run: node -e "process.exit(require('playwright/package.json').version==='1.65.0'?0:1)"
       # TEMP qualification instrumentation (removed in the final version):
-      # run this slice's exact mapped test command on unmutated code, so a
-      # later mutation run's kill data rests on a just-proven environment.
+      # run this slice's exact mapped test command on unmutated code, so the
+      # mutation run's kill data rests on a just-proven environment. The
+      # report upload below is NOT temporary: the completeness gate needs it.
       - name: TEMP baseline - mapped tests on unmutated code
         run: node --test --test-timeout=120000 ${{ matrix.tests }}
+      - run: >
+          npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run
+          --ignorePatterns tsconfig.json,tsconfig.client.json
+          --testRunner command
+          --commandRunner.command "exec node --test --test-timeout=120000 ${{ matrix.tests }}"
+          --mutate "${{ matrix.mutate }}"
+          --reporters clear-text,json --coverageAnalysis off
+          --concurrency 1 --timeoutMS ${{ matrix.browser == 'chromium' && 120000 || 20000 }}
+      # Pinto configures no score gate (matching salutant): Stryker's
+      # thresholds.break defaults to null and nothing here sets it, so no
+      # score can fail a run. Fail closed on intent instead: every slice
+      # must generate at least one mutant AND kill at least one - a
+      # zero-kill slice stops the rollout.
+      - name: Verify this slice generated and killed mutants
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("reports/mutation/mutation.json", "utf8"));
+            const mutants = Object.values(r.files ?? {}).flatMap((f) => f.mutants ?? []);
+            if (mutants.length === 0) { console.error("Vacuous slice: mutation report lists 0 mutants"); process.exit(1); }
+            const killed = mutants.filter((m) => m.status === "Killed").length;
+            if (killed === 0) { console.error(`Zero-kill slice: ${mutants.length} mutants, none killed - rollout stops`); process.exit(1); }
+            console.log(`Report lists ${mutants.length} mutants, ${killed} killed.`);
+          '
+      # Every slice uploads its report: the completeness job reconciles the
+      # ranged targets' reports against a full-file instrumentation.
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report-${{ matrix.shard }}
+          path: reports/mutation/mutation.json
+
+  # Every expected mutation must appear exactly once across a target's slice
+  # reports; a missing report, a missing or duplicated mutation, or an
+  # unexpected one stops the rollout.
+  mutation-completeness:
+    name: Mutation completeness
+    needs: mutation
+    runs-on: ubuntu-latest
+    env:
+      STRYKER_VERSION: '10.1.1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+      - name: Download slice reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: mutation-report-*
+          path: reports
+      - name: Install the pinned instrumenter (scratch prefix, not a dependency)
+        run: npm install --prefix "$RUNNER_TEMP/mutation-tools" --no-save --no-audit --no-fund "@stryker-mutator/instrumenter@${STRYKER_VERSION}"
+      - name: Reconcile each ranged target
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in room index; do
+            file=$(jq -r --arg t "$target" '[.include[] | select(.target == $t)][0].mutate | split(":")[0]' .github/mutation-ranges.json)
+            mapfile -t shards < <(jq -r --arg t "$target" '.include[] | select(.target == $t) | .shard' .github/mutation-ranges.json)
+            reports=()
+            for shard in "${shards[@]}"; do
+              report="reports/mutation-report-$shard/mutation.json"
+              [ -f "$report" ] || { echo "Missing report for slice $shard"; exit 1; }
+              reports+=("$report")
+            done
+            INSTRUMENTER_PREFIX="$RUNNER_TEMP/mutation-tools" node .github/scripts/dump-mutants.mjs "$file" "$RUNNER_TEMP/expected-$target.json"
+            node .github/scripts/check-mutation-completeness.mjs "$file" "$RUNNER_TEMP/expected-$target.json" "${reports[@]}"
+          done
