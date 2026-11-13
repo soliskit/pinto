@@ -30,6 +30,8 @@ export async function startServer(
     KEY: '',
     TWILIO_ACCOUNT_SID: '',
     TWILIO_AUTH_TOKEN: '',
+    // Browser tests run against shortened app timings; '' opts a test out.
+    PINTO_TEST_TIMINGS: '1',
     ...env,
     PORT: String(port)
   }

@@ -284,12 +284,6 @@ jobs:
       - name: Check Playwright package version
         if: matrix.browser == 'chromium'
         run: node -e "process.exit(require('playwright/package.json').version==='1.65.0'?0:1)"
-      # TEMP qualification instrumentation (removed in the final version):
-      # run this slice's exact mapped test command on unmutated code, so the
-      # mutation run's kill data rests on a just-proven environment. The
-      # report upload below is NOT temporary: the completeness gate needs it.
-      - name: TEMP baseline - mapped tests on unmutated code
-        run: node --test --test-timeout=120000 ${{ matrix.tests }}
       - run: >
           npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run
           --ignorePatterns tsconfig.json,tsconfig.client.json
