@@ -24,6 +24,22 @@ export interface Server {
 export async function startServer(
   env: NodeJS.ProcessEnv = {}
 ): Promise<Server> {
+  for (let attempt = 1; ; attempt++) {
+    const server = await spawnServer(env)
+    try {
+      await server.waitForOutput(server.listenLine)
+      return server
+    } catch (error) {
+      const collided = server.output().includes('the port is already in use')
+      await server.stop()
+      if (!collided || attempt === 3) throw error
+    }
+  }
+}
+
+async function spawnServer(
+  env: NodeJS.ProcessEnv
+): Promise<Server & { listenLine: string }> {
   const port = await freePort()
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
@@ -75,10 +91,10 @@ export async function startServer(
       await exited
     }
   }
-  await server.waitForOutput(
-    `Pinto listening on http://localhost:${String(port)}`
-  )
-  return server
+  return {
+    ...server,
+    listenLine: `Pinto listening on http://localhost:${String(port)}`
+  }
 }
 
 export function freePort(): Promise<number> {
