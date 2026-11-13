@@ -181,9 +181,12 @@ afterEach(async () => {
 })
 
 /** A page in its own browser context, like a separate person */
-async function newPage(init?: (() => void) | (() => void)[]) {
+async function newPage(
+  init?: (() => void) | (() => void)[],
+  on: Server = ready(server, 'server')
+) {
   const context = await ready(browser, 'browser').newContext({
-    baseURL: ready(server, 'server').url
+    baseURL: on.url
   })
   context.setDefaultTimeout(10_000)
   contexts.push(context)
@@ -202,9 +205,10 @@ interface Room {
 /** Opens a room page and waits until Join can be pressed */
 async function openRoom(
   name: string,
-  init?: (() => void) | (() => void)[]
+  init?: (() => void) | (() => void)[],
+  on?: Server
 ): Promise<Room> {
-  const page = await newPage(init)
+  const page = await newPage(init, on)
   const idResponse = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/peerjs/id'
   )
@@ -1017,48 +1021,57 @@ void describe('in a call', () => {
     squatter.disconnect()
   })
 
-  void test('Leave cancels a Join that is still being retried', async () => {
-    const room = await openRoom('taken-leave')
-    const squatter = io(ready(server, 'server').url, {
+  void test('Leave cancels a Join that is still being retried', async (t) => {
+    // The cancellation window is pinned to the real retry cadence, so
+    // this test runs its own server without the suite's shortened
+    // timings; teardown is registered the moment each resource exists
+    const realTiming = await startServer({ PINTO_TEST_TIMINGS: '' })
+    t.after(async () => {
+      await realTiming.stop()
+    })
+    // The socket connects on construction, so its listeners are
+    // registered immediately - attaching them later could miss the event
+    // and hang - and the connection is awaited before anything else, so
+    // an early connect_error is never an unhandled rejection
+    const squatter = io(realTiming.url, {
       transports: ['websocket'],
       forceNew: true,
       reconnection: false
     })
+    t.after(() => squatter.disconnect())
     await new Promise<void>((resolve, reject) => {
       squatter.once('connect', () => {
         resolve()
       })
       squatter.once('connect_error', reject)
     })
+    const room = await openRoom('taken-leave', undefined, realTiming)
     squatter.emit('join-room', 'taken-leave', room.peerId)
-    await ready(server, 'server').waitForOutput(
-      `user: ${room.peerId} - joined: taken-leave`
-    )
+    await realTiming.waitForOutput(`user: ${room.peerId} - joined: taken-leave`)
 
     // Join is refused and retried every 2 seconds; Leave cancels that
-    const from = ready(server, 'server').output().length
+    const from = realTiming.output().length
     await room.page.click('#call')
-    await ready(server, 'server').waitForOutput(
+    await realTiming.waitForOutput(
       'join-room refused: id already in room',
       from
     )
     await room.page.click('#call') // Leave
     await sleep(4_500) // beyond the next retry
     assert.equal(
-      ready(server, 'server')
+      realTiming
         .output()
         .slice(from)
         .match(/join-room refused: id already in room/g)?.length,
       1
     )
     assert.equal(
-      ready(server, 'server')
+      realTiming
         .output()
         .match(new RegExp(`user: ${room.peerId} - joined: taken-leave`, 'g'))
         ?.length,
       1
     )
-    squatter.disconnect()
   })
 
   void test('a call that beats the roster answer waits for it, then is answered', async () => {
@@ -1450,7 +1463,7 @@ void test('after losing the PeerJS server, says so and reconnects with the same 
     'Connection problem: network: Lost connection to server.'
   )
 
-  // room.js waits 5 seconds before reconnecting
+  // room.js waits out its reconnect delay before reconnecting
   const sockets = () =>
     a.page.evaluate(() =>
       window.recorded.peerSockets.map((socket) => {
