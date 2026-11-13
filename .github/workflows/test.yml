@@ -280,7 +280,6 @@ jobs:
           --mutate "${{ matrix.mutate }}"
           --reporters clear-text,json --coverageAnalysis off
           --concurrency 1 --timeoutMS ${{ matrix.browser == 'chromium' && 120000 || 20000 }}
-        if: false  # TEMP push 1 only; push 2 removes this line
       # Pinto configures no score gate (matching salutant): Stryker's
       # thresholds.break defaults to null and nothing here sets it, so no
       # score can fail a run. Fail closed on intent instead: every shard's
@@ -288,7 +287,6 @@ jobs:
       # only to its ranged shards; every pinto shard gets it - this
       # workflow is new, so the stronger check costs nothing existing.
       - name: Verify this shard produced mutants
-        if: false  # TEMP push 1 only; push 2 removes this line
         shell: bash
         run: |
           set -euo pipefail
@@ -298,3 +296,11 @@ jobs:
             if (total === 0) { console.error("Vacuous shard: mutation report lists 0 mutants"); process.exit(1); }
             console.log(`Report lists ${total} mutants.`);
           '
+      # TEMP qualification instrumentation (push 2; removed in push 3):
+      # upload each shard's report so its mutant counts can be verified.
+      - name: TEMP upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report-${{ matrix.shard }}
+          path: reports/mutation/mutation.json
