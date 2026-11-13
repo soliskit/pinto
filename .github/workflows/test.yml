@@ -92,3 +92,209 @@ jobs:
       - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
       - run: npx playwright install --with-deps webkit
       - run: PINTO_BROWSER=webkit node --test --test-timeout=120000 test/home.test.ts test/element.test.ts
+
+  # Mutation selection: on every pull request, classify each changed path.
+  # A finitely enumerated set of files (the names in the case below) mutates
+  # nothing when every changed path is in it and stays a regular
+  # non-executable file; source, tests, fixtures, manifests, CI config and
+  # workflow changes run every shard; a path the classifier cannot place runs
+  # every shard too, and if the diff itself cannot be computed the plan job
+  # fails instead of guessing. An addition or deletion runs every shard; a
+  # detected rename is classified on both its old and new paths; a symlink,
+  # executable bit or typechange runs every shard.
+  # The docs files are in the zero set because src/, public/ and test/ cite
+  # them only in comments (grep-verified 2026-11-12: the only src/public/test
+  # reference to any zero-set file is a comment in test/contrast.test.ts).
+  # Scheduled, push and manual runs always get the full matrix. The weekly
+  # full sweep stays as the drift backstop, including for a missed consumer.
+  plan:
+    name: Mutation plan
+    runs-on: ubuntu-latest
+    outputs:
+      verdict: ${{ steps.classify.outputs.verdict }}
+      base_sha: ${{ steps.classify.outputs.base_sha }}
+      merge_base: ${{ steps.classify.outputs.merge_base }}
+      head_sha: ${{ steps.classify.outputs.head_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          # The base branch's full history, so the fork point exists.
+          fetch-depth: 0
+      - id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "Not a pull request: full sweep."
+            echo "verdict=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Resolve the moving base ref to a literal SHA, record the literal
+          # fork point and head; only literal SHAs are ever diffed. These
+          # SHAs certify the selection only; the runs check out the pull
+          # request's merge state as before.
+          git fetch --no-tags origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
+          base_sha=$(git rev-parse "origin/$GITHUB_BASE_REF")
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          echo "base_sha=$base_sha" | tee -a "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" | tee -a "$GITHUB_OUTPUT"
+          if ! git cat-file -e "$head_sha"; then
+            git fetch --no-tags origin "$head_sha"
+          fi
+          if ! merge_base=$(git merge-base "$base_sha" "$head_sha"); then
+            echo "The fork point cannot be resolved; failing closed."
+            exit 1
+          fi
+          echo "merge_base=$merge_base" | tee -a "$GITHUB_OUTPUT"
+          # Endpoint delta (the two-endpoint form of A...B): what this pull
+          # request itself changes. --raw -z carries both revisions' modes
+          # and both paths on a rename, NUL-safe. -M keeps rename detection
+          # on; a detected rename classifies the old AND the new path.
+          git diff --raw -z -M "$merge_base" "$head_sha" > "$RUNNER_TEMP/diff.raw"
+          verdict=zero
+          changed=0
+          classify() {
+            case "$1" in
+              # The finitely enumerated zero-impact files; a new or unknown
+              # path is never zero.
+              .gitignore|LICENSE.md|README.md) return 0 ;;
+              docs/contributing.md|docs/evidence-record.md|docs/requirements.md|docs/audit/phase5/evidence-record.txt) return 0 ;;
+              *) verdict=full ;;
+            esac
+          }
+          while IFS= read -r -d '' meta; do
+            [ -n "$meta" ] || continue
+            IFS= read -r -d '' path1
+            changed=1
+            srcmode=$(echo "$meta" | awk '{print substr($1, 2)}')  # strip the leading colon
+            dstmode=$(echo "$meta" | awk '{print $2}')
+            status=$(echo "$meta" | awk '{print $5}')
+            # Strict rule: BOTH revisions of every changed file must be
+            # regular non-executable files. An addition or deletion (the
+            # absent side is 000000), a symlink, an executable bit or a
+            # typechange is FULL - no new path ever lands in ZERO.
+            [ "$srcmode" = "100644" ] || verdict=full
+            [ "$dstmode" = "100644" ] || verdict=full
+            case "$status" in
+              R*|C*)
+                IFS= read -r -d '' path2
+                classify "$path1"
+                classify "$path2"
+                ;;
+              *)
+                classify "$path1"
+                ;;
+            esac
+          done < "$RUNNER_TEMP/diff.raw"
+          if [ "$changed" -eq 0 ]; then
+            echo "The pull request changes no files: a legitimate, reported empty diff."
+          fi
+          echo "verdict=$verdict" | tee -a "$GITHUB_OUTPUT"
+          if [ "$verdict" = zero ]; then
+            echo "Zero mutation targets: every changed path is an enumerated non-executable file."
+          else
+            echo "Full sweep: every mutation target."
+          fi
+
+  # [PINTO] One shard per mutation target. Unlike Salutant (zero-dependency,
+  # whole-suite-per-mutant), Pinto's suite needs node_modules and includes
+  # browser tests, so each shard runs ONLY the test files that exercise its
+  # target (the Tetris per-file philosophy). Consequence, stated honestly: a
+  # mutant whose only killing test lives in an unmapped file survives. The
+  # qualification protocol proves each mapping kills mutants before merge.
+  mutation:
+    name: mutation (${{ matrix.shard }})
+    needs: plan
+    if: needs.plan.outputs.verdict == 'full'
+    runs-on: ubuntu-latest
+    env:
+      STRYKER_VERSION: '10.1.1'
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Node-only shards: no browser install.
+          - { shard: index, mutate: src/index.ts, tests: 'test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts', browser: chromium, timeout: 45 }
+          - { shard: ice-servers, mutate: src/ice-servers.ts, tests: test/ice-servers.test.ts, timeout: 30 }
+          - { shard: escape-log-id, mutate: src/escape-log-id.ts, tests: test/escape-log-id.test.ts, timeout: 30 }
+          - { shard: salutant-adapter, mutate: src/auth/salutant-adapter.ts, tests: test/auth-salutant-adapter.test.ts, timeout: 45 }
+          - { shard: ordinal, mutate: public/ordinal.js, tests: test/ordinal.test.ts, timeout: 30 }
+          # Browser shards: chromium install; longer per-mutant timeout.
+          # Each shard runs an intentionally selected set of tests, not
+          # every test that touches its target. contrast.test.ts opens both
+          # / and /room/test, so it maps to BOTH the home and room shards.
+          # video-width.test.ts is a two-browser WebRTC test that executes
+          # room.js end to end; its kills are unproven until qualification
+          # measures them. pinch-zoom.test.ts only fetches static HTML and
+          # never executes room.js, so it is not kill-power evidence -
+          # push 2's killed >= 1 criterion is what proves a shard's tests
+          # kill. home.js and room.js also import element.js, and room.js
+          # imports ordinal.js, so these browser tests transitively touch
+          # the element and ordinal targets too; those tests are still
+          # mapped only to their own shards.
+          - { shard: element, mutate: public/element.js, tests: test/element.test.ts, browser: chromium, timeout: 30 }
+          - { shard: home, mutate: public/home.js, tests: 'test/home.test.ts test/contrast.test.ts', browser: chromium, timeout: 45 }
+          - { shard: room, mutate: public/room.js, tests: 'test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts', browser: chromium, timeout: 45 }
+          # EXCLUDED with reason: public/page-error.js - no behavior test
+          # exercises it today (only config-readiness references), so every
+          # mutant would survive by construction. Adding a test is new-test
+          # authority outside this change; tracked as an open follow-up.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      # [PINTO] Every shard installs dependencies: Pinto's tests import
+      # express, socket.io and peers, unlike zero-dependency Salutant.
+      - run: npm ci
+      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+        if: matrix.browser == 'chromium'
+      # The default-port probe tests (index shard) bind ports 80/443
+      # directly; the same low-port allowance the main test job uses keeps
+      # them on that direct path instead of the test's namespace fallback.
+      - name: Allow unprivileged low-port binds for the default-port probe
+        if: contains(matrix.tests, 'default-ports')
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+      - run: npx playwright install --with-deps chromium
+        if: matrix.browser == 'chromium'
+      - name: Check Playwright package version
+        if: matrix.browser == 'chromium'
+        run: node -e "process.exit(require('playwright/package.json').version==='1.65.0'?0:1)"
+      # TEMP qualification instrumentation (push 1; kept through push 2
+      # so the mutation run's kill data rests on a just-proven
+      # environment; removed in push 3): run this shard's exact mapped
+      # test command on unmutated code.
+      - name: TEMP baseline - mapped tests on unmutated code
+        run: node --test --test-timeout=120000 ${{ matrix.tests }}
+      - run: >
+          npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run
+          --ignorePatterns tsconfig.json,tsconfig.client.json
+          --testRunner command
+          --commandRunner.command "exec node --test --test-timeout=120000 ${{ matrix.tests }}"
+          --mutate "${{ matrix.mutate }}"
+          --reporters clear-text,json --coverageAnalysis off
+          --concurrency 1 --timeoutMS ${{ matrix.browser == 'chromium' && 120000 || 20000 }}
+        if: false  # TEMP push 1 only; push 2 removes this line
+      # Pinto configures no score gate (matching salutant): Stryker's
+      # thresholds.break defaults to null and nothing here sets it, so no
+      # score can fail a run. Fail closed on intent instead: every shard's
+      # report must list at least one mutant. [PINTO] Salutant applies this check
+      # only to its ranged shards; every pinto shard gets it - this
+      # workflow is new, so the stronger check costs nothing existing.
+      - name: Verify this shard produced mutants
+        if: false  # TEMP push 1 only; push 2 removes this line
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("reports/mutation/mutation.json", "utf8"));
+            const total = Object.values(r.files ?? {}).reduce((n, f) => n + (f.mutants?.length ?? 0), 0);
+            if (total === 0) { console.error("Vacuous shard: mutation report lists 0 mutants"); process.exit(1); }
+            console.log(`Report lists ${total} mutants.`);
+          '
