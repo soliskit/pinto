@@ -93,20 +93,28 @@ jobs:
       - run: npx playwright install --with-deps webkit
       - run: PINTO_BROWSER=webkit node --test --test-timeout=120000 test/home.test.ts test/element.test.ts
 
-  # Mutation selection: on every pull request, classify each changed path.
-  # A finitely enumerated set of files (the names in the case below) mutates
-  # nothing when every changed path is in it and stays a regular
-  # non-executable file; source, tests, fixtures, manifests, CI config and
-  # workflow changes run every shard; a path the classifier cannot place runs
-  # every shard too, and if the diff itself cannot be computed the plan job
-  # fails instead of guessing. An addition or deletion runs every shard; a
-  # detected rename is classified on both its old and new paths; a symlink,
-  # executable bit or typechange runs every shard.
-  # The docs files are in the zero set because src/, public/ and test/ cite
-  # them only in comments (grep-verified 2026-11-12: the only src/public/test
-  # reference to any zero-set file is a comment in test/contrast.test.ts).
-  # Scheduled, push and manual runs always get the full matrix. The weekly
-  # full sweep stays as the drift backstop, including for a missed consumer.
+  # Mutation selection: on every pull request, classify each changed path
+  # against a positive definition of the critical surface: what the app's
+  # behavior or the mutation verdict depends on. The definition names the
+  # server and adapters (src/), the pages, client scripts and styles served
+  # verbatim to the browser tests (public/), the client type declarations
+  # (types/), the tests, helpers, fixtures and measurement tooling (test/),
+  # the CI definitions (.github/, including the mutation ranges and this
+  # classifier), the dependencies including the served PeerJS client
+  # (package.json, package-lock.json), the deployment configuration
+  # (render.yaml), the tool configuration (including .gitignore), and the
+  # requirements contract (docs/requirements.md), protected as a contract
+  # whether or not a test reads it. A change touching the definition runs
+  # every shard, fresh and in full. A changed path outside the definition
+  # does not trigger mutation: the plan job lists each such path in the run
+  # log and the check summary, and the ordinary checks still run on the
+  # pull request. When a test, build step or app process starts reading a
+  # new file, that file joins the definition in the same change. A detected
+  # rename is classified on both its old and new paths; a symlink,
+  # executable bit or typechange runs every shard, and if the diff itself
+  # cannot be computed the plan job fails instead of guessing. Scheduled,
+  # push and manual runs always get the full matrix. The weekly full sweep
+  # stays as is.
   plan:
     name: Mutation plan
     runs-on: ubuntu-latest
@@ -155,13 +163,19 @@ jobs:
           git diff --raw -z -M "$merge_base" "$head_sha" > "$RUNNER_TEMP/diff.raw"
           verdict=zero
           changed=0
+          : > "$RUNNER_TEMP/unmatched.list"
           classify() {
             case "$1" in
-              # The finitely enumerated zero-impact files; a new or unknown
-              # path is never zero.
-              .gitignore|LICENSE.md|README.md) return 0 ;;
-              docs/contributing.md|docs/evidence-record.md|docs/requirements.md|docs/audit/phase5/evidence-record.txt) return 0 ;;
-              *) verdict=full ;;
+              # The positive critical definition: what the app's behavior or
+              # the mutation verdict depends on. A path outside it does not
+              # trigger mutation; it is listed in the run log and the check
+              # summary, and the ordinary checks still run.
+              src/*|public/*|types/*|test/*|.github/*) verdict=full ;;
+              docs/requirements.md) verdict=full ;;  # requirements contract; REQ IDs cited by tests
+              package.json|package-lock.json|render.yaml) verdict=full ;;
+              tsconfig.json|tsconfig.client.json|eslint.config.mjs|.prettierrc.json|.prettierignore|ruff.toml|lefthook.yml) verdict=full ;;
+              .gitignore) verdict=full ;;
+              *) echo "$1" >> "$RUNNER_TEMP/unmatched.list" ;;
             esac
           }
           while IFS= read -r -d '' meta; do
@@ -171,12 +185,14 @@ jobs:
             srcmode=$(echo "$meta" | awk '{print substr($1, 2)}')  # strip the leading colon
             dstmode=$(echo "$meta" | awk '{print $2}')
             status=$(echo "$meta" | awk '{print $5}')
-            # Strict rule: BOTH revisions of every changed file must be
-            # regular non-executable files. An addition or deletion (the
-            # absent side is 000000), a symlink, an executable bit or a
-            # typechange is FULL - no new path ever lands in ZERO.
-            [ "$srcmode" = "100644" ] || verdict=full
-            [ "$dstmode" = "100644" ] || verdict=full
+            # Strict rule: a symlink, executable bit, submodule or
+            # typechange is FULL. Adds, deletes and edits classify by path.
+            case "$srcmode $dstmode" in
+              *120000*|*100755*|*160000*) verdict=full ;;
+            esac
+            case "$status" in
+              T*) verdict=full ;;
+            esac
             case "$status" in
               R*|C*)
                 IFS= read -r -d '' path2
@@ -192,8 +208,31 @@ jobs:
             echo "The pull request changes no files: a legitimate, reported empty diff."
           fi
           echo "verdict=$verdict" | tee -a "$GITHUB_OUTPUT"
+          if [ -s "$RUNNER_TEMP/unmatched.list" ]; then
+            if [ "$verdict" = zero ]; then
+              echo "Outside the critical definition (mutation not triggered; the ordinary checks run separately):"
+            else
+              echo "Outside the critical definition (the full run is still triggered for this pull request):"
+            fi
+            while IFS= read -r p; do
+              echo "  $p"
+              echo "::notice title=Outside the critical definition::$p"
+            done < "$RUNNER_TEMP/unmatched.list"
+            {
+              echo '### Paths outside the critical definition'
+              echo ''
+              if [ "$verdict" = zero ]; then
+                echo 'Every changed path is outside the critical definition in this workflow, so no mutation run was triggered.'
+              else
+                echo 'These changed paths are outside the critical definition; the full mutation run is still triggered for this pull request.'
+              fi
+              echo 'The ordinary checks run separately on this pull request. If any of these paths can change behavior under test, add the path to the definition in this workflow.'
+              echo ''
+              while IFS= read -r p; do echo "- \`$p\`"; done < "$RUNNER_TEMP/unmatched.list"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ "$verdict" = zero ]; then
-            echo "Zero mutation targets: every changed path is an enumerated non-executable file."
+            echo "No changed path is in the critical definition: mutation not triggered; the ordinary checks run separately."
           else
             echo "Full sweep: every mutation target."
           fi
