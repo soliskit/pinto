@@ -131,7 +131,9 @@ app.get('/config', async (_req, res) => {
           timings: {
             joinRetryMs: 200,
             reconnectDelayMs: 500,
-            requestTimeoutMs: 500
+            requestTimeoutMs: 500,
+            transportRetryDelayMs: 50,
+            transportRetryDelayMaxMs: 100
           }
         }
       : {})

@@ -2,155 +2,6 @@
   "comment": "Single source for the mutation matrix: the plan job emits this include list, and the guard validates every ranged target by direct enumeration (each whole file's mutants covered exactly once across its shards). Ranges are 1-based inclusive lines; a shard without a mutators list runs every mutator in its range, and shards sharing a range split it by mutator family, so every shard stays within the per-job time cap.",
   "include": [
     {
-      "shard": "index-1-39",
-      "target": "index",
-      "mutate": "src/index.ts:1-39",
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-40-49",
-      "target": "index",
-      "mutate": "src/index.ts:40-49",
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-50-88",
-      "target": "index",
-      "mutate": "src/index.ts:50-88",
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-89-117",
-      "target": "index",
-      "mutate": "src/index.ts:89-117",
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-118-156",
-      "target": "index",
-      "mutate": "src/index.ts:118-156",
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-a",
-      "target": "index",
-      "mutate": "src/index.ts:157-226",
-      "mutators": [
-        "BlockStatement"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-b",
-      "target": "index",
-      "mutate": "src/index.ts:157-226",
-      "mutators": [
-        "EqualityOperator",
-        "BooleanLiteral",
-        "ArrayDeclaration"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-c",
-      "target": "index",
-      "mutate": "src/index.ts:157-226",
-      "mutators": [
-        "CallExpression",
-        "OptionalChaining",
-        "ArrowFunction"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-d",
-      "target": "index",
-      "mutate": "src/index.ts:157-226",
-      "mutators": [
-        "LogicalOperator",
-        "MethodExpression"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-e",
-      "target": "index",
-      "mutate": "src/index.ts:157-168",
-      "mutators": [
-        "StringLiteral"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-f",
-      "target": "index",
-      "mutate": "src/index.ts:169-226",
-      "mutators": [
-        "StringLiteral"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-g",
-      "target": "index",
-      "mutate": "src/index.ts:157-182",
-      "mutators": [
-        "ConditionalExpression"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-157-226-h",
-      "target": "index",
-      "mutate": "src/index.ts:183-226",
-      "mutators": [
-        "ConditionalExpression"
-      ],
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-227-239",
-      "target": "index",
-      "mutate": "src/index.ts:227-239",
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "index-240-270",
-      "target": "index",
-      "mutate": "src/index.ts:240-270",
-      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
       "shard": "ice-servers",
       "target": "ice-servers",
       "mutate": "src/ice-servers.ts",
@@ -195,15 +46,167 @@
       "timeout": 45
     },
     {
-      "shard": "room-1-27",
+      "shard": "index-1-39",
+      "target": "index",
+      "mutate": "src/index.ts:1-39",
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-40-49",
+      "target": "index",
+      "mutate": "src/index.ts:40-49",
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-50-88",
+      "target": "index",
+      "mutate": "src/index.ts:50-88",
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-89-117",
+      "target": "index",
+      "mutate": "src/index.ts:89-117",
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-118-158",
+      "target": "index",
+      "mutate": "src/index.ts:118-158",
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-a",
+      "target": "index",
+      "mutate": "src/index.ts:159-228",
+      "mutators": [
+        "BlockStatement"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-b",
+      "target": "index",
+      "mutate": "src/index.ts:159-228",
+      "mutators": [
+        "EqualityOperator",
+        "BooleanLiteral",
+        "ArrayDeclaration"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-c",
+      "target": "index",
+      "mutate": "src/index.ts:159-228",
+      "mutators": [
+        "CallExpression",
+        "OptionalChaining",
+        "ArrowFunction"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-d",
+      "target": "index",
+      "mutate": "src/index.ts:159-228",
+      "mutators": [
+        "LogicalOperator",
+        "MethodExpression"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-e",
+      "target": "index",
+      "mutate": "src/index.ts:159-170",
+      "mutators": [
+        "StringLiteral"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-f",
+      "target": "index",
+      "mutate": "src/index.ts:171-228",
+      "mutators": [
+        "StringLiteral"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-g",
+      "target": "index",
+      "mutate": "src/index.ts:159-184",
+      "mutators": [
+        "ConditionalExpression"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-159-228-h",
+      "target": "index",
+      "mutate": "src/index.ts:185-228",
+      "mutators": [
+        "ConditionalExpression"
+      ],
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-229-241",
+      "target": "index",
+      "mutate": "src/index.ts:229-241",
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "index-242-272",
+      "target": "index",
+      "mutate": "src/index.ts:242-272",
+      "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-1-108-a",
       "target": "room",
       "mutate": "public/room.js:1-27",
+      "mutators": [
+        "StringLiteral"
+      ],
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
       "browser": "chromium",
       "timeout": 45
     },
     {
-      "shard": "room-28-108-a",
+      "shard": "room-1-108-b",
       "target": "room",
       "mutate": "public/room.js:28-108",
       "mutators": [
@@ -214,9 +217,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-28-108-b",
+      "shard": "room-1-108-c",
       "target": "room",
-      "mutate": "public/room.js:28-108",
+      "mutate": "public/room.js:1-108",
       "mutators": [
         "BooleanLiteral"
       ],
@@ -225,103 +228,75 @@
       "timeout": 45
     },
     {
-      "shard": "room-28-108-c",
+      "shard": "room-1-108-d",
       "target": "room",
-      "mutate": "public/room.js:28-108",
+      "mutate": "public/room.js:1-108",
+      "mutators": [
+        "ConditionalExpression"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-1-108-e",
+      "target": "room",
+      "mutate": "public/room.js:1-108",
       "mutators": [
         "ArrayDeclaration",
         "EqualityOperator",
-        "LogicalOperator"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-28-108-d",
-      "target": "room",
-      "mutate": "public/room.js:28-108",
-      "mutators": [
-        "BlockStatement"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-28-108-e",
-      "target": "room",
-      "mutate": "public/room.js:28-108",
-      "mutators": [
-        "ConditionalExpression"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-109-180-a",
-      "target": "room",
-      "mutate": "public/room.js:109-180",
-      "mutators": [
-        "ConditionalExpression"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-109-180-b",
-      "target": "room",
-      "mutate": "public/room.js:109-180",
-      "mutators": [
-        "StringLiteral"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-109-180-c",
-      "target": "room",
-      "mutate": "public/room.js:109-180",
-      "mutators": [
-        "BlockStatement"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-109-180-d",
-      "target": "room",
-      "mutate": "public/room.js:109-180",
-      "mutators": [
-        "BooleanLiteral",
-        "EqualityOperator",
+        "LogicalOperator",
+        "BlockStatement",
         "MethodExpression",
-        "ObjectLiteral"
+        "Regex"
       ],
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
       "browser": "chromium",
       "timeout": 45
     },
     {
-      "shard": "room-109-180-e",
+      "shard": "room-109-190-a",
       "target": "room",
-      "mutate": "public/room.js:109-180",
+      "mutate": "public/room.js:109-190",
       "mutators": [
-        "CallExpression",
-        "LogicalOperator"
+        "ConditionalExpression",
+        "BooleanLiteral"
       ],
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
       "browser": "chromium",
       "timeout": 45
     },
     {
-      "shard": "room-181-231-a",
+      "shard": "room-109-190-b",
       "target": "room",
-      "mutate": "public/room.js:181-231",
+      "mutate": "public/room.js:109-190",
+      "mutators": [
+        "StringLiteral",
+        "EqualityOperator",
+        "MethodExpression"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-109-190-c",
+      "target": "room",
+      "mutate": "public/room.js:109-190",
+      "mutators": [
+        "BlockStatement",
+        "ObjectLiteral",
+        "LogicalOperator",
+        "CallExpression"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-191-245-a",
+      "target": "room",
+      "mutate": "public/room.js:191-245",
       "mutators": [
         "ArithmeticOperator"
       ],
@@ -330,9 +305,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-181-231-b",
+      "shard": "room-191-245-b",
       "target": "room",
-      "mutate": "public/room.js:181-231",
+      "mutate": "public/room.js:191-245",
       "mutators": [
         "CallExpression",
         "ConditionalExpression"
@@ -342,9 +317,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-181-231-c",
+      "shard": "room-191-245-c",
       "target": "room",
-      "mutate": "public/room.js:181-231",
+      "mutate": "public/room.js:191-245",
       "mutators": [
         "BlockStatement",
         "BooleanLiteral",
@@ -357,9 +332,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-181-231-d",
+      "shard": "room-191-245-d",
       "target": "room",
-      "mutate": "public/room.js:181-231",
+      "mutate": "public/room.js:191-245",
       "mutators": [
         "ArrayDeclaration",
         "ArrowFunction",
@@ -372,9 +347,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-232-292-a",
+      "shard": "room-246-306-a",
       "target": "room",
-      "mutate": "public/room.js:232-292",
+      "mutate": "public/room.js:246-306",
       "mutators": [
         "CallExpression"
       ],
@@ -383,9 +358,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-232-292-b",
+      "shard": "room-246-306-b",
       "target": "room",
-      "mutate": "public/room.js:232-292",
+      "mutate": "public/room.js:246-306",
       "mutators": [
         "BlockStatement"
       ],
@@ -394,9 +369,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-232-292-c",
+      "shard": "room-246-306-c",
       "target": "room",
-      "mutate": "public/room.js:232-292",
+      "mutate": "public/room.js:246-306",
       "mutators": [
         "EqualityOperator",
         "OptionalChaining",
@@ -407,9 +382,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-232-292-d",
+      "shard": "room-246-306-d",
       "target": "room",
-      "mutate": "public/room.js:232-292",
+      "mutate": "public/room.js:246-306",
       "mutators": [
         "ArrowFunction",
         "BooleanLiteral",
@@ -422,9 +397,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-232-292-e",
+      "shard": "room-246-306-e",
       "target": "room",
-      "mutate": "public/room.js:232-292",
+      "mutate": "public/room.js:246-306",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -433,9 +408,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-293-324-a",
+      "shard": "room-307-338-a",
       "target": "room",
-      "mutate": "public/room.js:293-324",
+      "mutate": "public/room.js:307-338",
       "mutators": [
         "BlockStatement",
         "CallExpression"
@@ -445,9 +420,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-293-324-b",
+      "shard": "room-307-338-b",
       "target": "room",
-      "mutate": "public/room.js:293-324",
+      "mutate": "public/room.js:307-338",
       "mutators": [
         "BooleanLiteral",
         "EqualityOperator",
@@ -458,9 +433,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-293-324-c",
+      "shard": "room-307-338-c",
       "target": "room",
-      "mutate": "public/room.js:293-324",
+      "mutate": "public/room.js:307-338",
       "mutators": [
         "ObjectLiteral",
         "StringLiteral",
@@ -471,9 +446,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-293-324-d",
+      "shard": "room-307-338-d",
       "target": "room",
-      "mutate": "public/room.js:293-324",
+      "mutate": "public/room.js:307-338",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -482,17 +457,25 @@
       "timeout": 45
     },
     {
-      "shard": "room-325-362",
+      "shard": "room-339-357",
       "target": "room",
-      "mutate": "public/room.js:325-362",
+      "mutate": "public/room.js:339-357",
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
       "browser": "chromium",
       "timeout": 45
     },
     {
-      "shard": "room-363-412-a",
+      "shard": "room-358-376",
       "target": "room",
-      "mutate": "public/room.js:363-412",
+      "mutate": "public/room.js:358-376",
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-377-426-a",
+      "target": "room",
+      "mutate": "public/room.js:377-426",
       "mutators": [
         "BooleanLiteral"
       ],
@@ -501,9 +484,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-363-412-b",
+      "shard": "room-377-426-b",
       "target": "room",
-      "mutate": "public/room.js:363-412",
+      "mutate": "public/room.js:377-426",
       "mutators": [
         "EqualityOperator",
         "LogicalOperator"
@@ -513,9 +496,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-363-412-c",
+      "shard": "room-377-426-c",
       "target": "room",
-      "mutate": "public/room.js:363-412",
+      "mutate": "public/room.js:377-426",
       "mutators": [
         "ArithmeticOperator",
         "BlockStatement",
@@ -528,9 +511,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-363-412-d",
+      "shard": "room-377-426-d",
       "target": "room",
-      "mutate": "public/room.js:363-412",
+      "mutate": "public/room.js:377-405",
       "mutators": [
         "StringLiteral"
       ],
@@ -539,9 +522,20 @@
       "timeout": 45
     },
     {
-      "shard": "room-363-412-e",
+      "shard": "room-377-426-e",
       "target": "room",
-      "mutate": "public/room.js:363-412",
+      "mutate": "public/room.js:406-426",
+      "mutators": [
+        "StringLiteral"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-377-426-f",
+      "target": "room",
+      "mutate": "public/room.js:377-403",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -550,9 +544,20 @@
       "timeout": 45
     },
     {
-      "shard": "room-413-458-a",
+      "shard": "room-377-426-g",
       "target": "room",
-      "mutate": "public/room.js:413-458",
+      "mutate": "public/room.js:404-426",
+      "mutators": [
+        "ConditionalExpression"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-427-472-a",
+      "target": "room",
+      "mutate": "public/room.js:427-472",
       "mutators": [
         "StringLiteral"
       ],
@@ -561,9 +566,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-413-458-b",
+      "shard": "room-427-472-b",
       "target": "room",
-      "mutate": "public/room.js:413-458",
+      "mutate": "public/room.js:427-472",
       "mutators": [
         "BlockStatement",
         "ConditionalExpression"
@@ -573,9 +578,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-413-458-c",
+      "shard": "room-427-472-c",
       "target": "room",
-      "mutate": "public/room.js:413-458",
+      "mutate": "public/room.js:427-472",
       "mutators": [
         "ArrayDeclaration",
         "BooleanLiteral",
@@ -587,9 +592,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-459-504-a",
+      "shard": "room-473-518-a",
       "target": "room",
-      "mutate": "public/room.js:459-504",
+      "mutate": "public/room.js:473-518",
       "mutators": [
         "StringLiteral"
       ],
@@ -598,9 +603,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-459-504-b",
+      "shard": "room-473-518-b",
       "target": "room",
-      "mutate": "public/room.js:459-504",
+      "mutate": "public/room.js:473-518",
       "mutators": [
         "CallExpression",
         "ConditionalExpression"
@@ -610,9 +615,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-459-504-c",
+      "shard": "room-473-518-c",
       "target": "room",
-      "mutate": "public/room.js:459-504",
+      "mutate": "public/room.js:473-518",
       "mutators": [
         "BlockStatement",
         "BooleanLiteral",
@@ -625,9 +630,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-459-504-d",
+      "shard": "room-473-518-d",
       "target": "room",
-      "mutate": "public/room.js:459-504",
+      "mutate": "public/room.js:473-518",
       "mutators": [
         "ArrowFunction",
         "LogicalOperator",
@@ -638,21 +643,11 @@
       "timeout": 45
     },
     {
-      "shard": "room-505-665-a",
+      "shard": "room-519-679-a",
       "target": "room",
-      "mutate": "public/room.js:505-665",
+      "mutate": "public/room.js:519-679",
       "mutators": [
-        "EqualityOperator"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-505-665-b",
-      "target": "room",
-      "mutate": "public/room.js:505-665",
-      "mutators": [
+        "EqualityOperator",
         "BooleanLiteral"
       ],
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
@@ -660,34 +655,24 @@
       "timeout": 45
     },
     {
-      "shard": "room-505-665-c",
+      "shard": "room-519-679-b",
       "target": "room",
-      "mutate": "public/room.js:505-665",
+      "mutate": "public/room.js:519-679",
       "mutators": [
         "LogicalOperator",
-        "UpdateOperator"
-      ],
-      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
-      "browser": "chromium",
-      "timeout": 45
-    },
-    {
-      "shard": "room-505-665-d",
-      "target": "room",
-      "mutate": "public/room.js:505-665",
-      "mutators": [
-        "ArrowFunction",
+        "UpdateOperator",
+        "OptionalChaining",
         "MethodExpression",
-        "OptionalChaining"
+        "ArrowFunction"
       ],
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
       "browser": "chromium",
       "timeout": 45
     },
     {
-      "shard": "room-505-665-e",
+      "shard": "room-519-679-c",
       "target": "room",
-      "mutate": "public/room.js:505-665",
+      "mutate": "public/room.js:519-564",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -696,9 +681,31 @@
       "timeout": 45
     },
     {
-      "shard": "room-505-665-f",
+      "shard": "room-519-679-d",
       "target": "room",
-      "mutate": "public/room.js:505-665",
+      "mutate": "public/room.js:565-596",
+      "mutators": [
+        "ConditionalExpression"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-519-679-e",
+      "target": "room",
+      "mutate": "public/room.js:597-679",
+      "mutators": [
+        "ConditionalExpression"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-519-679-f",
+      "target": "room",
+      "mutate": "public/room.js:519-576",
       "mutators": [
         "StringLiteral"
       ],
@@ -707,9 +714,20 @@
       "timeout": 45
     },
     {
-      "shard": "room-505-665-g",
+      "shard": "room-519-679-g",
       "target": "room",
-      "mutate": "public/room.js:505-665",
+      "mutate": "public/room.js:577-679",
+      "mutators": [
+        "StringLiteral"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-519-679-h",
+      "target": "room",
+      "mutate": "public/room.js:519-610",
       "mutators": [
         "CallExpression"
       ],
@@ -718,9 +736,20 @@
       "timeout": 45
     },
     {
-      "shard": "room-505-665-h",
+      "shard": "room-519-679-i",
       "target": "room",
-      "mutate": "public/room.js:505-665",
+      "mutate": "public/room.js:611-679",
+      "mutators": [
+        "CallExpression"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-519-679-j",
+      "target": "room",
+      "mutate": "public/room.js:519-679",
       "mutators": [
         "BlockStatement"
       ],
@@ -729,9 +758,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-666-704-a",
+      "shard": "room-680-718-a",
       "target": "room",
-      "mutate": "public/room.js:666-704",
+      "mutate": "public/room.js:680-718",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -740,9 +769,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-666-704-b",
+      "shard": "room-680-718-b",
       "target": "room",
-      "mutate": "public/room.js:666-704",
+      "mutate": "public/room.js:680-718",
       "mutators": [
         "BlockStatement"
       ],
@@ -751,9 +780,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-666-704-c",
+      "shard": "room-680-718-c",
       "target": "room",
-      "mutate": "public/room.js:666-704",
+      "mutate": "public/room.js:680-718",
       "mutators": [
         "CallExpression",
         "EqualityOperator"
@@ -763,9 +792,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-666-704-d",
+      "shard": "room-680-718-d",
       "target": "room",
-      "mutate": "public/room.js:666-704",
+      "mutate": "public/room.js:680-718",
       "mutators": [
         "ArithmeticOperator",
         "BooleanLiteral",
@@ -777,9 +806,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-705-743-a",
+      "shard": "room-719-757-a",
       "target": "room",
-      "mutate": "public/room.js:705-743",
+      "mutate": "public/room.js:719-757",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -788,9 +817,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-705-743-b",
+      "shard": "room-719-757-b",
       "target": "room",
-      "mutate": "public/room.js:705-743",
+      "mutate": "public/room.js:719-757",
       "mutators": [
         "StringLiteral"
       ],
@@ -799,9 +828,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-705-743-c",
+      "shard": "room-719-757-c",
       "target": "room",
-      "mutate": "public/room.js:705-743",
+      "mutate": "public/room.js:719-757",
       "mutators": [
         "BlockStatement",
         "BooleanLiteral",
@@ -812,9 +841,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-705-743-d",
+      "shard": "room-719-757-d",
       "target": "room",
-      "mutate": "public/room.js:705-743",
+      "mutate": "public/room.js:719-757",
       "mutators": [
         "AssignmentOperator",
         "EqualityOperator",
@@ -825,9 +854,9 @@
       "timeout": 45
     },
     {
-      "shard": "room-744-758",
+      "shard": "room-758-772",
       "target": "room",
-      "mutate": "public/room.js:744-758",
+      "mutate": "public/room.js:758-772",
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
       "browser": "chromium",
       "timeout": 45

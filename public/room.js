@@ -91,7 +91,7 @@ const earlyCalls = /** @type {MediaConnection[]} */ ([])
  * One timing from the server config, or the fallback when the value is
  * missing or not a positive finite number of milliseconds.
  * @param {unknown} configJson
- * @param {'joinRetryMs' | 'requestTimeoutMs' | 'reconnectDelayMs'} key
+ * @param {'joinRetryMs' | 'requestTimeoutMs' | 'reconnectDelayMs' | 'transportRetryDelayMs' | 'transportRetryDelayMaxMs'} key
  * @param {number} fallback
  */
 function configTiming(configJson, key, fallback) {
@@ -121,6 +121,16 @@ const REQUEST_TIMEOUT_MS = configTiming(configJson, 'requestTimeoutMs', 5_000)
 const PEER_RECONNECT_DELAY_MS = configTiming(
   configJson,
   'reconnectDelayMs',
+  5_000
+)
+const TRANSPORT_RETRY_DELAY_MS = configTiming(
+  configJson,
+  'transportRetryDelayMs',
+  1_000
+)
+const TRANSPORT_RETRY_DELAY_MAX_MS = configTiming(
+  configJson,
+  'transportRetryDelayMaxMs',
   5_000
 )
 const secure = location.protocol === 'https:'
@@ -178,7 +188,11 @@ function captureRoomLock() {
 
 // The room connection makes at most six transport attempts; running out is
 // terminal for this room session and shows the connection error
-const socket = io({ reconnectionAttempts: 6 })
+const socket = io({
+  reconnectionAttempts: 6,
+  reconnectionDelay: TRANSPORT_RETRY_DELAY_MS,
+  reconnectionDelayMax: TRANSPORT_RETRY_DELAY_MAX_MS
+})
 
 /** Draws the photo centered, at most 288px on its longest side */
 function drawPhoto() {

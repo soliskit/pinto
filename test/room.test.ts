@@ -2068,7 +2068,7 @@ void test('a room connection that never opens exhausts into the connection-error
   assert.ok(
     !ready(server, 'server').output().slice(from).includes('- connected')
   )
-  await sleep(7_000)
+  await sleep(1_000)
   assert.ok(
     !ready(server, 'server').output().slice(from).includes('- connected')
   )
