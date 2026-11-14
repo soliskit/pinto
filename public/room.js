@@ -3,8 +3,9 @@ import { element } from './element.js'
 import { ordinal } from './ordinal.js'
 
 /**
- * PeerJS leaves this unset before negotiation and clears it on cleanup.
- * @typedef {Omit<import('peerjs').MediaConnection, 'peerConnection'> & { peerConnection?: RTCPeerConnection | null }} MediaConnection
+ * PeerJS leaves peerConnection unset before negotiation and clears it on
+ * cleanup; _payload carries the offer the connection was created from.
+ * @typedef {Omit<import('peerjs').MediaConnection, 'peerConnection'> & { peerConnection?: RTCPeerConnection | null, _payload?: unknown }} MediaConnection
  */
 
 const DEFAULT_PHOTO = '/no-video.svg'
@@ -69,6 +70,20 @@ const roomPeers = new Set()
 let rosterLoaded = false
 /** Increments on every Join and Leave, retiring older join attempts */
 let joinSerial = 0
+/** Increments when the room connection session changes or ends; work from an
+ *  older session is dropped on sight */
+let roomEpoch = 0
+/**
+ * Admission phase: leave (outside the room), pending (Join clicked, roster
+ * answer in flight), joined (roster answered), lost (room connection down;
+ * a fresh Join click starts over), blocked (another tab holds this room
+ * name), unsupported (no Web Locks API)
+ * @type {'leave' | 'pending' | 'joined' | 'lost' | 'blocked' | 'unsupported'}
+ */
+let roomPhase = 'leave'
+// Set when the room transport has spent its six attempts; a fresh Join
+// click re-opens it, and the next open connection clears it
+let roomTransportDead = false
 /** Calls that arrived while the roster answer was still on its way */
 const earlyCalls = /** @type {MediaConnection[]} */ ([])
 
@@ -120,7 +135,50 @@ const peer = new Peer({
   path: '/',
   config: { iceServers: config.iceServers }
 })
-const socket = io()
+// One tab holds a room at a time within a storage partition, under the same
+// normalized name the server joins by (src/index.ts trims and lowercases)
+const roomKey = roomName.trim().toLowerCase()
+// Widened for feature detection: lib types assume Web Locks always exist
+const nav = /** @type {Omit<Navigator, 'locks'> & { locks?: LockManager }} */ (
+  navigator
+)
+const roomLockSupported = typeof nav.locks !== 'undefined'
+/** Releases the held room lock; null while no lock is held */
+let releaseRoomLock = /** @type {(() => void) | null} */ (null)
+
+/**
+ * Takes the Web Lock for this room name. Resolves true while held, false
+ * when another tab holds it.
+ * @returns {Promise<boolean>}
+ */
+function captureRoomLock() {
+  return new Promise((resolve) => {
+    navigator.locks
+      .request(`eyeson-${roomKey}`, { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          resolve(false)
+          return
+        }
+        resolve(true)
+        // The lock is held until this promise settles
+        return /** @type {Promise<void>} */ (
+          new Promise((_resolve) => {
+            releaseRoomLock = () => {
+              releaseRoomLock = null
+              _resolve()
+            }
+          })
+        )
+      })
+      .catch(() => {
+        resolve(false)
+      })
+  })
+}
+
+// The room connection makes at most six transport attempts; running out is
+// terminal for this room session and shows the connection error
+const socket = io({ reconnectionAttempts: 6 })
 
 /** Draws the photo centered, at most 288px on its longest side */
 function drawPhoto() {
@@ -321,9 +379,18 @@ function showError(heading, message) {
 function render() {
   document.title = `Pinto | ${roomName}`
   title.textContent = joined ? `You are in ${roomName}` : `Join ${roomName}`
-  status.textContent = joined
-    ? `${ordinal(attendees.childElementCount + 1)} in the room`
-    : 'Press Join to start the call'
+  status.textContent =
+    roomPhase === 'pending'
+      ? 'Joining...'
+      : roomPhase === 'joined'
+        ? `${ordinal(attendees.childElementCount + 1)} in the room`
+        : roomPhase === 'lost'
+          ? 'Connection lost - press Join to rejoin'
+          : roomPhase === 'blocked'
+            ? 'This room is open in another tab'
+            : roomPhase === 'unsupported'
+              ? 'This browser cannot join a room'
+              : 'Press Join to start the call'
   muteButton.textContent = muted ? 'Unmute' : 'Mute'
   muteButton.disabled = false
   cameraButton.textContent = cameraOn ? 'Turn Off Camera' : 'Turn On Camera'
@@ -337,7 +404,10 @@ function render() {
   callButton.classList.toggle('end', joined)
   // Leaving does not require an open pairing connection,
   // so Leave stays usable while pairing is down
-  callButton.disabled = !joined && !peer.open
+  callButton.disabled =
+    (!joined && !peer.open) ||
+    roomPhase === 'blocked' ||
+    roomPhase === 'unsupported'
 }
 
 photo.addEventListener('load', drawPhoto)
@@ -378,9 +448,76 @@ removePhotoButton.addEventListener('click', () => {
   setPhoto(DEFAULT_PHOTO)
 })
 
+/**
+ * Retires the current admission: buffered join-room packets for the old
+ * session drop before any flush, every call and early call closes, and
+ * capture stops. Runs synchronously inside the connection's own dispatch.
+ * Idempotent: Leave's own reset already does this work, and a second pass
+ * finds empty lists.
+ * @param {'leave' | 'lost'} phase
+ */
+function retireAdmission(phase) {
+  roomEpoch++
+  // A retired admission gives up the room lock: another tab may serve
+  // the room while this page waits for its fresh Join click
+  releaseRoomLock?.()
+  // This touches socket.io's internal buffer; the served-bundle tripwire
+  // in room.test.ts pins what it relies on
+  socket.sendBuffer = socket.sendBuffer.filter(
+    (packet) =>
+      /** @type {{ data: unknown[] }} */ (packet).data[0] !== 'join-room'
+  )
+  for (const peerId of calls.keys()) removeCall(peerId)
+  roomPeers.clear()
+  rosterLoaded = false
+  for (const call of earlyCalls.splice(0)) call.close()
+  // Ending the call ends the camera and microphone capture too
+  stopCapture()
+  roomPhase = phase
+  joined = false
+  render()
+}
+
+// A new room connection session begins: nothing from an older one may act
+// on it, and rejoining takes a fresh Join click - no automatic readmission.
+// The disconnect listener has already retired any older Pending or Joined
+// admission synchronously, so a Pending phase here belongs only to a fresh
+// Join clicked during the outage: its buffered emit rides this connection
+// and must stay live
+socket.on('connect', () => {
+  roomTransportDead = false
+  if (roomPhase !== 'pending') roomEpoch++
+})
+
+// The room connection ended outside the user's intent: retire admission
+// synchronously, before any buffered packet for the old session can flush
+socket.on('disconnect', () => {
+  // Leave already retired admission; a blocked or unsupported page has none
+  if (roomPhase !== 'pending' && roomPhase !== 'joined') return
+  retireAdmission('lost')
+  showError(
+    'Connection problem',
+    'The connection to the room was lost. Press Join to rejoin.'
+  )
+})
+
+// Six transport attempts came and went: terminal for this room session
+socket.io.on('reconnect_failed', () => {
+  if (roomPhase === 'pending' || roomPhase === 'joined') retireAdmission('lost')
+  // The connection error shows in every phase, so an exhaustion during a
+  // silent phase is not mistaken for a page that can still join
+  roomTransportDead = true
+  showError(
+    'Connection problem',
+    'The connection to the room could not be restored. Press Join to try again.'
+  )
+})
+
 callButton.addEventListener('click', () => {
   if (joined) {
     joinSerial++
+    roomPhase = 'leave'
+    releaseRoomLock?.()
     // Leaving retires every Join attempt, so a join-room packet still
     // buffered for the next connection must not be sent: the server
     // entry it would create would outlive the Leave. The packet's
@@ -402,9 +539,15 @@ callButton.addEventListener('click', () => {
     socket.disconnect().connect()
   } else {
     const serial = ++joinSerial
+    const epoch = roomEpoch
+    roomPhase = 'pending'
+    // A terminal room transport (six attempts spent) is re-opened by the
+    // fresh Join click, which starts a brand-new session
+    if (roomTransportDead) socket.connect()
     let attempts = 0
     const tryJoin = () => {
-      if (serial !== joinSerial) return
+      // A Leave, a newer Join or a new room session retires this attempt
+      if (serial !== joinSerial || epoch !== roomEpoch) return
       socket
         .timeout(REQUEST_TIMEOUT_MS)
         .emit(
@@ -415,14 +558,17 @@ callButton.addEventListener('click', () => {
             /** @type {Error | null} */ error,
             /** @type {string[] | string | null} */ members
           ) => {
-            if (serial !== joinSerial) return
+            if (serial !== joinSerial || epoch !== roomEpoch) return
             if (typeof members === 'string') {
               // A refusal that carries a reason - the room name is
               // outside the room-name rule - cannot succeed by retrying:
               // show the reason, back to not joined, with Join available
               joined = false
+              roomPhase = 'leave'
+              releaseRoomLock?.()
               // Retire requests this attempt still has waiting
               joinSerial++
+              roomEpoch++
               // A join that never happened must not leave capture running
               stopCapture()
               for (const call of earlyCalls.splice(0)) call.close()
@@ -440,8 +586,11 @@ callButton.addEventListener('click', () => {
               }
               // Still refused: back to not joined, with Join available
               joined = false
+              roomPhase = 'leave'
+              releaseRoomLock?.()
               // Retire requests this attempt still has waiting
               joinSerial++
+              roomEpoch++
               // A join that never happened must not leave capture running
               stopCapture()
               for (const call of earlyCalls.splice(0)) call.close()
@@ -450,6 +599,8 @@ callButton.addEventListener('click', () => {
             }
             for (const peerId of members) roomPeers.add(peerId)
             rosterLoaded = true
+            roomPhase = 'joined'
+            render()
             // Calls that beat the roster answer get decided now, each on
             // its own: one call that fails must not abandon the rest
             for (const call of earlyCalls.splice(0)) {
@@ -473,10 +624,39 @@ callButton.addEventListener('click', () => {
           }
         )
     }
-    tryJoin()
-    // Capture starts here, only for what the buttons ask for
-    void applyMic()
-    void applyCamera()
+    void (async () => {
+      // The room lock comes first: a second tab with this room name never
+      // starts admission at all. A tab already holding the lock (a fresh
+      // Join after a loss) does not ask for it again
+      const held = releaseRoomLock ? true : await captureRoomLock()
+      if (serial !== joinSerial || epoch !== roomEpoch) {
+        // Retired while the lock was being taken; don't keep the room
+        if (held) releaseRoomLock?.()
+        return
+      }
+      if (!held) {
+        joined = false
+        roomPhase = 'blocked'
+        // Retire requests this attempt still has waiting
+        joinSerial++
+        // A join that never happened must not leave capture running
+        stopCapture()
+        showError(
+          'Room in use',
+          'This room is open in another tab or window. Close it there first.'
+        )
+        const retryLink = document.createElement('a')
+        retryLink.href = location.href
+        retryLink.textContent = 'Try again'
+        errorBox.append(retryLink)
+        render()
+        return
+      }
+      tryJoin()
+      // Capture starts here, only for what the buttons ask for
+      void applyMic()
+      void applyCamera()
+    })()
   }
   joined = !joined
   render()
@@ -566,4 +746,13 @@ socket.on('user-disconnected', (/** @type {string} */ peerId) => {
   removeCall(peerId)
 })
 
+if (!roomLockSupported) {
+  roomPhase = 'unsupported'
+  // A distinct error from the same-name-tab Blocked state; no unlocked
+  // fallback, Join stays disabled
+  showError(
+    'Browser not supported',
+    'Pinto needs the Web Locks API to keep one tab per room, and this browser does not have it. Joining is disabled.'
+  )
+}
 render()
