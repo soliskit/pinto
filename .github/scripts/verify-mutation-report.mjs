@@ -66,12 +66,16 @@ const normalize = (result) =>
 
 // Expectations must match what the run instruments: when the shard carries a
 // mutator family, enumerate with the shard's own exclusions (every other
-// family present in the range), exactly as the shard's generated config does.
-const baseInRange = normalize(await enumerate([]))
+// family the instrumenter generates on the file), exactly as the shard's
+// generated config does. Range-contained families are not enough: a family
+// whose base mutants span the range edge stays unexcluded otherwise, and
+// exclusion changes generation, so its mutants would run inside the range.
+const baseResult = await enumerate([])
+const baseInRange = normalize(baseResult)
+const knownMutators = new Set(baseResult.mutants.map((m) => m.mutatorName))
 let expected = baseInRange
 if (shard.mutators) {
-  const present = new Set(baseInRange.map((m) => m.mutatorName))
-  const excluded = [...present].filter((name) => !shard.mutators.includes(name)).sort()
+  const excluded = [...knownMutators].filter((name) => !shard.mutators.includes(name)).sort()
   expected = normalize(await enumerate(excluded))
 }
 

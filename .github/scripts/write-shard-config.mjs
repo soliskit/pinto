@@ -1,12 +1,16 @@
 // Write the Stryker config for one mutator-family shard: the shard's line
 // range is passed on the command line as usual, and this config excludes
-// every mutator family the range contains except the shard's own, so the
-// shard runs exactly its family's mutants. (Stryker's mutator option has no
-// command-line flag, so the exclusion list travels in a config file; command
-// line options still apply and take precedence.) The exclusion list is
-// derived from the pinned instrumenter's enumeration of the range, never
-// hand-maintained. The instrumenter is not a repo dependency: CI installs it
-// into a scratch prefix and passes that prefix as INSTRUMENTER_PREFIX.
+// every mutator family the instrumenter generates on the mutated file
+// except the shard's own, so the shard runs exactly its family's mutants.
+// Range-contained families are not enough: a family whose base mutants
+// span the range edge stays unexcluded otherwise, and exclusion changes
+// generation, so its mutants would run inside this shard too. (Stryker's
+// mutator option has no command-line flag, so the exclusion list travels
+// in a config file; command line options still apply and take precedence.)
+// The exclusion list is derived from the pinned instrumenter's enumeration
+// of the whole file, never hand-maintained. The instrumenter is not a repo
+// dependency: CI installs it into a scratch prefix and passes that prefix
+// as INSTRUMENTER_PREFIX.
 //
 // Usage: INSTRUMENTER_PREFIX=<path with node_modules> node .github/scripts/write-shard-config.mjs <shard> <out.json>
 import { createRequire } from 'node:module'
@@ -39,15 +43,10 @@ const result = await instrumenter.instrument([{ name: file, mutate: true, conten
   mutate: [file], reporters: [], testRunner: 'command', plugins: [], allowEmpty: true,
   ignorers: [], excludedMutations: [], mutator: { name: 'DEFAULT', plugins: null, excludedMutations: [] }
 })
-const [a, b] = range.split('-').map(Number)
-const present = new Set(
-  result.mutants
-    .filter((m) => m.location.start.line + 1 >= a && m.location.end.line + 1 <= b)
-    .map((m) => m.mutatorName)
-)
+const present = new Set(result.mutants.map((m) => m.mutatorName))
 const included = new Set(shard.mutators)
 for (const name of included) {
-  if (!present.has(name)) fail(`Shard ${shardName} names mutator "${name}" with no mutants in ${range}`)
+  if (!present.has(name)) fail(`Shard ${shardName} names mutator "${name}" with no mutants in ${file}`)
 }
 const excludedMutations = [...present].filter((name) => !included.has(name)).sort()
 writeFileSync(out, `${JSON.stringify({ mutator: { excludedMutations } }, null, 2)}\n`)

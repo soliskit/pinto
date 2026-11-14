@@ -4,8 +4,10 @@
 // instrumenter - generation only, no mutation run. Stryker's instrumenter
 // generates additional mutants when families are excluded, so each shard's
 // runnable set is enumerated with that shard's own exclusions (every other
-// family present in the range), exactly as the shard's generated config
-// does. The original whole-file inventory must still be covered exactly
+// family the instrumenter generates on the file), exactly as the shard's
+// generated config does. Range-contained families are not enough: a family
+// whose base mutants span the range edge stays unexcluded otherwise. The
+// original whole-file inventory must still be covered exactly
 // once: a base mutant planned into no shard or into two shards fails here
 // before any slice starts. An exclusion-induced extra mutant may run in at
 // most one shard. Shards with no expected mutants also fail (a vacuous
@@ -70,8 +72,7 @@ for (const target of targets) {
     }
     let expected
     if (shard.mutators) {
-      const present = new Set(inRangeBase.map((m) => m.mutatorName))
-      const excluded = [...present].filter((name) => !shard.mutators.includes(name)).sort()
+      const excluded = [...knownMutators].filter((name) => !shard.mutators.includes(name)).sort()
       expected = (await enumerate(excluded)).filter((m) => inR(m) && shard.mutators.includes(m.mutatorName))
     } else {
       expected = inRangeBase
