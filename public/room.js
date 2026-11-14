@@ -30,7 +30,6 @@ const PHOTO_CANVAS_WIDTH = 400
 const PHOTO_CANVAS_HEIGHT = 300
 const PHOTO_MAX_SIDE = 288
 const PHOTO_REDRAW_INTERVAL_MS = 1000
-const PEER_RECONNECT_DELAY_MS = 5000
 // After a shown connection error the app retries on its own a bounded number
 // of times, then stops and keeps the error shown; recovery is then a reload
 const PEER_RECONNECT_MAX_ATTEMPTS = 3
@@ -73,6 +72,25 @@ let joinSerial = 0
 /** Calls that arrived while the roster answer was still on its way */
 const earlyCalls = /** @type {MediaConnection[]} */ ([])
 
+/**
+ * One timing from the server config, or the fallback when the value is
+ * missing or not a positive finite number of milliseconds.
+ * @param {unknown} configJson
+ * @param {'joinRetryMs' | 'requestTimeoutMs' | 'reconnectDelayMs'} key
+ * @param {number} fallback
+ */
+function configTiming(configJson, key, fallback) {
+  if (typeof configJson !== 'object' || configJson === null) return fallback
+  if (!('timings' in configJson)) return fallback
+  const timings = configJson.timings
+  if (typeof timings !== 'object' || timings === null) return fallback
+  if (!(key in timings)) return fallback
+  const value = /** @type {unknown} */ (Reflect.get(timings, key))
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : fallback
+}
+
 const configResponse = await fetch('/config')
 if (!configResponse.ok) {
   throw Error(
@@ -81,6 +99,15 @@ if (!configResponse.ok) {
 }
 const configJson = /** @type {unknown} */ (await configResponse.json())
 const config = /** @type {{ iceServers: RTCIceServer[] }} */ (configJson)
+// Test suites can ask the server for shortened timings; production serves
+// none and the page keeps the fallback values.
+const JOIN_RETRY_DELAY_MS = configTiming(configJson, 'joinRetryMs', 2_000)
+const REQUEST_TIMEOUT_MS = configTiming(configJson, 'requestTimeoutMs', 5_000)
+const PEER_RECONNECT_DELAY_MS = configTiming(
+  configJson,
+  'reconnectDelayMs',
+  5_000
+)
 const secure = location.protocol === 'https:'
 /**
  * PeerJS call can return undefined while disconnected or without a stream.
@@ -379,7 +406,7 @@ callButton.addEventListener('click', () => {
     const tryJoin = () => {
       if (serial !== joinSerial) return
       socket
-        .timeout(5_000)
+        .timeout(REQUEST_TIMEOUT_MS)
         .emit(
           'join-room',
           roomName,
@@ -407,8 +434,8 @@ callButton.addEventListener('click', () => {
             // our id from a previous connection; try again until it clears
             if (error || members === null) {
               if (attempts++ < 4) {
-                // 5 attempts in all, about 2 seconds apart
-                setTimeout(tryJoin, 2_000)
+                // 5 attempts in all, spaced by JOIN_RETRY_DELAY_MS
+                setTimeout(tryJoin, JOIN_RETRY_DELAY_MS)
                 return
               }
               // Still refused: back to not joined, with Join available

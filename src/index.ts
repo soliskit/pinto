@@ -123,7 +123,19 @@ app.get('/room/:roomId', (_req, res) => {
   res.sendFile('room.html', { root: publicDir })
 })
 app.get('/config', async (_req, res) => {
-  res.json({ iceServers: await getIceServers() })
+  res.json({
+    iceServers: await getIceServers(),
+    // Shortened timings for the test suite, served only when it asks.
+    ...(process.env.PINTO_TEST_TIMINGS
+      ? {
+          timings: {
+            joinRetryMs: 200,
+            reconnectDelayMs: 500,
+            requestTimeoutMs: 500
+          }
+        }
+      : {})
+  })
 })
 app.use(peerServer)
 
