@@ -1,13 +1,15 @@
 // In-job mutation evidence check for one shard. After Stryker exits, this
 // enumerates the mutants expected in the shard's range (and mutator family,
 // when the shard carries one) with the pinned instrumenter and compares them
-// against the report produced in this job. A missing report, a missing,
+// against the report produced in this job. The enumeration applies the
+// shard's own mutator exclusions: Stryker's instrumenter generates
+// additional mutants when families are excluded, so expectations must be
+// built with the same exclusions the run used. A missing report, a missing,
 // unexpected or duplicated mutant, an unrecognized mutant status, a vacuous
-// shard or a shard with no test-killed mutant fails the job. For a mutator-
-// family shard the report also lists the range's excluded-family mutants with
-// status "Ignored" (Stryker keeps them in the json report without running
-// them); those must be exactly the mutants outside the shard's family, and
-// any real status on one of them fails the job. Status counts and survivor
+// shard or a shard with no test-killed mutant fails the job. Excluded-family
+// mutants appear in the report with status "Ignored" (enumerated, not run);
+// they must be exactly the mutants outside the shard's family, and any
+// terminal status on one of them fails the job. Status counts and survivor
 // identities are appended to the job summary and printed to the log. The
 // instrumenter is not a repo dependency: CI installs it into a scratch
 // prefix and passes that prefix as INSTRUMENTER_PREFIX.
@@ -38,6 +40,7 @@ if (range) {
   rangeStart = Number(m[1])
   rangeEnd = Number(m[2])
 }
+const inRange = (m) => m.start.line >= rangeStart && m.end.line <= rangeEnd
 
 const logger = {
   debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {},
@@ -45,19 +48,32 @@ const logger = {
 }
 const instrumenter = createInstrumenter(createInjector().provideValue('logger', logger))
 const content = readFileSync(file, 'utf8')
-const result = await instrumenter.instrument([{ name: file, mutate: true, content }], {
-  mutate: [file], reporters: [], testRunner: 'command', plugins: [], allowEmpty: true,
-  ignorers: [], excludedMutations: [], mutator: { name: 'DEFAULT', plugins: null, excludedMutations: [] }
-})
+const enumerate = (excludedMutations) =>
+  instrumenter.instrument([{ name: file, mutate: true, content }], {
+    mutate: [file], reporters: [], testRunner: 'command', plugins: [], allowEmpty: true,
+    ignorers: [], excludedMutations, mutator: { name: 'DEFAULT', plugins: null, excludedMutations }
+  })
 // The instrumenter's raw locations are 0-based while the json report is
 // 1-based (lines and columns), so identities are normalized to the report
 // basis (+1), matching dump-mutants.mjs.
 const keyOf = (m) =>
   `${m.mutatorName}|${m.start.line}:${m.start.column}-${m.end.line}:${m.end.column}|${m.replacement ?? ''}`
 const oneBased = (p) => ({ line: p.line + 1, column: p.column + 1 })
-const inRange = result.mutants
-  .map((m) => ({ mutatorName: m.mutatorName, replacement: m.replacement, start: oneBased(m.location.start), end: oneBased(m.location.end) }))
-  .filter((m) => m.start.line >= rangeStart && m.end.line <= rangeEnd)
+const normalize = (result) =>
+  result.mutants
+    .map((m) => ({ mutatorName: m.mutatorName, replacement: m.replacement, start: oneBased(m.location.start), end: oneBased(m.location.end) }))
+    .filter(inRange)
+
+// Expectations must match what the run instruments: when the shard carries a
+// mutator family, enumerate with the shard's own exclusions (every other
+// family present in the range), exactly as the shard's generated config does.
+const baseInRange = normalize(await enumerate([]))
+let expected = baseInRange
+if (shard.mutators) {
+  const present = new Set(baseInRange.map((m) => m.mutatorName))
+  const excluded = [...present].filter((name) => !shard.mutators.includes(name)).sort()
+  expected = normalize(await enumerate(excluded))
+}
 
 const reportPath = 'reports/mutation/mutation.json'
 if (!existsSync(reportPath)) fail(`Missing report: ${reportPath} was not produced in this job`)
@@ -72,7 +88,7 @@ const statusProblem = (m) => {
   return KNOWN_STATUSES.has(m.status) ? null : `${m.mutatorName} at ${m.location.start.line}: status "${m.status}"`
 }
 const expectedCounts = new Map()
-for (const m of inRange) expectedCounts.set(keyOf(m), (expectedCounts.get(keyOf(m)) ?? 0) + 1)
+for (const m of expected) expectedCounts.set(keyOf(m), (expectedCounts.get(keyOf(m)) ?? 0) + 1)
 const actualCounts = new Map()
 const statusProblems = []
 for (const m of actual) {
@@ -94,7 +110,7 @@ for (const [key, n] of actualCounts) {
 }
 if (actual.length === 0) fail(`Vacuous slice: ${shardName} report lists 0 mutants`)
 if (problems.length) {
-  fail(`Report does not match expected mutants for ${shardName} (${inRange.length} expected, ${actual.length} reported):\n${problems.slice(0, 50).join('\n')}${problems.length > 50 ? `\n...and ${problems.length - 50} more` : ''}`)
+  fail(`Report does not match expected mutants for ${shardName} (${expected.length} expected, ${actual.length} reported):\n${problems.slice(0, 50).join('\n')}${problems.length > 50 ? `\n...and ${problems.length - 50} more` : ''}`)
 }
 const ran = actual.filter((m) => m.status !== 'Ignored')
 if (ran.length === 0) fail(`Vacuous slice: ${shardName} report lists ${actual.length} mutants, none run`)
