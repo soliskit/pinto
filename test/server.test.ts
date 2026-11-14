@@ -14,7 +14,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 void describe('with the default settings', () => {
   let server: Server
   before(async () => {
-    server = await startServer()
+    server = await startServer({ PINTO_TEST_TIMINGS: '' })
   })
   after(async () => {
     await server.stop()
@@ -183,6 +183,22 @@ void describe('with the default settings', () => {
     assert.deepEqual(await (await get('/config')).json(), {
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     })
+  })
+
+  void test('/config serves the shortened timings when asked', async () => {
+    const timed = await startServer({ PINTO_TEST_TIMINGS: '1' })
+    try {
+      assert.deepEqual(await (await fetch(`${timed.url}/config`)).json(), {
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        timings: {
+          joinRetryMs: 200,
+          reconnectDelayMs: 500,
+          requestTimeoutMs: 500
+        }
+      })
+    } finally {
+      await timed.stop()
+    }
   })
 
   void describe('PeerJS', () => {
