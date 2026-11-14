@@ -171,9 +171,12 @@ afterEach(async () => {
 })
 
 /** A page in its own browser context, like a separate person */
-async function newPage(init?: (() => void) | (() => void)[]) {
+async function newPage(
+  init?: (() => void) | (() => void)[],
+  on: Server = ready(server, 'server')
+) {
   const context = await ready(browser, 'browser').newContext({
-    baseURL: ready(server, 'server').url
+    baseURL: on.url
   })
   context.setDefaultTimeout(10_000)
   contexts.push(context)
@@ -192,9 +195,10 @@ interface Room {
 /** Opens a room page and waits until Join can be pressed */
 async function openRoom(
   name: string,
-  init?: (() => void) | (() => void)[]
+  init?: (() => void) | (() => void)[],
+  on?: Server
 ): Promise<Room> {
-  const page = await newPage(init)
+  const page = await newPage(init, on)
   const idResponse = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/peerjs/id'
   )
@@ -319,8 +323,8 @@ function showsCamera(page: Page) {
 
 /** Colors of the self view at each [x, y] point of its 400 by 300 frame */
 
-async function openCaller() {
-  const page = await newPage()
+async function openCaller(on?: Server) {
+  const page = await newPage(undefined, on)
   await page.goto('/')
   await page.addScriptTag({ url: '/vendor/peerjs.min.js' })
   await page.evaluate(async () => {
@@ -490,12 +494,25 @@ void test('microphone denial when joining keeps the camera and mutes the mic', a
   )
 })
 
-void test('a refused Join turns down a call that was still waiting', async () => {
-  const room = await openRoom('refused-waiting-call', recordRoomCalls)
-  const squatter = io(ready(server, 'server').url, {
+void test('a refused Join turns down a call that was still waiting', async (t) => {
+  // The waiting-call window is pinned to the real retry cadence, so this
+  // test runs its own server without the suite's shortened timings;
+  // teardown is registered the moment each resource exists
+  const realTiming = await startServer({ PINTO_TEST_TIMINGS: '' })
+  t.after(async () => {
+    await realTiming.stop()
+  })
+  // The socket connects on construction, so its listeners are
+  // registered immediately - attaching them later could miss the event
+  // and hang - and the connection is awaited before anything else, so
+  // an early connect_error is never an unhandled rejection
+  const squatter = io(realTiming.url, {
     transports: ['websocket'],
     forceNew: true,
     reconnection: false
+  })
+  t.after(() => {
+    void squatter.disconnect()
   })
   await new Promise<void>((resolve, reject) => {
     squatter.once('connect', () => {
@@ -503,18 +520,21 @@ void test('a refused Join turns down a call that was still waiting', async () =>
     })
     squatter.once('connect_error', reject)
   })
+  const room = await openRoom(
+    'refused-waiting-call',
+    recordRoomCalls,
+    realTiming
+  )
   squatter.emit('join-room', 'refused-waiting-call', room.peerId)
-  await ready(server, 'server').waitForOutput(
+  await realTiming.waitForOutput(
     `user: ${room.peerId} - joined: refused-waiting-call`
   )
 
   // The page's Join is refused and retried; a call that arrives meanwhile
   // waits for a roster answer that never comes
-  const caller = await openCaller()
+  const caller = await openCaller(realTiming)
   await room.page.click('#call')
-  await ready(server, 'server').waitForOutput(
-    'join-room refused: id already in room'
-  )
+  await realTiming.waitForOutput('join-room refused: id already in room')
   await caller.call(room.peerId)
   const callerId = await caller.page.evaluate(() => window.caller.peer.id)
   await eventually(
@@ -538,7 +558,6 @@ void test('a refused Join turns down a call that was still waiting', async () =>
   // The room never answered it
   assert.deepEqual(await answeredCalls(room.page), [])
   assert.equal(await caller.answered(), 0)
-  squatter.disconnect()
 })
 
 void test('Leave closes a call that is still waiting for the roster answer', async () => {

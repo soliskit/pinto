@@ -30,6 +30,8 @@ export async function startServer(
     KEY: '',
     TWILIO_ACCOUNT_SID: '',
     TWILIO_AUTH_TOKEN: '',
+    // Browser tests run against shortened app timings; '' opts a test out.
+    PINTO_TEST_TIMINGS: '1',
     ...env,
     PORT: String(port)
   }
@@ -93,20 +95,57 @@ export function freePort(): Promise<number> {
 }
 
 /**
+ * Runs before any page script: tells instrumented code which mutant is
+ * active. The mutation runner passes the selection only as an environment
+ * variable on the Node test process; this bridges it into the browser,
+ * merging into the namespace the instrumented header creates rather than
+ * replacing it.
+ */
+function activateMutant(id: string) {
+  const globalScope = globalThis as {
+    __stryker__?: { activeMutant?: string }
+  }
+  const ns = (globalScope.__stryker__ ??= {})
+  ns.activeMutant = id
+}
+
+/**
  * Chromium with a fake camera and microphone that it may use without asking.
  * Set CHROMIUM_PATH to use an installed Chromium instead of Playwright's.
  * Set PINTO_BROWSER=webkit to use Playwright's WebKit, launched without the
  * fake camera and microphone flags, so tests that need them are not run in it.
+ *
+ * During a mutation run (the runner sets __STRYKER_ACTIVE_MUTANT__), every
+ * context and page from this browser registers activateMutant, so mutated
+ * browser code actually runs the selected mutation; without it every
+ * browser-executed mutant would survive. Outside a mutation run the browser
+ * is returned untouched.
  */
-export function launchBrowser(): Promise<Browser> {
-  if (process.env.PINTO_BROWSER === 'webkit') return webkit.launch()
-  return chromium.launch({
-    executablePath: process.env.CHROMIUM_PATH || undefined,
-    args: [
-      '--use-fake-ui-for-media-stream',
-      '--use-fake-device-for-media-stream'
-    ]
-  })
+export async function launchBrowser(): Promise<Browser> {
+  const browser = await (process.env.PINTO_BROWSER === 'webkit'
+    ? webkit.launch()
+    : chromium.launch({
+        executablePath: process.env.CHROMIUM_PATH || undefined,
+        args: [
+          '--use-fake-ui-for-media-stream',
+          '--use-fake-device-for-media-stream'
+        ]
+      }))
+  const activeMutant = process.env.__STRYKER_ACTIVE_MUTANT__
+  if (activeMutant === undefined) return browser
+  const newContext = browser.newContext.bind(browser)
+  const newPage = browser.newPage.bind(browser)
+  browser.newContext = async (...args: Parameters<Browser['newContext']>) => {
+    const context = await newContext(...args)
+    await context.addInitScript(activateMutant, activeMutant)
+    return context
+  }
+  browser.newPage = async (...args: Parameters<Browser['newPage']>) => {
+    const page = await newPage(...args)
+    await page.addInitScript(activateMutant, activeMutant)
+    return page
+  }
+  return browser
 }
 
 /**
