@@ -51,6 +51,8 @@ declare global {
     outgoingStreams: { peer: string; stream: MediaStream }[]
     /** The room page's outgoing call connections (recordRoomCalls) */
     outgoingConns: import('peerjs').MediaConnection[]
+    /** Streams the room page passed to its outgoing calls (recordRoomCalls) */
+    outgoingLocalStreams: MediaStream[]
     recorded: {
       /** The camera and microphone stream room.js got */
       media?: MediaStream
