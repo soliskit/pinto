@@ -647,7 +647,17 @@
       "target": "room",
       "mutate": "public/room.js:519-679",
       "mutators": [
-        "EqualityOperator",
+        "EqualityOperator"
+      ],
+      "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
+      "browser": "chromium",
+      "timeout": 45
+    },
+    {
+      "shard": "room-519-679-k",
+      "target": "room",
+      "mutate": "public/room.js:519-679",
+      "mutators": [
         "BooleanLiteral"
       ],
       "tests": "test/room.test.ts test/room-join-edges.test.ts test/video-width.test.ts test/pinch-zoom.test.ts test/contrast.test.ts test/config-timings-edges.test.ts",
