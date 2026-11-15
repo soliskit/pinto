@@ -14,13 +14,13 @@ let inFlight: Promise<IceServer[]> | undefined
 /**
  * STUN and TURN servers for the browser's RTCPeerConnection. With Twilio
  * credentials set, returns Twilio's servers, which include TURN relays so
- * calls also connect on strict networks. Otherwise, or if Twilio fails,
- * falls back to a public STUN server. Concurrent cold calls share one
- * upstream fetch.
+ * calls also connect on strict networks. Otherwise, or if Twilio fails or
+ * does not answer within 5 seconds, falls back to a public STUN server.
+ * Concurrent cold calls share one upstream fetch.
  */
 export async function getIceServers(): Promise<IceServer[]> {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return PUBLIC_STUN
-  if (cache && cache.expiresAt > Date.now()) return cache.servers
+  if (cache && cache.expiresAt > performance.now()) return cache.servers
   inFlight ??= fetchIceServers().finally(() => (inFlight = undefined))
   return inFlight
 }
@@ -34,7 +34,11 @@ async function fetchIceServers(): Promise<IceServer[]> {
     ).toString('base64')
     const response = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Tokens.json`,
-      { method: 'POST', headers: { Authorization: `Basic ${credentials}` } }
+      {
+        method: 'POST',
+        headers: { Authorization: `Basic ${credentials}` },
+        signal: AbortSignal.timeout(5000)
+      }
     )
     if (!response.ok) {
       throw Error(`Twilio responded with ${String(response.status)}`)
@@ -54,7 +58,7 @@ async function fetchIceServers(): Promise<IceServer[]> {
       throw Error('Twilio returned no ICE servers')
     }
     // TURN credentials expire after `ttl` seconds, so refresh at half of it
-    cache = { servers, expiresAt: Date.now() + Number(token.ttl) * 500 }
+    cache = { servers, expiresAt: performance.now() + Number(token.ttl) * 500 }
     return servers
   } catch (error) {
     console.error('Could not get ICE servers from Twilio', error)
