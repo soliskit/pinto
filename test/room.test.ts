@@ -1661,7 +1661,16 @@ void test('a Join buffered while disconnected is cancelled by Leave', async () =
   // Disconnect the socket: it can no longer send. Join now buffers the
   // packet and registers its ack - observed, not inferred
   await room.page.evaluate(() => window.roomSocket.disconnect())
+  const beforeBuffered = await room.page.evaluate(
+    () => window.joinAttempts.length
+  )
   await room.page.click('#call') // Join, buffered
+  // Admission takes the room lock first, so the emit lands in the
+  // buffer a moment after the click
+  await room.page.waitForFunction(
+    (n) => window.joinAttempts.length > n,
+    beforeBuffered
+  )
   assert.deepEqual(
     await room.page.evaluate(() => {
       const packet = window.roomSocket.sendBuffer[0]?.data as
@@ -1775,103 +1784,50 @@ void test('a Join buffered while disconnected is cancelled by Leave', async () =
   await eventually(status(room.page), '2nd in the room')
 })
 
-void test('a Join buffered past the ping deadline is cancelled by Leave', async () => {
-  const room = await openRoom('same-task-join', [
-    heldJoinAnswer,
-    recordRoomCalls
-  ])
-  await join(room)
+void test('a Join pending when the room connection dies uncleanly is retired and never flushed', async () => {
+  const room = await openRoom('unclean-death', heldJoinAnswer)
+  await room.page.waitForFunction(
+    () => !document.querySelector<HTMLButtonElement>('#call')?.disabled
+  )
+
+  // Admission is Pending while the room-lock step runs; the transport
+  // drops abruptly in the same task, before any Join packet can leave
+  const from = ready(server, 'server').output().length
+  await room.page.evaluate(() => {
+    document.querySelector<HTMLElement>('#call')?.click()
+    window.roomSocket.io.engine.close()
+  })
+
+  // The synchronous disconnect dispatch retired the admission: nothing
+  // buffered survives, capture stops, and the page shows the Lost state
+  // with Join available again
+  await eventually(status(room.page), 'Connection lost - press Join to rejoin')
+
+  // The room connection returns on a new socket; the retired attempt
+  // never flushed a Join onto it
+  await ready(server, 'server').waitForOutput('- connected', from)
+  assert.ok(
+    !ready(server, 'server')
+      .output()
+      .slice(from)
+      .includes('- joined: unclean-death')
+  )
+
+  // The retired attempt released the room lock: a second tab can take
+  // the room while this page still waits for its fresh Join click
+  const second = await openRoom('unclean-death')
+  await join(second)
+  await eventually(status(second.page), '1st in the room')
+  await second.page.click('#call') // Leave, returning the lock
+  await eventually(status(second.page), 'Press Join to start the call')
+
+  // A fresh Join click on the retired page runs the full admission path
+  await room.page.click('#call')
   await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
   await room.page.evaluate(() => {
     window.releaseJoinAnswer()
   })
   await eventually(status(room.page), '1st in the room')
-
-  // Leave cleanly while connected: the server forgets the page, and
-  // Leave's own reconnect gives the socket a live connection again
-  const left = ready(server, 'server').output().length
-  await room.page.click('#call') // Leave
-  await ready(server, 'server').waitForOutput(
-    `user: ${room.peerId} - left: same-task-join`,
-    left
-  )
-  await room.page.waitForFunction(() => window.roomSocket.connected)
-
-  const oldSocketId = await room.page.evaluate(() => {
-    window.outgoingPackets = []
-    window.roomSocket.onAnyOutgoing((event) =>
-      window.outgoingPackets.push(String(event))
-    )
-    const old = window.roomSocket.id
-    window.roomSocket.once('connect', () => {
-      window.reconnectedAs = window.roomSocket.id
-    })
-    return old
-  })
-
-  // One synchronous task: the clock moves past the ping deadline (45
-  // seconds of server defaults covers wherever it last reset), Join
-  // buffers while the socket still reports connected because the
-  // pending close is only scheduled as a microtask, the clock
-  // restores, and Leave purges the packet, all before the scheduled
-  // close can run
-  const facts = await room.page.evaluate(() => {
-    const socket = window.roomSocket
-    const realNow = Date.now
-    const facts: {
-      precondition?: { connected: boolean; event: unknown; buffered: number }
-      attempt: number
-      bufferedAfterLeave?: number
-      outcome?: { answer: unknown[] } | { error: string }
-    } = { attempt: 0 }
-    try {
-      Date.now = () => realNow() + 60_000
-      document.querySelector<HTMLElement>('#call')?.click()
-      const packet = socket.sendBuffer[0]?.data as unknown[] | undefined
-      facts.precondition = {
-        connected: socket.connected,
-        event: packet?.[0],
-        buffered: socket.sendBuffer.length
-      }
-      facts.attempt = window.joinAttempts.length
-    } finally {
-      // Restored before Leave even when a step fails, so the shifted
-      // clock cannot leak into the disconnect or later tests
-      Date.now = realNow
-    }
-    document.querySelector<HTMLElement>('#call')?.click() // Leave
-    facts.bufferedAfterLeave = socket.sendBuffer.length
-    facts.outcome = window.joinAttempts[facts.attempt - 1]?.outcome
-    return facts
-  })
-  assert.deepEqual(facts.precondition, {
-    connected: true,
-    event: 'join-room',
-    buffered: 1
-  })
-  assert.deepEqual(facts.bufferedAfterLeave, 0)
-
-  // Both checks in one assertion, so a failing ordering check cannot
-  // hide the behavioral one: with the packet already purged, the
-  // disconnect inside the Leave click errored the ack at once, and
-  // the replacement connection's flush carried no join-room
-  await room.page.waitForFunction(
-    (old) => window.reconnectedAs !== undefined && window.reconnectedAs !== old,
-    oldSocketId
-  )
-  const joinRoomSent = await room.page.evaluate(() =>
-    window.outgoingPackets.includes('join-room')
-  )
-  assert.deepEqual(
-    {
-      ackOutcome:
-        facts.outcome && 'error' in facts.outcome
-          ? facts.outcome.error
-          : undefined,
-      joinRoomSent
-    },
-    { ackOutcome: 'Error: socket has been disconnected', joinRoomSent: false }
-  )
 })
 
 void test('a Join buffered without Leave succeeds on its original attempt', async () => {
@@ -1894,7 +1850,16 @@ void test('a Join buffered without Leave succeeds on its original attempt', asyn
   )
 
   await room.page.evaluate(() => window.roomSocket.disconnect())
+  const beforeBuffered = await room.page.evaluate(
+    () => window.joinAttempts.length
+  )
   await room.page.click('#call') // Join, buffered
+  // Admission takes the room lock first, so the emit lands in the
+  // buffer a moment after the click
+  await room.page.waitForFunction(
+    (n) => window.joinAttempts.length > n,
+    beforeBuffered
+  )
   const attempt = await room.page.evaluate(() => window.joinAttempts.length)
   assert.deepEqual(
     await room.page.evaluate(() => window.roomSocket.sendBuffer.length),
@@ -1939,7 +1904,16 @@ void test('a buffered Join lost before reconnect is retried, its loss recorded',
   )
 
   await room.page.evaluate(() => window.roomSocket.disconnect())
+  const beforeBuffered = await room.page.evaluate(
+    () => window.joinAttempts.length
+  )
   await room.page.click('#call') // Join, buffered
+  // Admission takes the room lock first, so the emit lands in the
+  // buffer a moment after the click
+  await room.page.waitForFunction(
+    (n) => window.joinAttempts.length > n,
+    beforeBuffered
+  )
   const attempt = await room.page.evaluate(() => window.joinAttempts.length)
 
   // The test itself drops the packet, the over-purge the control above
@@ -2024,10 +1998,11 @@ void test('a page that has not joined makes no call when a joiner is announced',
   )
 })
 
-void test('the served socket.io bundle matches what the Join purge depends on', async () => {
-  // The purge and its tests read socket.io's internal sendBuffer, so a
-  // bundle change must fail here and force a fresh look at both. The
-  // pin is the served file, not the npm package
+void test('the served socket.io bundle matches what room admission depends on', async () => {
+  // Admission reads socket.io's internal sendBuffer for the Leave and
+  // disconnect purges and the Manager's reconnect_failed for transport
+  // exhaustion, so a bundle change must fail here and force a fresh look
+  // at all of them. The pin is the served file, not the npm package
   const response = await fetch(
     `${ready(server, 'server').url}/socket.io/socket.io.min.js`
   )
@@ -2060,4 +2035,131 @@ void test('turning the camera back on captures a fresh track', async () => {
         .map((track) => track.readyState)
     )
   assert.deepEqual((await videoStates()).sort(), ['ended', 'live'])
+})
+
+void test('a room connection that never opens exhausts into the connection-error state', async () => {
+  const context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
+  context.setDefaultTimeout(10_000)
+  contexts.push(context)
+  await context.addInitScript(record)
+  // The room transport cannot establish: polling aborted, websocket closed
+  await context.route(/\/socket\.io\/\?/, (route) => route.abort())
+  await context.routeWebSocket(/socket\.io/, (ws) => ws.close())
+  const page = await context.newPage()
+  const idResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
+  )
+  const from = ready(server, 'server').output().length
+  await page.goto('/room/never-opens')
+  await idResponse
+
+  // Six attempts come and go, then the page says so instead of showing a
+  // normal prompt that could never work
+  const errorShows = async () =>
+    ((await page.locator('#error').textContent()) ?? '').includes(
+      'The connection to the room could not be restored. Press Join to try again.'
+    )
+  await eventually(errorShows, true, 30_000)
+  assert.equal(await status(page)(), 'Press Join to start the call')
+
+  // No connection ever reached the server, and no seventh attempt follows
+  assert.ok(
+    !ready(server, 'server').output().slice(from).includes('- connected')
+  )
+  await sleep(1_000)
+  assert.ok(
+    !ready(server, 'server').output().slice(from).includes('- connected')
+  )
+})
+
+void test('a fresh Join after transport exhaustion re-opens the connection and joins', async () => {
+  const context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
+  context.setDefaultTimeout(10_000)
+  contexts.push(context)
+  await context.addInitScript(record)
+  await context.route(/\/socket\.io\/\?/, (route) => route.abort())
+  await context.routeWebSocket(/socket\.io/, (ws) => ws.close())
+  const page = await context.newPage()
+  const idResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
+  )
+  const from = ready(server, 'server').output().length
+  await page.goto('/room/exhausted-rejoin')
+  const peerId = (await (await idResponse).text()).trim()
+
+  // Exhaustion first, then the network returns; the fresh Join click
+  // re-opens the terminal transport and runs the full admission path
+  const errorShows = async () =>
+    ((await page.locator('#error').textContent()) ?? '').includes(
+      'The connection to the room could not be restored. Press Join to try again.'
+    )
+  await eventually(errorShows, true, 30_000)
+  await context.unrouteAll()
+  await page.click('#call')
+  await eventually(status(page), '1st in the room', 30_000)
+
+  // Exactly one new connection carried exactly one admission, and it is
+  // this page's: no stale packet rode the revival
+  const out = ready(server, 'server').output().slice(from)
+  assert.equal(
+    out.split('\n').filter((l) => l.includes('- connected')).length,
+    1
+  )
+  assert.ok(out.includes(`user: ${peerId} - joined: exhausted-rejoin`))
+  assert.equal(out.split('\n').filter((l) => l.includes('- joined')).length, 1)
+})
+
+void test('a second tab joining the same room is Blocked and never emits', async () => {
+  // Two tabs of one browser: one shared context, so the room lock
+  // (Web Locks, per storage partition) covers both pages
+  const context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
+  context.setDefaultTimeout(10_000)
+  contexts.push(context)
+  await context.addInitScript(record)
+  const openTab = async (): Promise<Room> => {
+    const page = await context.newPage()
+    const idResponse = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/peerjs/id'
+    )
+    await page.goto('/room/two-tabs')
+    const peerId = (await (await idResponse).text()).trim()
+    await page.locator('#call:enabled').waitFor()
+    return { page, name: 'two-tabs', peerId }
+  }
+  const first = await openTab()
+  await join(first)
+
+  // The room lock refuses the second tab's Join before any packet leaves:
+  // the Blocked state, Join disabled, a Try again link, and no emission
+  const second = await openTab()
+  const from = ready(server, 'server').output().length
+  await second.page.click('#call')
+  await eventually(status(second.page), 'This room is open in another tab')
+  await second.page.locator('#call:disabled').waitFor()
+  await second.page.locator('#error a', { hasText: 'Try again' }).waitFor()
+  assert.ok(
+    !ready(server, 'server').output().slice(from).includes('- joined: two-tabs')
+  )
+
+  // Once the first tab leaves, the lock is free: the second tab's
+  // Try again reloads it, and its fresh Join completes admission
+  const left = ready(server, 'server').output().length
+  await first.page.click('#call')
+  await ready(server, 'server').waitForOutput(
+    `user: ${first.peerId} - left: two-tabs`,
+    left
+  )
+  const retryId = second.page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
+  )
+  await second.page.click('#error a')
+  const retryPeerId = (await (await retryId).text()).trim()
+  await second.page.locator('#call:enabled').waitFor()
+  await join({ page: second.page, name: 'two-tabs', peerId: retryPeerId })
 })
