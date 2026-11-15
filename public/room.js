@@ -145,6 +145,561 @@ const peer = new Peer({
   path: '/',
   config: { iceServers: config.iceServers }
 })
+
+/* Retained signaling accounting (issue #150): the pairing library stores
+ * messages per connection ID until a call is answered, unbounded and with
+ * no sender check on replay. This ledger accounts for that store in three
+ * classes - live, pending and unknown - drains the real store before any
+ * charge is forgotten, and replays only messages from the call's own
+ * peer. The served-bundle tripwire in room.test.ts pins the library
+ * internals this relies on. */
+
+/** The approved starting limits; qualify before raising any of them */
+const RETENTION_LIMITS = {
+  perConnectionMessages: 128,
+  perConnectionBytes: 64 * 1024,
+  pendingCalls: 40,
+  pendingAggregateBytes: 2 * 1024 * 1024,
+  unknownMessages: 512,
+  unknownBytes: 256 * 1024,
+  tombstones: 256,
+  liveOfferBytes: 64 * 1024,
+  liveOffers: 40,
+  liveOfferAggregateBytes: 2 * 1024 * 1024
+}
+
+/**
+ * The library's parsed server message.
+ * @typedef {object} SignalingMessage
+ * @property {string} type
+ * @property {unknown} payload
+ * @property {unknown} src
+ */
+
+/**
+ * One ledger entry per physical connection ID - the key the pairing
+ * library stores retained messages under.
+ * @typedef {object} RetentionEntry
+ * @property {string | null} source sender this entry is bound to
+ * @property {MediaConnection | null} pendingCall the owned unanswered call
+ * @property {number} pendingGeneration join serial owning that call
+ * @property {number} offerBytes held OFFER charge
+ * @property {boolean} offerLive true once the call was answered (class L)
+ * @property {number} retainedCount charged library-store messages
+ * @property {number} retainedBytes charged library-store bytes
+ * @property {{ messages: SignalingMessage[], count: number, bytes: number } | null} stash
+ *   pre-OFFER messages the wrapper owns until the call is answered
+ */
+
+/** @type {Map<string, RetentionEntry>} */
+const retentionLedger = new Map()
+/** Retired connection IDs, oldest first, capped by the FIFO limit */
+const retentionTombstones = /** @type {string[]} */ ([])
+/** True after a hook or accounting failure: Join and calls are refused */
+let retentionBroken = false
+
+/**
+ * The library internals this ledger hooks, verified at startup and pinned
+ * by the served-bundle tripwire: _getMessages returns the store for a
+ * connection ID and deletes it, getConnection looks a live connection up
+ * by peer ID and connection ID, and the socket's message event reaches
+ * the library's own listener first because it was registered in the
+ * constructor.
+ */
+const peerHooks =
+  /** @type {{ _getMessages?: (connectionId: string) => SignalingMessage[], getConnection?: (peerId: string, connectionId: string) => MediaConnection | null, socket?: { on?: unknown } | null }} */ (
+    /** @type {unknown} */ (peer)
+  )
+
+/** Reads the fail-closed flag without type narrowing, for re-checks after calls that may have set it */
+function isRetentionBroken() {
+  return retentionBroken
+}
+
+/** The charged size of a signaling message: its serialized JSON form */
+function retainedSize(/** @type {SignalingMessage} */ message) {
+  return JSON.stringify(message).length
+}
+
+/** @param {string} connectionId */
+function tombstone(connectionId) {
+  retentionTombstones.push(connectionId)
+  while (retentionTombstones.length > RETENTION_LIMITS.tombstones) {
+    retentionTombstones.shift()
+  }
+}
+
+/**
+ * Current aggregate charges by class, computed from the ledger so no
+ * running total can drift from the entries it counts.
+ */
+function retentionTotals() {
+  let pendingCalls = 0
+  let pendingBytes = 0
+  let unknownMessages = 0
+  let unknownBytes = 0
+  let liveOffers = 0
+  let liveOfferBytes = 0
+  for (const entry of retentionLedger.values()) {
+    const messageCount = entry.retainedCount + (entry.stash?.count ?? 0)
+    const totalBytes =
+      entry.offerBytes + entry.retainedBytes + (entry.stash?.bytes ?? 0)
+    if (entry.offerLive) {
+      liveOffers++
+      liveOfferBytes += entry.offerBytes
+    } else if (entry.pendingCall && entry.pendingGeneration === joinSerial) {
+      pendingCalls++
+      pendingBytes += totalBytes
+    } else {
+      unknownMessages += messageCount
+      unknownBytes += totalBytes
+    }
+  }
+  return {
+    pendingCalls,
+    pendingBytes,
+    unknownMessages,
+    unknownBytes,
+    liveOffers,
+    liveOfferBytes
+  }
+}
+
+/**
+ * Drains the actual library store for a connection ID and releases the
+ * charges that accounted for it. Drain-before-forget: even a null
+ * connection lookup never drops a charge before this runs.
+ * @returns {SignalingMessage[]} the drained messages
+ */
+function drainLibraryStore(/** @type {string} */ connectionId) {
+  const getMessages = peerHooks._getMessages
+  if (typeof getMessages !== 'function') {
+    throw Error('the pairing library message store cannot be drained')
+  }
+  const drained = /** @type {SignalingMessage[]} */ (
+    getMessages.call(peer, connectionId)
+  )
+  const entry = retentionLedger.get(connectionId)
+  if (entry) {
+    entry.retainedCount = 0
+    entry.retainedBytes = 0
+  }
+  return drained
+}
+
+/**
+ * Terminal path for a ledger entry: drains the real store, drops the
+ * wrapper stash, releases every charge and records the tombstone.
+ */
+function drainAndForget(/** @type {string} */ connectionId) {
+  drainLibraryStore(connectionId)
+  const entry = retentionLedger.get(connectionId)
+  if (entry) {
+    entry.stash = null
+    entry.offerBytes = 0
+    retentionLedger.delete(connectionId)
+  }
+  tombstone(connectionId)
+}
+
+/** Every terminal admission path drains all accounting it owned */
+function drainAllRetention() {
+  for (const connectionId of [...retentionLedger.keys()]) {
+    drainAndForget(connectionId)
+  }
+}
+
+/**
+ * Stops admission after a hook or accounting failure: never a silent
+ * fallback. When unknown retention cannot be ruled out the Peer is
+ * destroyed so nothing unaccounted keeps arriving.
+ * @param {unknown} error
+ */
+function retentionFailClosed(/** @type {unknown} */ error) {
+  console.error(error)
+  retentionBroken = true
+  let drainFailed = false
+  for (const peerId of [...calls.keys()]) {
+    try {
+      removeCall(peerId)
+    } catch (removeError) {
+      console.error(removeError)
+      drainFailed = true
+    }
+  }
+  for (const call of earlyCalls.splice(0)) {
+    try {
+      call.close()
+    } catch (closeError) {
+      console.error(closeError)
+    }
+  }
+  for (const connectionId of [...retentionLedger.keys()]) {
+    try {
+      drainAndForget(connectionId)
+    } catch (drainError) {
+      console.error(drainError)
+      drainFailed = true
+      break
+    }
+  }
+  if (drainFailed) {
+    // Unknown retention could not be ruled out: destroy the Peer so
+    // nothing unaccounted keeps arriving
+    try {
+      peer.destroy()
+    } catch (destroyError) {
+      console.error(destroyError)
+    }
+  }
+  showError(
+    'Connection problem',
+    'Pinto cannot account for the messages the pairing library stores, so joining and answering are disabled.'
+  )
+  render()
+}
+
+/**
+ * Closes a call the wrapper owns and releases everything charged for its
+ * connection ID. Unanswered calls emit no close event, so every closure
+ * goes through here.
+ */
+function retireCallFully(/** @type {MediaConnection} */ call) {
+  // No longer waiting: later retirement sweeps must not close it twice
+  const earlyIndex = earlyCalls.indexOf(call)
+  if (earlyIndex >= 0) earlyCalls.splice(earlyIndex, 1)
+  try {
+    call.close()
+  } catch (error) {
+    console.error(error)
+  }
+  drainAndForget(call.connectionId)
+}
+
+/**
+ * Refuses a legitimate caller under pressure: the refusal is shown, not
+ * hidden.
+ */
+function refuseCallUnderPressure(
+  /** @type {MediaConnection} */ call,
+  /** @type {string} */ reason
+) {
+  retireCallFully(call)
+  showError('Connection problem', reason)
+}
+
+/**
+ * A cross-source collision on one connection ID refuses both ownerships
+ * and drains the connection: charges are never split by sender.
+ */
+function refuseCollision(/** @type {string} */ connectionId) {
+  const entry = retentionLedger.get(connectionId)
+  if (entry?.pendingCall) {
+    refuseCallUnderPressure(
+      entry.pendingCall,
+      'A call could not be admitted because its signaling channel was contested.'
+    )
+    return
+  }
+  drainAndForget(connectionId)
+}
+
+/**
+ * Charges the OFFER a kept call holds until the wrapper retires its
+ * references. Class L once answered, class P while it waits. The entry
+ * already counts toward its class totals; only the OFFER bytes are new.
+ * @returns {boolean} false when the charge does not fit and the call was
+ *   refused instead
+ */
+function chargeOffer(
+  /** @type {RetentionEntry} */ entry,
+  /** @type {MediaConnection} */ call,
+  /** @type {number} */ bytes
+) {
+  if (bytes > RETENTION_LIMITS.liveOfferBytes) {
+    refuseCallUnderPressure(
+      call,
+      'A call was refused because its offer is larger than the message limit.'
+    )
+    return false
+  }
+  if (entry.offerLive) {
+    const totals = retentionTotals()
+    if (
+      totals.liveOffers > RETENTION_LIMITS.liveOffers ||
+      totals.liveOfferBytes + bytes > RETENTION_LIMITS.liveOfferAggregateBytes
+    ) {
+      refuseCallUnderPressure(
+        call,
+        'A call was refused because too many calls are already held.'
+      )
+      return false
+    }
+  } else {
+    // Under pressure the oldest waiting call is refused, never hidden
+    for (;;) {
+      const totals = retentionTotals()
+      if (
+        totals.pendingCalls <= RETENTION_LIMITS.pendingCalls &&
+        totals.pendingBytes + bytes <= RETENTION_LIMITS.pendingAggregateBytes
+      ) {
+        break
+      }
+      const oldest = [...retentionLedger.values()].find(
+        (each) =>
+          each.pendingCall &&
+          !each.offerLive &&
+          each.pendingGeneration === joinSerial &&
+          each.pendingCall !== call
+      )
+      if (!oldest?.pendingCall) {
+        refuseCallUnderPressure(
+          call,
+          'A call was refused because too many calls are still waiting.'
+        )
+        return false
+      }
+      refuseCallUnderPressure(
+        oldest.pendingCall,
+        'The oldest waiting call was refused to make room for a newer one.'
+      )
+    }
+  }
+  entry.offerBytes = bytes
+  return true
+}
+
+/**
+ * Charges a message the library retained for a connection ID, bounded by
+ * the per-connection and class limits.
+ * @returns {boolean} false when the charge does not fit
+ */
+function chargeRetained(
+  /** @type {RetentionEntry} */ entry,
+  /** @type {string} */ connectionId,
+  /** @type {number} */ bytes
+) {
+  const ownedNow = Boolean(
+    entry.pendingCall && entry.pendingGeneration === joinSerial
+  )
+  const stashCount = entry.stash?.count ?? 0
+  const stashBytes = entry.stash?.bytes ?? 0
+  if (
+    entry.retainedCount + stashCount + 1 >
+      RETENTION_LIMITS.perConnectionMessages ||
+    entry.retainedBytes + stashBytes + bytes >
+      RETENTION_LIMITS.perConnectionBytes
+  ) {
+    if (ownedNow && entry.pendingCall) {
+      refuseCallUnderPressure(
+        entry.pendingCall,
+        'A call was refused because its stored messages grew past the limit.'
+      )
+    } else {
+      drainAndForget(connectionId)
+    }
+    return false
+  }
+  entry.retainedCount++
+  entry.retainedBytes += bytes
+  if (!ownedNow && !entry.offerLive) {
+    // Unknown traffic stays bounded: the oldest unknown entry is evicted,
+    // drained before it is forgotten
+    for (;;) {
+      const totals = retentionTotals()
+      if (
+        totals.unknownMessages <= RETENTION_LIMITS.unknownMessages &&
+        totals.unknownBytes <= RETENTION_LIMITS.unknownBytes
+      ) {
+        break
+      }
+      const oldestUnknown = [...retentionLedger.entries()].find(
+        ([, each]) =>
+          !each.offerLive &&
+          (!each.pendingCall || each.pendingGeneration !== joinSerial)
+      )
+      if (!oldestUnknown) break
+      drainAndForget(oldestUnknown[0])
+    }
+  }
+  return true
+}
+
+/**
+ * Extracts pre-OFFER messages inside the call callback, before the
+ * library's own replay can deliver them without a sender check. They are
+ * owned by this call until answer time.
+ */
+function adoptCallStash(/** @type {MediaConnection} */ call) {
+  const connectionId = call.connectionId
+  const drained = drainLibraryStore(connectionId)
+  let entry = retentionLedger.get(connectionId)
+  if (!entry) {
+    entry = {
+      source: null,
+      pendingCall: null,
+      pendingGeneration: 0,
+      offerBytes: 0,
+      offerLive: false,
+      retainedCount: 0,
+      retainedBytes: 0,
+      stash: null
+    }
+    retentionLedger.set(connectionId, entry)
+  }
+  if (entry.source && entry.source !== call.peer) {
+    refuseCollision(connectionId)
+    try {
+      call.close()
+    } catch (error) {
+      console.error(error)
+    }
+    return
+  }
+  entry.source = call.peer
+  entry.pendingCall = call
+  entry.pendingGeneration = joinSerial
+  if (drained.length === 0) return
+  let bytes = 0
+  for (const message of drained) bytes += retainedSize(message)
+  entry.stash = { messages: drained, count: drained.length, bytes }
+  if (
+    drained.length > RETENTION_LIMITS.perConnectionMessages ||
+    bytes > RETENTION_LIMITS.perConnectionBytes
+  ) {
+    refuseCallUnderPressure(
+      call,
+      'A call was refused because its stored messages grew past the limit.'
+    )
+  }
+}
+
+/**
+ * Removes the stash's ownership reference first, so re-entry can never
+ * replay twice.
+ * @returns {SignalingMessage[]} the owned messages, once
+ */
+function takeOwnedStashOnce(
+  /** @type {RetentionEntry} */ entry,
+  /** @type {MediaConnection} */ call
+) {
+  if (!entry.stash || entry.pendingCall !== call) return []
+  const messages = entry.stash.messages
+  entry.stash = null
+  return messages
+}
+
+/**
+ * The post-library socket listener: the library's own listener was
+ * registered in its constructor, so by the time a message reaches here
+ * the library has already delivered or retained it, and the ledger
+ * accounts for exactly that outcome.
+ */
+function observeSignaling(/** @type {SignalingMessage} */ message) {
+  if (retentionBroken) return
+  try {
+    const payload = message.payload
+    if (!payload || typeof payload !== 'object') return
+    const connectionId = /** @type {{ connectionId?: unknown }} */ (payload)
+      .connectionId
+    if (typeof connectionId !== 'string') return
+    const source = typeof message.src === 'string' ? message.src : null
+    const getConnection = peerHooks.getConnection
+    if (typeof getConnection !== 'function') {
+      throw Error('the pairing library connection lookup is missing')
+    }
+
+    if (message.type === 'OFFER') {
+      // A refused or retired connection leaves nothing behind; the drain
+      // is defensive because close already dropped the library store
+      const offerType = /** @type {{ type?: unknown }} */ (payload).type
+      const connection = source
+        ? getConnection.call(peer, source, connectionId)
+        : null
+      if (offerType === 'data' || !connection) {
+        drainAndForget(connectionId)
+        return
+      }
+      const entry = retentionLedger.get(connectionId)
+      if (!entry) {
+        // The call callback binds every kept call; a missing entry here
+        // means accounting already failed somewhere upstream
+        throw Error('an admitted call has no retention ledger entry')
+      }
+      if (entry.source !== source) {
+        refuseCollision(connectionId)
+        return
+      }
+      chargeOffer(
+        entry,
+        /** @type {MediaConnection} */ (connection),
+        retainedSize(message)
+      )
+      return
+    }
+
+    // Any other message: delivered to a live negotiated connection (no new
+    // charge) or retained by the library store (charged here)
+    const connection = source
+      ? getConnection.call(peer, source, connectionId)
+      : null
+    if (
+      connection &&
+      /** @type {{ peerConnection?: RTCPeerConnection | null }} */ (connection)
+        .peerConnection
+    ) {
+      return
+    }
+    // Messages alone never claim a connection ID: only a call does. A
+    // stranger's messages under a waiting call's ID share its budget and
+    // are filtered out of its replay, never a reason to refuse the call;
+    // refusing here would let anyone poison a known connection ID
+    let entry = retentionLedger.get(connectionId)
+    if (!entry) {
+      entry = {
+        source: null,
+        pendingCall: null,
+        pendingGeneration: 0,
+        offerBytes: 0,
+        offerLive: false,
+        retainedCount: 0,
+        retainedBytes: 0,
+        stash: null
+      }
+      retentionLedger.set(connectionId, entry)
+    }
+    chargeRetained(entry, connectionId, retainedSize(message))
+  } catch (error) {
+    retentionFailClosed(error)
+  }
+}
+
+// Missing library hooks refuse Join and calls with a shown error from the
+// start; there is no unaccounted fallback. Deferred one microtask so the
+// module finishes evaluating first: the error surface is declared later
+// in this file, and no message can arrive before the socket opens
+queueMicrotask(() => {
+  if (
+    typeof peerHooks._getMessages === 'function' &&
+    typeof peerHooks.getConnection === 'function' &&
+    typeof peerHooks.socket?.on === 'function'
+  ) {
+    const peerSocket =
+      /** @type {{ on: (event: string, listener: (message: SignalingMessage) => void) => void }} */ (
+        peerHooks.socket
+      )
+    peerSocket.on('message', (message) => {
+      observeSignaling(message)
+    })
+  } else {
+    retentionBroken = true
+    showError(
+      'Connection problem',
+      'Pinto cannot account for the messages the pairing library stores, so joining and answering are disabled.'
+    )
+    render()
+  }
+})
 // One tab holds a room at a time within a storage partition, under the same
 // normalized name the server joins by (src/index.ts trims and lowercases)
 const roomKey = roomName.trim().toLowerCase()
@@ -362,6 +917,9 @@ function removeCall(peerId) {
   if (!entry) return
   calls.delete(peerId)
   entry.call.close()
+  // The wrapper retires its references: the held OFFER charge goes with
+  // them, and the drain runs before the accounting is removed
+  drainAndForget(entry.call.connectionId)
   entry.video.remove()
   render()
 }
@@ -484,9 +1042,12 @@ function retireAdmission(phase) {
   for (const peerId of calls.keys()) removeCall(peerId)
   roomPeers.clear()
   rosterLoaded = false
-  for (const call of earlyCalls.splice(0)) call.close()
+  for (const call of earlyCalls.splice(0)) retireCallFully(call)
   // Ending the call ends the camera and microphone capture too
   stopCapture()
+  // A terminal admission releases every remaining retention charge,
+  // unknown-source entries included, each drained before it is forgotten
+  drainAllRetention()
   roomPhase = phase
   joined = false
   render()
@@ -546,12 +1107,22 @@ callButton.addEventListener('click', () => {
     for (const peerId of calls.keys()) removeCall(peerId)
     roomPeers.clear()
     rosterLoaded = false
-    for (const call of earlyCalls.splice(0)) call.close()
+    for (const call of earlyCalls.splice(0)) retireCallFully(call)
     // Ending the call ends the camera and microphone capture too
     stopCapture()
+    // Leaving releases every remaining retention charge with the admission
+    drainAllRetention()
     // A fresh connection leaves the room, and the server tells the others
     socket.disconnect().connect()
   } else {
+    if (retentionBroken) {
+      showError(
+        'Connection problem',
+        'Pinto cannot account for the messages the pairing library stores, so joining is disabled.'
+      )
+      render()
+      return
+    }
     const serial = ++joinSerial
     const epoch = roomEpoch
     roomPhase = 'pending'
@@ -585,7 +1156,8 @@ callButton.addEventListener('click', () => {
               roomEpoch++
               // A join that never happened must not leave capture running
               stopCapture()
-              for (const call of earlyCalls.splice(0)) call.close()
+              for (const call of earlyCalls.splice(0)) retireCallFully(call)
+              drainAllRetention()
               showError('Cannot join', members)
               render()
               return
@@ -607,7 +1179,8 @@ callButton.addEventListener('click', () => {
               roomEpoch++
               // A join that never happened must not leave capture running
               stopCapture()
-              for (const call of earlyCalls.splice(0)) call.close()
+              for (const call of earlyCalls.splice(0)) retireCallFully(call)
+              drainAllRetention()
               render()
               return
             }
@@ -628,11 +1201,7 @@ callButton.addEventListener('click', () => {
                 // A call that fails here belongs to no list; retire it so
                 // it cannot outlive the room. Retiring must not abandon
                 // the calls still waiting either
-                try {
-                  call.close()
-                } catch (closeError) {
-                  console.error(closeError)
-                }
+                retireCallFully(call)
               }
             }
           }
@@ -684,28 +1253,94 @@ peer.on('open', () => {
 /** Answers a call from a room member and closes any other */
 function answerIfMember(/** @type {MediaConnection} */ call) {
   if (!roomPeers.has(call.peer)) {
-    call.close()
+    retireCallFully(call)
     return
   }
   // The library silently retires a waiting call when a duplicate offer
   // arrives for its connection id; never answer a call it no longer
-  // tracks - answering one throws and abandons the calls behind it
-  if (peer.getConnection(call.peer, call.connectionId) !== call) return
+  // tracks - answering one throws and abandons the calls behind it. The
+  // replacement call owns the ledger entry now; release only if it does not
+  if (peer.getConnection(call.peer, call.connectionId) !== call) {
+    const entry = retentionLedger.get(call.connectionId)
+    if (entry?.pendingCall === call) drainAndForget(call.connectionId)
+    return
+  }
+  if (retentionBroken) {
+    retireCallFully(call)
+    return
+  }
+  const entry = retentionLedger.get(call.connectionId)
+  if (!entry) {
+    retentionFailClosed(
+      Error('answering a call with no retention ledger entry')
+    )
+    retireCallFully(call)
+    return
+  }
+  // Extract post-OFFER retention before answering: the library's own
+  // answer() replay would deliver it without the sender check
+  const retained = drainLibraryStore(call.connectionId)
+  const stash = takeOwnedStashOnce(entry, call)
+  entry.pendingCall = null
+  entry.offerLive = true
+  const totals = retentionTotals()
+  if (
+    totals.liveOffers > RETENTION_LIMITS.liveOffers ||
+    totals.liveOfferBytes > RETENTION_LIMITS.liveOfferAggregateBytes
+  ) {
+    refuseCallUnderPressure(
+      call,
+      'A call was refused because too many calls are already held.'
+    )
+    return
+  }
   call.answer(outgoing)
+  // Source-filtered replay in arrival order: the stash, then what the
+  // library retained after the offer. Both are already drained, so this
+  // is the only delivery and it happens exactly once
+  for (const message of [...stash, ...retained]) {
+    if (message.src === call.peer) {
+      // The messages came from the library's own store: its server-message
+      // shape is what answer() itself would have replayed (the type is not
+      // exported, so the cast goes through the call)
+      const replayable =
+        /** @type {{ handleMessage: (m: SignalingMessage) => void }} */ (
+          /** @type {unknown} */ (call)
+        )
+      replayable.handleMessage(message)
+    }
+  }
   addCall(call)
 }
 
 peer.on('call', (call) => {
+  if (retentionBroken) {
+    retireCallFully(call)
+    return
+  }
+  // Pre-OFFER messages are extracted before the library's own replay can
+  // deliver them without a sender check; they wait for the answer
+  adoptCallStash(call)
+  // A collision or stash overflow above refused this call already
+  if (
+    isRetentionBroken() ||
+    peer.getConnection(call.peer, call.connectionId) !== call
+  ) {
+    return
+  }
   if (!joined) {
-    call.close()
+    retireCallFully(call)
     return
   }
   // A duplicate offer for a waiting call's connection id silently retires
-  // that call in the library; stop tracking what it retired
+  // that call in the library; stop tracking what it retired. The
+  // replacement call owns the ledger entry now; release only if it does not
   for (let index = earlyCalls.length - 1; index >= 0; index--) {
     const waiting = earlyCalls[index]
     if (peer.getConnection(waiting.peer, waiting.connectionId) !== waiting) {
       earlyCalls.splice(index, 1)
+      const entry = retentionLedger.get(waiting.connectionId)
+      if (entry?.pendingCall === waiting) drainAndForget(waiting.connectionId)
     }
   }
   // Members can hear about us and call before our roster answer arrives;
@@ -716,6 +1351,22 @@ peer.on('call', (call) => {
   }
   answerIfMember(call)
 })
+
+peer.on(
+  'connection',
+  (/** @type {import('peerjs').DataConnection} */ connection) => {
+    // The app never opens data connections: refuse the unsolicited inbound
+    // path and drain anything stored under the connection ID. This runs
+    // inside the library's own dispatch, before its replay, so the drain
+    // leaves nothing for the closed connection to receive
+    drainAndForget(connection.connectionId)
+    try {
+      connection.close()
+    } catch (error) {
+      console.error(error)
+    }
+  }
+)
 peer.on('disconnected', () => {
   setTimeout(() => {
     if (!peer.disconnected || peer.destroyed) return
@@ -736,6 +1387,14 @@ socket.on('user-connected', (/** @type {string} */ peerId) => {
   // stray membership can still announce joiners to it
   if (!joined) return
   roomPeers.add(peerId)
+  // Accounting failed closed: no new calls, with the reason shown
+  if (retentionBroken) {
+    showError(
+      'Connection problem',
+      'Pinto cannot account for the messages the pairing library stores, so the person who just joined cannot be called.'
+    )
+    return
+  }
   // While the pairing connection is down, peer.call returns undefined and
   // addCall would throw; say why the joiner is not being called instead.
   if (peer.disconnected) {

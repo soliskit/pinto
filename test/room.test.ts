@@ -100,6 +100,7 @@ function recordRoomCalls() {
   window.answeredConns = []
   window.outgoingStreams = []
   window.outgoingConns = []
+  window.outgoingLocalStreams = []
   let RealPeer: typeof Peer
   Object.defineProperty(window, 'Peer', {
     configurable: true,
@@ -150,6 +151,7 @@ function recordRoomCalls() {
       ) {
         const conn = realCall.apply(this, args)
         window.outgoingConns.push(conn)
+        window.outgoingLocalStreams.push(args[1] as MediaStream)
         conn.on('stream', (stream: MediaStream) =>
           window.outgoingStreams.push({ peer: conn.peer, stream })
         )
@@ -675,8 +677,9 @@ void describe('in a call', () => {
   void test('Join joins the room, and Leave leaves it', async () => {
     const room = await openRoom('solo')
     await join(room)
-    assert.deepEqual(
-      await controls(room.page),
+    // The status settles after admission; poll instead of racing the render
+    await eventually(
+      () => controls(room.page),
       inCall('solo', '1st in the room')
     )
 
@@ -753,6 +756,69 @@ void describe('in a call', () => {
       error:
         'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
     })
+  })
+
+  void test('an encoded slash inside the address is refused, not folded into the name', async () => {
+    // Only a trailing literal slash is link formatting; the decoded name
+    // 'a/b' keeps its interior slash and breaks the room-name rule
+    const page = await newPage()
+    await page.goto('/room/a%2Fb')
+    await page.locator('#call:enabled').waitFor()
+
+    await page.click('#call')
+    await page
+      .locator('#error', {
+        hasText:
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+      })
+      .waitFor()
+    assert.deepEqual(await controls(page), {
+      ...beforeJoining('a/b'),
+      error:
+        'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+    })
+  })
+
+  void test('the stream offered to a member carries one video and one audio track', async () => {
+    // Capture stays blocked: a granted microphone would replace the tracks
+    // the room constructed its offered stream with before the offer is read
+    const a = await openRoom('stream-shape', [withoutCamera, recordRoomCalls])
+    await join(a)
+    const b = await openRoom('stream-shape')
+    await join(b)
+
+    // The member already in the room calls the joiner, offering one
+    // photo-or-camera track and one silent-or-microphone track
+    await eventually(
+      () =>
+        a.page.evaluate(() =>
+          window.outgoingLocalStreams.map((stream) =>
+            stream
+              .getTracks()
+              .map((track) => track.kind)
+              .sort()
+              .join('+')
+          )
+        ),
+      ['audio+video']
+    )
+  })
+
+  void test('a plain join with an empty early-call queue answers nothing, closes nothing and logs no console error', async () => {
+    const room = await openRoom('quiet-join', recordRoomCalls)
+    const consoleErrors: string[] = []
+    room.page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text())
+    })
+
+    await join(room)
+    await eventually(status(room.page), '1st in the room')
+
+    // No one called, so nothing was decided, shown or logged
+    assert.deepEqual(await room.page.evaluate(() => window.answeredCalls), [])
+    assert.deepEqual(await room.page.evaluate(() => window.closedCalls), [])
+    assert.equal((await controls(room.page)).error, null)
+    assert.deepEqual(consoleErrors, [])
   })
 
   void test('everyone in the room sees and hears everyone else', async () => {
@@ -2015,6 +2081,28 @@ void test('the served socket.io bundle matches what room admission depends on', 
   )
 })
 
+void test('the served pairing-library bundle matches what message retention depends on', async () => {
+  // Retention hooks the pairing library's internals: _getMessages returns
+  // a connection's retained messages and deletes them, getConnection looks
+  // a live connection up by peer and connection IDs, the socket message
+  // listener the constructor registered runs before the ledger's own, an
+  // unanswered call's close() emits nothing, _removeConnection drops the
+  // store with the connection, and answer() replays through the same
+  // _getMessages extraction. A bundle change must fail here and force a
+  // fresh look at all of them. The pin is the served file, not the npm
+  // package
+  const response = await fetch(
+    `${ready(server, 'server').url}/vendor/peerjs.min.js`
+  )
+  const hash = createHash('sha256')
+    .update(Buffer.from(await response.arrayBuffer()))
+    .digest('hex')
+  assert.equal(
+    hash,
+    '7604d8c31bec4f134b0d15c2d80b1d095ea18af005354f439f14291fcd7b4168'
+  )
+})
+
 void test('turning the camera back on captures a fresh track', async () => {
   const room = await openRoom('camera-re-on')
   await room.page.click('#camera') // Chosen before Join
@@ -2035,6 +2123,30 @@ void test('turning the camera back on captures a fresh track', async () => {
         .map((track) => track.readyState)
     )
   assert.deepEqual((await videoStates()).sort(), ['ended', 'live'])
+})
+
+void test('a browser without Web Locks cannot join, and says so', async () => {
+  const context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
+  contexts.push(context)
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'locks', {
+      value: undefined,
+      configurable: true
+    })
+  })
+  const page = await context.newPage()
+  await page.goto('/room/no-locks')
+
+  // The unsupported state blocks Join with its own error, distinct from the
+  // same-name-tab Blocked state
+  const errorShows = async () =>
+    ((await page.locator('#error').textContent()) ?? '').includes(
+      'Pinto needs the Web Locks API to keep one tab per room, and this browser does not have it. Joining is disabled.'
+    )
+  await eventually(errorShows, true, 10_000)
+  assert.equal(await page.locator('#call').isDisabled(), true)
 })
 
 void test('a room connection that never opens exhausts into the connection-error state', async () => {
@@ -2162,4 +2274,48 @@ void test('a second tab joining the same room is Blocked and never emits', async
   const retryPeerId = (await (await retryId).text()).trim()
   await second.page.locator('#call:enabled').waitFor()
   await join({ page: second.page, name: 'two-tabs', peerId: retryPeerId })
+})
+
+void test('a room link with a trailing slash joins the same room', async () => {
+  const page = await newPage()
+  const idResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
+  )
+  // One final literal slash is link formatting, not part of the name
+  await page.goto('/room/trailing-slash-link/')
+  const peerId = await (await idResponse).text()
+  await page.locator('#call:enabled').waitFor()
+  const from = ready(server, 'server').output().length
+  await page.click('#call')
+  await ready(server, 'server').waitForOutput(
+    `user: ${peerId} - joined: trailing-slash-link`,
+    from
+  )
+  assert.equal((await controls(page)).heading, 'You are in trailing-slash-link')
+})
+
+void test('a caller receives one video track and one audio track from the room', async () => {
+  const room = await openRoom('track-count')
+  await join(room)
+  const caller = await openCaller()
+  await caller.join(room.name)
+  await caller.page.evaluate((peerId) => {
+    const call = window.caller.peer.call(peerId, window.caller.stream)
+    call.on('stream', (stream) => {
+      ;(window.caller as unknown as { received: string[] }).received = stream
+        .getTracks()
+        .map((track) => track.kind)
+        .sort()
+    })
+  }, room.peerId)
+  // What peers receive: one video track (camera or photo) and one audio
+  // track (microphone or silence)
+  await eventually(
+    () =>
+      caller.page.evaluate(
+        () => (window.caller as unknown as { received?: string[] }).received
+      ),
+    ['audio', 'video'],
+    15_000
+  )
 })
