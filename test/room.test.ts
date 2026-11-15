@@ -2103,6 +2103,47 @@ void test('the served pairing-library bundle matches what message retention depe
   )
 })
 
+void test('the photo chooser is reached with Tab and opened from the keyboard', async () => {
+  const { page } = await openRoom('photo-keyboard')
+  const focused = () => page.evaluate(() => document.activeElement?.id)
+
+  // Every control takes its turn, the photo chooser included
+  const order: (string | undefined)[] = []
+  for (let presses = 0; presses < 4; presses++) {
+    await page.keyboard.press('Tab')
+    order.push(await focused())
+  }
+  assert.deepEqual(order, ['mute', 'camera', 'call', 'photo'])
+
+  // Its focus shows on the preview that opens it, in the page's text color
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const ring = getComputedStyle(document.querySelector('#self') as Element)
+      return {
+        style: ring.outlineStyle,
+        width: ring.outlineWidth,
+        inTextColor: ring.outlineColor === getComputedStyle(document.body).color
+      }
+    }),
+    { style: 'solid', width: '2px', inTextColor: true }
+  )
+
+  // Enter and Space each open the file chooser
+  for (const key of ['Enter', 'Space']) {
+    const chooser = page.waitForEvent('filechooser')
+    // A round trip first, so the chooser is watched before the key lands
+    assert.equal(await focused(), 'photo')
+    await page.keyboard.press(key)
+    await chooser
+  }
+
+  // With the camera on there is no photo to choose, so Tab passes it by
+  await page.click('#camera')
+  await page.focus('#call')
+  await page.keyboard.press('Tab')
+  assert.notEqual(await focused(), 'photo')
+})
+
 void test('turning the camera back on captures a fresh track', async () => {
   const room = await openRoom('camera-re-on')
   await room.page.click('#camera') // Chosen before Join
@@ -2318,4 +2359,92 @@ void test('a caller receives one video track and one audio track from the room',
     ['audio', 'video'],
     15_000
   )
+})
+
+void test('a camera track stopped from outside the controls shows the camera as off', async () => {
+  const name = 'camera-stopped'
+  const room = await openRoom(name)
+  await room.page.click('#camera') // Chosen before Join
+  await join(room)
+  await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+
+  // A stop from script fires no ended event; nothing else tells the page
+  await room.page.evaluate(() => {
+    for (const stream of window.recorded.mediaStreams)
+      for (const track of stream.getVideoTracks()) track.stop()
+  })
+  await eventually(
+    () => room.page.textContent('#camera'),
+    'Turn On Camera',
+    5_000
+  )
+  // Shown as off, with no error and the call otherwise as it was
+  assert.deepEqual(await controls(room.page), inCall(name, '1st in the room'))
+  assert.deepEqual(await showsCamera(room.page), { self: false, sent: [] })
+
+  // Turn On Camera captures again
+  await room.page.click('#camera')
+  await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+})
+
+void test('a camera that ends on its own shows as off at once, and the call gets the photo again', async () => {
+  const a = await openRoom('camera-ended')
+  const b = await openRoom('camera-ended')
+  await a.page.click('#camera') // Chosen before Join
+  await join(a)
+  await join(b)
+  await eventually(() => showsCamera(a.page), { self: true, sent: [true] })
+
+  // A device that goes away ends the track and fires ended on it
+  const label = await a.page.evaluate(() => {
+    const track = window.recorded.media?.getVideoTracks()[0]
+    track?.stop()
+    track?.dispatchEvent(new Event('ended'))
+    return document.getElementById('camera')?.textContent
+  })
+  assert.equal(label, 'Turn On Camera')
+  await eventually(() => showsCamera(a.page), { self: false, sent: [false] })
+})
+
+void test('Leave keeps the camera choice: its stopped track is not taken for one that ended', async () => {
+  const name = 'camera-kept'
+  const room = await openRoom(name)
+  await room.page.click('#camera') // Chosen before Join
+  await join(room)
+  await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+
+  await room.page.click('#call')
+  // Longer than the page's one-second look for an ended camera
+  await sleep(1_500)
+  assert.deepEqual(await controls(room.page), {
+    ...beforeJoining(name),
+    camera: 'Turn Off Camera',
+    photoInput: false,
+    hint: ''
+  })
+})
+
+void test('a camera turned off and on again is not taken for one that ended while its new grant is pending', async () => {
+  const name = 'camera-regrant'
+  const room = await openRoom(name, gatedCapture)
+  const grant = () =>
+    room.page.evaluate(async () => {
+      for (const request of window.captureGate.splice(0))
+        request.resolve(await window.realGetUserMedia(request.constraints))
+    })
+  await room.page.click('#camera') // Chosen before Join
+  await join(room)
+  await room.page.waitForFunction(() => window.captureGate.length === 2)
+  await grant()
+  await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+
+  await room.page.click('#camera') // Off: the live track is stopped
+  await room.page.click('#camera') // On again: the new grant is held
+  await room.page.waitForFunction(() => window.captureGate.length === 1)
+  // Longer than the page's one-second look for an ended camera
+  await sleep(1_500)
+
+  await grant()
+  await eventually(() => showsCamera(room.page), { self: true, sent: [] })
+  assert.equal(await room.page.textContent('#camera'), 'Turn Off Camera')
 })

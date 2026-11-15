@@ -819,6 +819,7 @@ function stopCapture() {
   cameraRequest++
   micRequest++
   if (cameraTrack) cameraTrack.stop()
+  cameraTrack = undefined
   if (micTrack) micTrack.stop()
   sendVideo(photoTrack)
   sendAudio(silentTrack)
@@ -840,6 +841,7 @@ async function applyCamera() {
           return
         }
         cameraTrack = media.getVideoTracks()[0]
+        cameraTrack.addEventListener('ended', showEndedCamera)
       } catch (error) {
         if (serial !== joinSerial || request !== cameraRequest) return
         cameraOn = false
@@ -855,7 +857,22 @@ async function applyCamera() {
   } else {
     sendVideo(photoTrack)
     if (cameraTrack) cameraTrack.stop()
+    cameraTrack = undefined
   }
+}
+
+/**
+ * Shows the camera as off when its capture ended without the controls: the
+ * device went away, or something else stopped the track. Peers get the photo
+ * again. A track the controls stopped is already forgotten, so it never
+ * counts here.
+ */
+function showEndedCamera() {
+  if (cameraTrack?.readyState !== 'ended') return
+  cameraTrack = undefined
+  cameraOn = false
+  sendVideo(photoTrack)
+  render()
 }
 
 /** Captures the microphone when it is wanted, stops it when it is not */
@@ -990,8 +1007,12 @@ photo.addEventListener('error', () => {
   )
 })
 // A canvas only produces frames when painted, so keep painting for peers
-// who join later
-setInterval(drawPhoto, PHOTO_REDRAW_INTERVAL_MS)
+// who join later. A track stopped from script fires no ended event, so the
+// same tick also looks for a camera that ended
+setInterval(() => {
+  drawPhoto()
+  showEndedCamera()
+}, PHOTO_REDRAW_INTERVAL_MS)
 selfVideo.srcObject = new MediaStream([photoTrack])
 
 muteButton.addEventListener('click', () => {

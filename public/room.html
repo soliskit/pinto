@@ -38,7 +38,13 @@
       <label for="photo" id="self-label">
         <video id="self" muted playsinline autoplay></video>
       </label>
-      <input id="photo" type="file" accept="image/*" hidden />
+      <input
+        id="photo"
+        class="visually-hidden"
+        type="file"
+        accept="image/*"
+        aria-label="Choose a photo to show instead of your video"
+      />
     </div>
   </body>
 </html>
