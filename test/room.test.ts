@@ -100,6 +100,7 @@ function recordRoomCalls() {
   window.answeredConns = []
   window.outgoingStreams = []
   window.outgoingConns = []
+  window.outgoingLocalStreams = []
   let RealPeer: typeof Peer
   Object.defineProperty(window, 'Peer', {
     configurable: true,
@@ -150,6 +151,7 @@ function recordRoomCalls() {
       ) {
         const conn = realCall.apply(this, args)
         window.outgoingConns.push(conn)
+        window.outgoingLocalStreams.push(args[1] as MediaStream)
         conn.on('stream', (stream: MediaStream) =>
           window.outgoingStreams.push({ peer: conn.peer, stream })
         )
@@ -754,6 +756,69 @@ void describe('in a call', () => {
       error:
         'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
     })
+  })
+
+  void test('an encoded slash inside the address is refused, not folded into the name', async () => {
+    // Only a trailing literal slash is link formatting; the decoded name
+    // 'a/b' keeps its interior slash and breaks the room-name rule
+    const page = await newPage()
+    await page.goto('/room/a%2Fb')
+    await page.locator('#call:enabled').waitFor()
+
+    await page.click('#call')
+    await page
+      .locator('#error', {
+        hasText:
+          'Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+      })
+      .waitFor()
+    assert.deepEqual(await controls(page), {
+      ...beforeJoining('a/b'),
+      error:
+        'Cannot join: Room names can use letters (A-Z), numbers, spaces and dashes, up to 40 characters.'
+    })
+  })
+
+  void test('the stream offered to a member carries one video and one audio track', async () => {
+    // Capture stays blocked: a granted microphone would replace the tracks
+    // the room constructed its offered stream with before the offer is read
+    const a = await openRoom('stream-shape', [withoutCamera, recordRoomCalls])
+    await join(a)
+    const b = await openRoom('stream-shape')
+    await join(b)
+
+    // The member already in the room calls the joiner, offering one
+    // photo-or-camera track and one silent-or-microphone track
+    await eventually(
+      () =>
+        a.page.evaluate(() =>
+          window.outgoingLocalStreams.map((stream) =>
+            stream
+              .getTracks()
+              .map((track) => track.kind)
+              .sort()
+              .join('+')
+          )
+        ),
+      ['audio+video']
+    )
+  })
+
+  void test('a plain join with an empty early-call queue answers nothing, closes nothing and logs no console error', async () => {
+    const room = await openRoom('quiet-join', recordRoomCalls)
+    const consoleErrors: string[] = []
+    room.page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text())
+    })
+
+    await join(room)
+    await eventually(status(room.page), '1st in the room')
+
+    // No one called, so nothing was decided, shown or logged
+    assert.deepEqual(await room.page.evaluate(() => window.answeredCalls), [])
+    assert.deepEqual(await room.page.evaluate(() => window.closedCalls), [])
+    assert.equal((await controls(room.page)).error, null)
+    assert.deepEqual(consoleErrors, [])
   })
 
   void test('everyone in the room sees and hears everyone else', async () => {

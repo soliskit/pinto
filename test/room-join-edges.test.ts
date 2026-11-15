@@ -944,6 +944,70 @@ void test('waiting-byte pressure refuses the oldest caller before the count limi
   for (const caller of callers) caller.signal.close()
 })
 
+void test('the 41st caller to be answered is refused, with the reason shown', async () => {
+  const room = await openRoom('live-offer-pressure', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+
+  // Every caller joins before the page, so the page calls no one itself
+  const members: {
+    socket: Awaited<ReturnType<typeof joinFromOutside>>
+    signal: WebSocket
+  }[] = []
+  for (let index = 0; index < 41; index++) {
+    const id = `live-${String(index)}`
+    const socket = await joinFromOutside(room.name, id)
+    const signal = await rawSignaling(id)
+    members.push({ socket, signal })
+  }
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+
+  // Forty waiting callers fit the waiting limit exactly
+  for (let index = 0; index < 40; index++)
+    sendOffer(
+      members[index].signal,
+      room.peerId,
+      `mc_live_${String(index)}`,
+      offer
+    )
+  await eventually(
+    () => incomingCalls(room.page).then((ids) => ids.length),
+    40,
+    20_000
+  )
+
+  // The roster answer admits the page; all forty waiting calls are answered
+  await room.page.evaluate(() => {
+    window.releaseJoinAnswer()
+  })
+  await eventually(
+    () => answeredCalls(room.page).then((ids) => ids.length),
+    40,
+    20_000
+  )
+
+  // Answering the 41st would exceed forty live offers: refused, reason shown
+  sendOffer(members[40].signal, room.peerId, 'mc_live_40', offer)
+  await eventually(
+    () => shownError(room.page),
+    'Connection problem: A call was refused because too many calls are already held.',
+    20_000
+  )
+  assert.equal((await answeredCalls(room.page)).length, 40)
+  assert.deepEqual(await closedCalls(room.page), ['live-40'])
+  assert.deepEqual(errors, [])
+
+  for (const member of members) {
+    member.signal.close()
+    member.socket.close()
+  }
+})
+
 void test('a failed accounting drain fails closed, with the reason shown', async () => {
   const room = await openRoom('accounting-failure', [
     heldJoinAnswer,
