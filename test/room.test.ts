@@ -2112,3 +2112,54 @@ void test('a fresh Join after transport exhaustion re-opens the connection and j
   assert.ok(out.includes(`user: ${peerId} - joined: exhausted-rejoin`))
   assert.equal(out.split('\n').filter((l) => l.includes('- joined')).length, 1)
 })
+
+void test('a second tab joining the same room is Blocked and never emits', async () => {
+  // Two tabs of one browser: one shared context, so the room lock
+  // (Web Locks, per storage partition) covers both pages
+  const context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
+  context.setDefaultTimeout(10_000)
+  contexts.push(context)
+  await context.addInitScript(record)
+  const openTab = async (): Promise<Room> => {
+    const page = await context.newPage()
+    const idResponse = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/peerjs/id'
+    )
+    await page.goto('/room/two-tabs')
+    const peerId = (await (await idResponse).text()).trim()
+    await page.locator('#call:enabled').waitFor()
+    return { page, name: 'two-tabs', peerId }
+  }
+  const first = await openTab()
+  await join(first)
+
+  // The room lock refuses the second tab's Join before any packet leaves:
+  // the Blocked state, Join disabled, a Try again link, and no emission
+  const second = await openTab()
+  const from = ready(server, 'server').output().length
+  await second.page.click('#call')
+  await eventually(status(second.page), 'This room is open in another tab')
+  await second.page.locator('#call:disabled').waitFor()
+  await second.page.locator('#error a', { hasText: 'Try again' }).waitFor()
+  assert.ok(
+    !ready(server, 'server').output().slice(from).includes('- joined: two-tabs')
+  )
+
+  // Once the first tab leaves, the lock is free: the second tab's
+  // Try again reloads it, and its fresh Join completes admission
+  const left = ready(server, 'server').output().length
+  await first.page.click('#call')
+  await ready(server, 'server').waitForOutput(
+    `user: ${first.peerId} - left: two-tabs`,
+    left
+  )
+  const retryId = second.page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
+  )
+  await second.page.click('#error a')
+  const retryPeerId = (await (await retryId).text()).trim()
+  await second.page.locator('#call:enabled').waitFor()
+  await join({ page: second.page, name: 'two-tabs', peerId: retryPeerId })
+})
