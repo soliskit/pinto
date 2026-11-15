@@ -629,7 +629,9 @@ void test('a duplicate offer cannot make joining answer a retired call', async (
   // close is that retirement, not the room turning the member down
   assert.deepEqual(await closedCalls(room.page), [member])
 
-  // A caller outside the room offers the same connection id; it waits too
+  // A caller outside the room offers the same connection id: a
+  // cross-source collision, which refuses both ownerships and drains the
+  // connection - the member's waiting replacement ends with it
   const stranger = 'replaced-stranger'
   const strangerSignal = await rawSignaling(stranger)
   sendOffer(strangerSignal, room.peerId, 'mc_replaced', offer)
@@ -637,25 +639,20 @@ void test('a duplicate offer cannot make joining answer a retired call', async (
     () => incomingCalls(room.page).then((ids) => ids.includes(stranger)),
     true
   )
+  // The collision retired the live replacement before the colliding call
+  // was refused, and the refusal is shown rather than hidden
+  await eventually(() => closedCalls(room.page), [member, member, stranger])
 
-  // The roster answer arrives: the live replacement is answered, the
-  // retired call is skipped, and the stranger's is turned down
+  // The roster answer arrives with nothing left to answer or retire
   await room.page.evaluate(() => {
     window.releaseJoinAnswer()
   })
-  await eventually(() => answeredCalls(room.page), [member])
-  await eventually(() => closedCalls(room.page), [member, stranger])
-  assert.deepEqual(errors, [])
-  // The answered call's remote tracks arrive muted, so its video waits
-  await eventually(
-    () => controls(room.page),
-    inCall(room.name, '2nd in the room')
-  )
-  assert.deepEqual(await attendees(room.page)(), ['audio+video waiting'])
-
-  // Leave closes the answered call and nothing is left over
-  await room.page.click('#call')
-  await eventually(() => closedCalls(room.page), [member, stranger, member])
+  await eventually(() => controls(room.page), {
+    ...inCall(room.name, '1st in the room'),
+    error:
+      'Connection problem: A call could not be admitted because its signaling channel was contested.'
+  })
+  assert.deepEqual(await answeredCalls(room.page), [])
   assert.deepEqual(await attendees(room.page)(), [])
   assert.deepEqual(errors, [])
 

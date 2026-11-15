@@ -2015,6 +2015,28 @@ void test('the served socket.io bundle matches what room admission depends on', 
   )
 })
 
+void test('the served pairing-library bundle matches what message retention depends on', async () => {
+  // Retention hooks the pairing library's internals: _getMessages returns
+  // a connection's retained messages and deletes them, getConnection looks
+  // a live connection up by peer and connection IDs, the socket message
+  // listener the constructor registered runs before the ledger's own, an
+  // unanswered call's close() emits nothing, _removeConnection drops the
+  // store with the connection, and answer() replays through the same
+  // _getMessages extraction. A bundle change must fail here and force a
+  // fresh look at all of them. The pin is the served file, not the npm
+  // package
+  const response = await fetch(
+    `${ready(server, 'server').url}/vendor/peerjs.min.js`
+  )
+  const hash = createHash('sha256')
+    .update(Buffer.from(await response.arrayBuffer()))
+    .digest('hex')
+  assert.equal(
+    hash,
+    '7604d8c31bec4f134b0d15c2d80b1d095ea18af005354f439f14291fcd7b4168'
+  )
+})
+
 void test('turning the camera back on captures a fresh track', async () => {
   const room = await openRoom('camera-re-on')
   await room.page.click('#camera') // Chosen before Join
