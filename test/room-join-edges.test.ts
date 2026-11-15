@@ -725,3 +725,373 @@ void test('one failing waiting call cannot abandon the rest', async () => {
   failingRoom.disconnect()
   waitingRoom.disconnect()
 })
+
+/** An ICE candidate over raw signaling, like a caller's browser would send */
+
+function sendCandidate(
+  socket: WebSocket,
+  dst: string,
+  connectionId: string,
+  tag: number
+) {
+  socket.send(
+    JSON.stringify({
+      type: 'CANDIDATE',
+      dst,
+      payload: {
+        connectionId,
+        candidate: {
+          candidate: `candidate:${String(tag)} 1 udp 2113937151 10.0.0.${String(tag % 255)} 9 typ host`,
+          sdpMid: '0',
+          sdpMLineIndex: 0
+        }
+      }
+    })
+  )
+}
+
+/** An OFFER message padded to an exact retained size, like a large real one */
+
+function paddedOffer(
+  dst: string,
+  connectionId: string,
+  sdp: { type: RTCSdpType; sdp: string },
+  bytes: number
+) {
+  const build = (pad: number) => ({
+    type: 'OFFER',
+    dst,
+    payload: {
+      connectionId,
+      type: 'media',
+      sdp: { type: sdp.type, sdp: `${sdp.sdp}a=x-pad:${'p'.repeat(pad)}\r\n` }
+    }
+  })
+  const pad = bytes - JSON.stringify(build(0)).length
+  if (pad < 0) throw new Error('the offer alone is larger than the target size')
+  return build(pad)
+}
+
+/** The shown error text, heading then message, or null when none is shown */
+
+const shownError = (page: Page): Promise<string | null> =>
+  page.evaluate(() => {
+    const box = document.getElementById('error') as HTMLElement
+    if (box.hidden) return null
+    return [...box.children]
+      .map((entry) => {
+        const [heading, message] = entry.children as unknown as [
+          Element,
+          Element
+        ]
+        return `${heading.textContent}: ${message.textContent}`
+      })
+      .join(' | ')
+  })
+
+/** Totals across every connection the pairing library still holds messages for */
+
+function storeTotals(
+  page: Page
+): Promise<{ cids: number; messages: number; bytes: number }> {
+  return page.evaluate(() => {
+    const peer = window.roomPeer as unknown as {
+      _lostMessages: Map<string, unknown[]>
+    }
+    let messages = 0
+    let bytes = 0
+    for (const held of peer._lostMessages.values()) {
+      messages += held.length
+      for (const message of held) bytes += JSON.stringify(message).length
+    }
+    return { cids: peer._lostMessages.size, messages, bytes }
+  })
+}
+
+void test('a waiting caller whose stored messages grow past the limit is refused, with the reason shown', async () => {
+  const room = await openRoom('stored-messages-limit', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+  const member = await joinFromOutside(room.name, 'limited-member')
+  const memberSignal = await rawSignaling('limited-member')
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+
+  // A waiting caller's 128 stored messages fit; nothing is refused yet
+  sendOffer(memberSignal, room.peerId, 'mc_limited', offer)
+  await eventually(() => incomingCalls(room.page), ['limited-member'])
+  for (let index = 0; index < 128; index++)
+    sendCandidate(memberSignal, room.peerId, 'mc_limited', index)
+  await eventually(async () => (await storeTotals(room.page)).messages, 128)
+  assert.deepEqual(await closedCalls(room.page), [])
+  assert.equal(await shownError(room.page), null)
+
+  // The 129th refuses the call: the reason is shown, never hidden, and the
+  // refused connection's store is drained
+  sendCandidate(memberSignal, room.peerId, 'mc_limited', 128)
+  await eventually(() => closedCalls(room.page), ['limited-member'])
+  await eventually(
+    () => shownError(room.page),
+    'Connection problem: A call was refused because its stored messages grew past the limit.'
+  )
+  assert.deepEqual(await storeTotals(room.page), {
+    cids: 0,
+    messages: 0,
+    bytes: 0
+  })
+
+  // The roster answer arrives: the overflowed call was already refused
+  await room.page.evaluate(() => {
+    window.releaseJoinAnswer()
+  })
+  await eventually(() => answeredCalls(room.page), [])
+  assert.deepEqual(errors, [])
+
+  memberSignal.close()
+  member.disconnect()
+})
+
+void test('waiting-call pressure refuses the oldest caller, never the new one', async () => {
+  const room = await openRoom('waiting-pressure', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+
+  // Forty waiting callers fit; the 41st exceeds the waiting-call limit
+  const callers: { id: string; signal: WebSocket }[] = []
+  for (let index = 0; index < 41; index++) {
+    const id = `waiting-${String(index)}`
+    const signal = await rawSignaling(id)
+    sendOffer(signal, room.peerId, `mc_waiting_${String(index)}`, offer)
+    callers.push({ id, signal })
+  }
+  await eventually(
+    () => incomingCalls(room.page),
+    callers.map((caller) => caller.id),
+    15_000
+  )
+
+  // The oldest waiting caller is refused to make room, with the reason shown
+  await eventually(() => closedCalls(room.page), ['waiting-0'], 15_000)
+  await eventually(
+    () => shownError(room.page),
+    'Connection problem: The oldest waiting call was refused to make room for a newer one.'
+  )
+  assert.deepEqual(await answeredCalls(room.page), [])
+  assert.deepEqual(errors, [])
+
+  for (const caller of callers) caller.signal.close()
+})
+
+void test('waiting-byte pressure refuses the oldest caller before the count limit is reached', async () => {
+  const room = await openRoom('waiting-byte-pressure', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+
+  // Forty large waiting offers fit the 40-call count limit; only the
+  // aggregate byte limit can refuse them
+  const callers: { id: string; signal: WebSocket }[] = []
+  for (let index = 0; index < 40; index++) {
+    const id = `byte-waiting-${String(index)}`
+    const signal = await rawSignaling(id)
+    signal.send(
+      JSON.stringify(
+        paddedOffer(
+          room.peerId,
+          `mc_byte_waiting_${String(index)}`,
+          offer,
+          55_000
+        )
+      )
+    )
+    callers.push({ id, signal })
+  }
+  await eventually(
+    () => incomingCalls(room.page),
+    callers.map((caller) => caller.id),
+    15_000
+  )
+
+  // The two offers past the byte limit each refuse the current oldest,
+  // first in first out, with the reason shown
+  await eventually(
+    () => closedCalls(room.page),
+    ['byte-waiting-0', 'byte-waiting-1'],
+    15_000
+  )
+  await eventually(
+    () => shownError(room.page),
+    'Connection problem: The oldest waiting call was refused to make room for a newer one.'
+  )
+  assert.deepEqual(await answeredCalls(room.page), [])
+  assert.deepEqual(errors, [])
+
+  for (const caller of callers) caller.signal.close()
+})
+
+void test('a failed accounting drain fails closed, with the reason shown', async () => {
+  const room = await openRoom('accounting-failure', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+  const member = await joinFromOutside(room.name, 'drain-member')
+  const memberSignal = await rawSignaling('drain-member')
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+
+  // A waiting caller holds three stored messages when the accounting drain
+  // starts failing
+  sendOffer(memberSignal, room.peerId, 'mc_drain', offer)
+  await eventually(() => incomingCalls(room.page), ['drain-member'])
+  for (let index = 0; index < 3; index++)
+    sendCandidate(memberSignal, room.peerId, 'mc_drain', index)
+  await eventually(async () => (await storeTotals(room.page)).messages, 3)
+  await room.page.evaluate(() => {
+    const peer = window.roomPeer as unknown as {
+      _getMessages: () => string[]
+    }
+    peer._getMessages = () => {
+      throw new Error('injected accounting failure')
+    }
+  })
+
+  // Filling the per-connection limit refuses the call; the refusal's drain
+  // hits the broken accounting, which fails closed: the reason is shown,
+  // the call is closed, and the Peer is destroyed rather than admitting
+  // anyone it cannot account for
+  for (let index = 3; index < 129; index++)
+    sendCandidate(memberSignal, room.peerId, 'mc_drain', index)
+  await eventually(
+    () => shownError(room.page),
+    'Connection problem: Pinto cannot account for the messages the pairing library stores, so joining and answering are disabled.',
+    15_000
+  )
+  await eventually(() => closedCalls(room.page), ['drain-member'])
+  assert.deepEqual(await answeredCalls(room.page), [])
+  assert.equal(
+    await room.page.evaluate(
+      () => (window.roomPeer as unknown as { destroyed: boolean }).destroyed
+    ),
+    true
+  )
+  assert.deepEqual(errors, [])
+
+  memberSignal.close()
+  member.disconnect()
+})
+
+void test('an unknown-source flood stays bounded and admission keeps working', async () => {
+  const room = await openRoom('unknown-flood', [recordRoomCalls])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  await join(room)
+
+  // A stranger floods 600 connection ids with one stored message each
+  const ghost = await rawSignaling('flood-stranger')
+  for (let index = 0; index < 600; index++)
+    sendCandidate(ghost, room.peerId, `mc_flood_${String(index)}`, index)
+  await eventually(
+    async () => (await storeTotals(room.page)).messages,
+    512,
+    20_000
+  )
+
+  // The flood is bounded: the oldest 88 are drained and no error is shown
+  const totals = await storeTotals(room.page)
+  assert.ok(
+    totals.messages <= 512,
+    `unknown messages bounded: ${String(totals.messages)}`
+  )
+  assert.ok(
+    totals.bytes <= 256 * 1024,
+    `unknown bytes bounded: ${String(totals.bytes)}`
+  )
+  assert.deepEqual(
+    await room.page.evaluate(() => {
+      const peer = window.roomPeer as unknown as {
+        _lostMessages: Map<string, unknown[]>
+      }
+      return [...peer._lostMessages.keys()].filter(
+        (cid) => Number(cid.split('_')[2]) < 88
+      )
+    }),
+    []
+  )
+  assert.equal(await shownError(room.page), null)
+
+  // Admission still works: a member's call is answered
+  const offer = await makeOffer()
+  const member = await joinFromOutside(room.name, 'after-flood-member')
+  const memberSignal = await rawSignaling('after-flood-member')
+  sendOffer(memberSignal, room.peerId, 'mc_after_flood', offer)
+  await eventually(
+    () => answeredCalls(room.page),
+    ['after-flood-member'],
+    15_000
+  )
+  assert.deepEqual(errors, [])
+
+  memberSignal.close()
+  member.disconnect()
+  ghost.close()
+})
+
+void test('an unknown-source flood never drains a waiting call', async () => {
+  const room = await openRoom('flood-spares-waiting', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const errors: Error[] = []
+  room.page.on('pageerror', (error) => errors.push(error))
+  const offer = await makeOffer()
+  const member = await joinFromOutside(room.name, 'spared-member')
+  const memberSignal = await rawSignaling('spared-member')
+  await join(room)
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+
+  // A member's call waits on the held roster answer
+  sendOffer(memberSignal, room.peerId, 'mc_spared', offer)
+  await eventually(() => incomingCalls(room.page), ['spared-member'])
+
+  // A stranger floods unknown connection ids: the waiting call is never
+  // mistaken for unknown traffic and drained
+  const ghost = await rawSignaling('spared-flood-stranger')
+  for (let index = 0; index < 600; index++)
+    sendCandidate(ghost, room.peerId, `mc_spare_flood_${String(index)}`, index)
+  await eventually(
+    async () => (await storeTotals(room.page)).messages,
+    512,
+    20_000
+  )
+  assert.deepEqual(await closedCalls(room.page), [])
+  assert.equal(await shownError(room.page), null)
+
+  // The roster answer arrives: the waiting call is answered
+  await room.page.evaluate(() => {
+    window.releaseJoinAnswer()
+  })
+  await eventually(() => answeredCalls(room.page), ['spared-member'], 15_000)
+  assert.deepEqual(errors, [])
+
+  memberSignal.close()
+  member.disconnect()
+  ghost.close()
+})

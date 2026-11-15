@@ -675,8 +675,9 @@ void describe('in a call', () => {
   void test('Join joins the room, and Leave leaves it', async () => {
     const room = await openRoom('solo')
     await join(room)
-    assert.deepEqual(
-      await controls(room.page),
+    // The status settles after admission; poll instead of racing the render
+    await eventually(
+      () => controls(room.page),
       inCall('solo', '1st in the room')
     )
 
@@ -2059,6 +2060,30 @@ void test('turning the camera back on captures a fresh track', async () => {
   assert.deepEqual((await videoStates()).sort(), ['ended', 'live'])
 })
 
+void test('a browser without Web Locks cannot join, and says so', async () => {
+  const context = await ready(browser, 'browser').newContext({
+    baseURL: ready(server, 'server').url
+  })
+  contexts.push(context)
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'locks', {
+      value: undefined,
+      configurable: true
+    })
+  })
+  const page = await context.newPage()
+  await page.goto('/room/no-locks')
+
+  // The unsupported state blocks Join with its own error, distinct from the
+  // same-name-tab Blocked state
+  const errorShows = async () =>
+    ((await page.locator('#error').textContent()) ?? '').includes(
+      'Pinto needs the Web Locks API to keep one tab per room, and this browser does not have it. Joining is disabled.'
+    )
+  await eventually(errorShows, true, 10_000)
+  assert.equal(await page.locator('#call').isDisabled(), true)
+})
+
 void test('a room connection that never opens exhausts into the connection-error state', async () => {
   const context = await ready(browser, 'browser').newContext({
     baseURL: ready(server, 'server').url
@@ -2184,4 +2209,48 @@ void test('a second tab joining the same room is Blocked and never emits', async
   const retryPeerId = (await (await retryId).text()).trim()
   await second.page.locator('#call:enabled').waitFor()
   await join({ page: second.page, name: 'two-tabs', peerId: retryPeerId })
+})
+
+void test('a room link with a trailing slash joins the same room', async () => {
+  const page = await newPage()
+  const idResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/peerjs/id'
+  )
+  // One final literal slash is link formatting, not part of the name
+  await page.goto('/room/trailing-slash-link/')
+  const peerId = await (await idResponse).text()
+  await page.locator('#call:enabled').waitFor()
+  const from = ready(server, 'server').output().length
+  await page.click('#call')
+  await ready(server, 'server').waitForOutput(
+    `user: ${peerId} - joined: trailing-slash-link`,
+    from
+  )
+  assert.equal((await controls(page)).heading, 'You are in trailing-slash-link')
+})
+
+void test('a caller receives one video track and one audio track from the room', async () => {
+  const room = await openRoom('track-count')
+  await join(room)
+  const caller = await openCaller()
+  await caller.join(room.name)
+  await caller.page.evaluate((peerId) => {
+    const call = window.caller.peer.call(peerId, window.caller.stream)
+    call.on('stream', (stream) => {
+      ;(window.caller as unknown as { received: string[] }).received = stream
+        .getTracks()
+        .map((track) => track.kind)
+        .sort()
+    })
+  }, room.peerId)
+  // What peers receive: one video track (camera or photo) and one audio
+  // track (microphone or silence)
+  await eventually(
+    () =>
+      caller.page.evaluate(
+        () => (window.caller as unknown as { received?: string[] }).received
+      ),
+    ['audio', 'video'],
+    15_000
+  )
 })
