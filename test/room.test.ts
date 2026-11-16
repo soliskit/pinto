@@ -735,7 +735,8 @@ void describe('in a call', () => {
       `user: ${peerId} - joined: garden`,
       from
     )
-    assert.deepEqual(await controls(page), inCall('garden', '1st in the room'))
+    // The status settles after admission; poll instead of racing the render
+    await eventually(() => controls(page), inCall('garden', '1st in the room'))
   })
 
   void test('an encoded slash at the end of the address is still refused with a shown reason', async () => {
