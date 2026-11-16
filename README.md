@@ -66,7 +66,7 @@ Before joining, the camera and microphone buttons choose how you join; they do n
 | `TWILIO_ACCOUNT_SID` |         | With `TWILIO_AUTH_TOKEN`, enables Twilio's STUN and TURN servers |
 | `TWILIO_AUTH_TOKEN`  |         | Twilio auth token                                                |
 
-Without both Twilio settings, or if the request to Twilio fails, the server returns Google's public STUN server. A direct connection may work without a relay. Networks that block it need a TURN relay.
+Without both Twilio settings, or if the request to Twilio fails or does not answer within 5 seconds, the server returns Google's public STUN server. A direct connection may work without a relay. Networks that block it need a TURN relay.
 
 Pinto uses PeerServer's default connection key, `peerjs`, on both sides. The `KEY` environment variable is no longer used. Existing clients using the previous key must reload after an upgrade.
 
