@@ -105,7 +105,8 @@ void test('asks Twilio for a token and returns its STUN and TURN servers', async
 })
 
 void test('reuses the servers for half of their lifetime', async () => {
-  mock.timers.enable({ apis: ['Date'], now: 0 })
+  let mono = 0
+  mock.method(performance, 'now', () => mono)
   const tokens = [twilioToken('100', 'first'), twilioToken('100', 'second')]
   const fetch = mock.method(
     globalThis,
@@ -120,13 +121,49 @@ void test('reuses the servers for half of their lifetime', async () => {
   const first = await getIceServers()
   assert.equal(first[0].urls, 'stun:first.stun.twilio.com:3478')
 
-  mock.timers.tick(49_999)
+  mono = 49_999
   assert.equal(await getIceServers(), first)
   assert.equal(fetch.mock.callCount(), 1)
 
-  mock.timers.tick(1)
+  mono = 50_000
   const second = await getIceServers()
   assert.equal(second[0].urls, 'stun:second.stun.twilio.com:3478')
+  assert.equal(fetch.mock.callCount(), 2)
+})
+
+void test('wall-clock steps never change when credentials refresh', async () => {
+  let mono = 0
+  let wall = 0
+  mock.method(performance, 'now', () => mono)
+  mock.method(Date, 'now', () => wall)
+  const tokens = [twilioToken('100', 'first'), twilioToken('100', 'second')]
+  const fetch = mock.method(
+    globalThis,
+    'fetch',
+    () =>
+      new Promise<Response>((resolve) => {
+        resolve(Response.json(tokens[fetch.mock.callCount()]))
+      })
+  )
+  const getIceServers = await load('AC123', 'token')
+
+  const first = await getIceServers()
+  assert.equal(first[0].urls, 'stun:first.stun.twilio.com:3478')
+
+  // A backward wall step must not extend credentials past their deadline
+  wall = -1_000_000
+  mono = 49_999
+  assert.equal(await getIceServers(), first)
+  assert.equal(fetch.mock.callCount(), 1)
+  mono = 50_000
+  const second = await getIceServers()
+  assert.equal(second[0].urls, 'stun:second.stun.twilio.com:3478')
+  assert.equal(fetch.mock.callCount(), 2)
+
+  // A forward wall step must not discard a still-valid cache either
+  wall = 10_000_000
+  mono = 99_999
+  assert.equal(await getIceServers(), second)
   assert.equal(fetch.mock.callCount(), 2)
 })
 
@@ -162,3 +199,31 @@ void test('falls back to STUN when Twilio cannot be reached', async () => {
   assert.deepEqual(await getIceServers(), PUBLIC_STUN)
   assert.equal(error.mock.callCount(), 1)
 })
+
+void test(
+  'a Twilio fetch that never answers falls back to STUN',
+  // A reverted or missing abort must fail finitely here, not hang the suite
+  { timeout: 15_000 },
+  async () => {
+    const error = mock.method(console, 'error', () => {})
+    mock.method(
+      globalThis,
+      'fetch',
+      (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(init.signal?.reason as Error)
+          })
+        })
+    )
+    const getIceServers = await load('AC123', 'token')
+
+    // Real 5-second wait: AbortSignal.timeout uses its own timer, which the
+    // mock timers do not fast-forward
+    const started = performance.now()
+    assert.deepEqual(await getIceServers(), PUBLIC_STUN)
+    assert.equal(error.mock.callCount(), 1)
+    // The promised bound is 5s: it must not fall back much earlier either
+    assert.ok(performance.now() - started >= 4_000)
+  }
+)
