@@ -8,6 +8,17 @@ on:
     - cron: '0 7 * * 6'
       timezone: 'America/Los_Angeles'
   workflow_dispatch:
+    inputs:
+      shards:
+        description: 'Comma-separated shard names to run (must be a subset of the experiment allowlist)'
+        required: true
+        type: string
+      command_mode:
+        description: 'Test command: control (unchanged) or first-fail (stop at first failing test)'
+        required: false
+        type: choice
+        default: control
+        options: [control, first-fail]
 
 permissions:
   contents: read
@@ -262,7 +273,57 @@ jobs:
         with:
           persist-credentials: false
       - id: read
-        run: echo "include=$(jq -c '.include' .github/mutation-ranges.json)" >> "$GITHUB_OUTPUT"
+        shell: bash
+        env:
+          WANTED_SHARDS: ${{ github.event.inputs.shards }}
+          COMMAND_MODE: ${{ github.event.inputs.command_mode }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Bounded dispatch route, fail closed BEFORE any matrix output:
+            # this branch's proposed experiment shard selection only, never
+            # blank, never the full matrix, never an unknown mode. Widening
+            # the selection means editing this list on the branch.
+            ALLOWED="room-267-377-a room-267-377-e room-1354-1431-b"
+            if [ "$COMMAND_MODE" != "control" ] && [ "$COMMAND_MODE" != "first-fail" ]; then
+              echo "Refusing dispatch: unknown command_mode '$COMMAND_MODE'." >&2
+              exit 1
+            fi
+            if [ -z "${WANTED_SHARDS// /}" ]; then
+              echo "Refusing dispatch: shards is required on this branch; a blank selection would launch the full matrix." >&2
+              exit 1
+            fi
+            for name in ${WANTED_SHARDS//,/ }; do
+              case " $ALLOWED " in
+                *" $name "*) ;;
+                *) echo "Refusing dispatch: shard '$name' is not in this branch's bounded experiment shard list ($ALLOWED)." >&2; exit 1 ;;
+              esac
+            done
+            result=$(jq -c --arg w "$WANTED_SHARDS" '
+              ($w | split(",") | map(gsub("^ +| +$"; "")) | unique) as $names
+              | ([.include[].shard]) as $known
+              | ($names - $known) as $unknown
+              | if ($unknown | length) > 0 then
+                  error("Unknown shard name(s): \($unknown | join(", "))")
+                else
+                  { names: $names,
+                    include: [.include[] | select(.shard as $s | $names | index($s))] }
+                end
+            ' .github/mutation-ranges.json)
+            include=$(jq -c '.include' <<<"$result")
+            names=$(jq -r '.names | join(", ")' <<<"$result")
+            count=$(jq '.names | length' <<<"$result")
+            echo "manifest: head=$GITHUB_SHA command_mode=$COMMAND_MODE shards($count): $names"
+            {
+              echo "### Mutation dispatch manifest"
+              echo "- head: $GITHUB_SHA"
+              echo "- command_mode: $COMMAND_MODE"
+              echo "- shards ($count): $names"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            include=$(jq -c '.include' .github/mutation-ranges.json)
+          fi
+          echo "include=$include" >> "$GITHUB_OUTPUT"
 
   # The boundary check runs before any slice: a wrong range fails fast here
   # instead of silently skipping mutants in every slice that spans it. The
@@ -355,7 +416,7 @@ jobs:
           npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run "${config[@]}" \
             --ignorePatterns tsconfig.json,tsconfig.client.json \
             --testRunner command \
-            --commandRunner.command "exec node --test --test-timeout=120000 ${{ matrix.tests }}" \
+            --commandRunner.command "${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.command_mode == 'first-fail') && format('exec node .github/scripts/run-tests-first-fail.mjs {0}', matrix.tests) || format('exec node --test --test-timeout=120000 {0}', matrix.tests) }}" \
             --mutate "${{ matrix.mutate }}" \
             --reporters clear-text,json --coverageAnalysis off \
             --concurrency 1 --timeoutMS ${{ matrix.browser == 'chromium' && 120000 || 20000 }}
@@ -371,3 +432,10 @@ jobs:
       - name: Verify this slice's report against its expected mutants
         shell: bash
         run: INSTRUMENTER_PREFIX="$RUNNER_TEMP/mutation-tools" node .github/scripts/verify-mutation-report.mjs "${{ matrix.shard }}"
+      - name: Upload this slice's mutation report
+        if: always() && hashFiles('reports/mutation/mutation.json') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report-${{ github.run_id }}-${{ github.run_attempt }}-${{(github.event_name == 'workflow_dispatch' && github.event.inputs.command_mode) || 'auto'}}-${{ matrix.shard }}
+          path: reports/mutation/mutation.json
+          if-no-files-found: ignore
