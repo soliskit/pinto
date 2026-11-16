@@ -131,3 +131,60 @@ void describe('Attendee video width (REQ 13)', () => {
     }
   })
 })
+
+void describe('Room name width (REQ 13)', () => {
+  // Issue #170: at a 360px phone viewport a long unbroken room name made
+  // the page wider than the viewport. 40 letters is the longest name the
+  // room-name rule lets join; 60 is the length the issue measured.
+  for (const letters of [40, 60]) {
+    void test(`a ${String(letters)}-letter unbroken room name wraps instead of widening a 360px page`, async () => {
+      const name = 'w'.repeat(letters)
+      const context = await browser.newContext({
+        baseURL: server.url,
+        viewport: { width: 360, height: 700 },
+        isMobile: true,
+        hasTouch: true
+      })
+      context.setDefaultTimeout(10_000)
+      try {
+        const page = await context.newPage()
+        await page.goto(`/room/${name}`)
+        await page.locator('#call:enabled').waitFor()
+        const measured = await page.evaluate(() => {
+          const title = document.querySelector<HTMLElement>('#title')
+          if (!title) return null
+          const lineHeight = parseFloat(getComputedStyle(title).lineHeight)
+          const paddingTop = parseFloat(getComputedStyle(title).paddingTop)
+          return {
+            text: title.textContent,
+            lines: Math.round(
+              (title.getBoundingClientRect().height - paddingTop) / lineHeight
+            ),
+            titleRight: title.getBoundingClientRect().right,
+            scrollWidth: document.documentElement.scrollWidth,
+            clientWidth: document.documentElement.clientWidth
+          }
+        })
+        assert.ok(measured, 'expected the room heading')
+        // The whole name is still shown, on more than one line
+        assert.equal(measured.text, `Join ${name}`)
+        assert.ok(
+          measured.lines > 1,
+          `the heading takes ${String(measured.lines)} line, so the name did not wrap`
+        )
+        assert.ok(
+          measured.titleRight <= measured.clientWidth,
+          `heading right ${String(measured.titleRight)} exceeds the page width ${String(measured.clientWidth)}`
+        )
+        // The page never grows wider than its viewport
+        assert.equal(measured.clientWidth, 360)
+        assert.ok(
+          measured.scrollWidth <= measured.clientWidth,
+          `document scrollWidth ${String(measured.scrollWidth)} exceeds clientWidth ${String(measured.clientWidth)}`
+        )
+      } finally {
+        await context.close()
+      }
+    })
+  }
+})
