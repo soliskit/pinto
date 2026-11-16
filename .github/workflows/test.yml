@@ -407,22 +407,27 @@ jobs:
       - name: Write mutator-family shard config
         if: matrix.mutators != null
         run: INSTRUMENTER_PREFIX="$RUNNER_TEMP/mutation-tools" node .github/scripts/write-shard-config.mjs "${{ matrix.shard }}" "$RUNNER_TEMP/stryker.shard.json"
+      # The run id is minted before Stryker so the literal value lands inside
+      # the recorded command string: the ledger gate binds the report to this
+      # run by reading FIRST_FAIL_RUN_ID/FIRST_FAIL_SHARD/GITHUB_SHA back out
+      # of config.commandRunner.command in the report itself.
+      - name: Mint the first-fail run id
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.command_mode == 'first-fail'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FIRST_FAIL_RUN_ID="$(node -e 'console.log(crypto.randomUUID())')"
+          echo "FIRST_FAIL_RUN_ID=$FIRST_FAIL_RUN_ID" >> "$GITHUB_ENV"
       - name: Run Stryker
         shell: bash
-        env:
-          FIRST_FAIL_SHARD: ${{ matrix.shard }}
-          FIRST_FAIL_LEDGER_DIR: $GITHUB_WORKSPACE/.first-fail-ledger
         run: |
           set -euo pipefail
           config=()
           if [ -f "$RUNNER_TEMP/stryker.shard.json" ]; then config=("$RUNNER_TEMP/stryker.shard.json"); fi
-          FIRST_FAIL_RUN_ID="$(node -e 'console.log(crypto.randomUUID())')"
-          echo "FIRST_FAIL_RUN_ID=$FIRST_FAIL_RUN_ID" >> "$GITHUB_ENV"
-          export FIRST_FAIL_RUN_ID
           npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run "${config[@]}" \
             --ignorePatterns tsconfig.json,tsconfig.client.json \
             --testRunner command \
-            --commandRunner.command "${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.command_mode == 'first-fail') && format('exec node .github/scripts/run-tests-first-fail.mjs -- --test-timeout=120000 {0}', matrix.tests) || format('exec node --test --test-timeout=120000 {0}', matrix.tests) }}" \
+            --commandRunner.command "${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.command_mode == 'first-fail') && format('exec env FIRST_FAIL_RUN_ID={0} FIRST_FAIL_LEDGER_DIR={4}/first-fail-ledger FIRST_FAIL_SHARD={1} GITHUB_SHA={2} node .github/scripts/run-tests-first-fail.mjs -- --test-timeout=120000 {3}', env.FIRST_FAIL_RUN_ID, matrix.shard, github.sha, matrix.tests, github.workspace) || format('exec node --test --test-timeout=120000 {0}', matrix.tests) }}" \
             --mutate "${{ matrix.mutate }}" \
             --reporters clear-text,json --coverageAnalysis off \
             --concurrency 1 --timeoutMS ${{ matrix.browser == 'chromium' && 120000 || 20000 }}
@@ -445,7 +450,7 @@ jobs:
       - name: Gate first-fail verdicts on the wrapper ledger
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.command_mode == 'first-fail'
         shell: bash
-        run: node .github/scripts/check-ledger-v2.mjs --ledger "$GITHUB_WORKSPACE/.first-fail-ledger" --report reports/mutation/mutation.json --shard "${{ matrix.shard }}" --head "${{ github.sha }}" --run-id "$FIRST_FAIL_RUN_ID"
+        run: node .github/scripts/check-ledger-v2.mjs --ledger "$GITHUB_WORKSPACE/first-fail-ledger" --report reports/mutation/mutation.json --shard "${{ matrix.shard }}" --head "${{ github.sha }}" --run-id "$FIRST_FAIL_RUN_ID"
       - name: Upload this slice's mutation report
         if: always() && hashFiles('reports/mutation/mutation.json') != ''
         uses: actions/upload-artifact@v7
@@ -453,5 +458,5 @@ jobs:
           name: mutation-report-${{ github.run_id }}-${{ github.run_attempt }}-${{(github.event_name == 'workflow_dispatch' && github.event.inputs.command_mode) || 'auto'}}-${{ matrix.shard }}
           path: |
             reports/mutation/mutation.json
-            .first-fail-ledger
+            first-fail-ledger
           if-no-files-found: ignore
