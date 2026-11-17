@@ -1,5 +1,5 @@
 declare global {
-  const Peer: typeof import('peerjs').Peer
+  const Peer: BrowserPeerConstructor
   const io: typeof import('socket.io-client').io
   interface Window {
     /** Capture requests held by the gatedCapture test init, oldest first */
