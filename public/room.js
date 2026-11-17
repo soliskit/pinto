@@ -789,7 +789,15 @@ function sendVideo(track) {
     const sender = call.peerConnection
       ?.getSenders()
       .find((each) => each.track?.kind === 'video')
-    void sender?.replaceTrack(track)
+    void sender?.replaceTrack(track).catch((/** @type {unknown} */ error) => {
+      if (calls.get(call.peer)?.call !== call) return
+      showError(
+        'Call connection',
+        `A media update failed. This call ended: ${errorReason(error)}`,
+        call.connectionId
+      )
+      removeCall(call.peer)
+    })
   }
 }
 
@@ -805,7 +813,15 @@ function sendAudio(track) {
     const sender = call.peerConnection
       ?.getSenders()
       .find((each) => each.track?.kind === 'audio')
-    void sender?.replaceTrack(track)
+    void sender?.replaceTrack(track).catch((/** @type {unknown} */ error) => {
+      if (calls.get(call.peer)?.call !== call) return
+      showError(
+        'Call connection',
+        `A media update failed. This call ended: ${errorReason(error)}`,
+        call.connectionId
+      )
+      removeCall(call.peer)
+    })
   }
 }
 
@@ -923,8 +939,28 @@ function addCall(call) {
   call.on('close', () => {
     if (calls.get(call.peer)?.call === call) removeCall(call.peer)
   })
+  call.on('iceStateChanged', (state) => {
+    if (calls.get(call.peer)?.call !== call) return
+    if (state === 'connected' || state === 'completed') {
+      clearError(`${call.connectionId}:waiting`)
+    } else if (state === 'disconnected') {
+      showError(
+        'Call connection',
+        'A call was interrupted. Waiting for its connection to recover.',
+        `${call.connectionId}:waiting`
+      )
+    }
+  })
   call.on('error', (error) => {
     console.error(error)
+    if (calls.get(call.peer)?.call !== call) return
+    if (error.type !== 'negotiation-failed') return
+    showError(
+      'Call connection',
+      'A call connection failed. The call ended.',
+      call.connectionId
+    )
+    removeCall(call.peer)
   })
 }
 
@@ -933,6 +969,7 @@ function removeCall(peerId) {
   const entry = calls.get(peerId)
   if (!entry) return
   calls.delete(peerId)
+  clearError(`${entry.call.connectionId}:waiting`)
   entry.call.close()
   // The wrapper retires its references: the held OFFER charge goes with
   // them, and the drain runs before the accounting is removed
@@ -948,9 +985,10 @@ const errorEntries = new Map()
 /**
  * @param {string} heading
  * @param {string} message
+ * @param {string} key
  */
-function showError(heading, message) {
-  let entry = errorEntries.get(heading)
+function showError(heading, message, key = heading) {
+  let entry = errorEntries.get(key)
   if (!entry) {
     const box = document.createElement('div')
     const headingElement = document.createElement('h1')
@@ -958,11 +996,19 @@ function showError(heading, message) {
     box.append(headingElement, messageElement)
     errorBox.append(box)
     entry = { heading: headingElement, message: messageElement }
-    errorEntries.set(heading, entry)
+    errorEntries.set(key, entry)
   }
   entry.heading.textContent = heading
   entry.message.textContent = message
   errorBox.hidden = false
+}
+
+/** Clears only the warning whose cause has recovered. */
+function clearError(/** @type {string} */ key) {
+  const entry = errorEntries.get(key)
+  entry?.heading.parentElement?.remove()
+  errorEntries.delete(key)
+  errorBox.hidden = errorEntries.size === 0
 }
 
 function render() {
@@ -1268,6 +1314,7 @@ callButton.addEventListener('click', () => {
 
 let reconnectAttempts = 0
 peer.on('open', () => {
+  clearError('pairing')
   reconnectAttempts = 0
   render()
 })
@@ -1399,7 +1446,8 @@ peer.on('disconnected', () => {
 peer.on('error', (/** @type {{ type?: string, message?: string }} */ error) => {
   showError(
     'Connection problem',
-    `${String(error.type)}: ${error.message || 'No further error details are available.'}`
+    `${String(error.type)}: ${error.message || 'No further error details are available.'}`,
+    error.type === 'network' ? 'pairing' : 'Connection problem'
   )
 })
 
@@ -1421,7 +1469,8 @@ socket.on('user-connected', (/** @type {string} */ peerId) => {
   if (peer.disconnected) {
     showError(
       'Connection problem',
-      'The connection to the server is down, so the person who just joined cannot be called.'
+      'The connection to the server is down, so the person who just joined cannot be called.',
+      'pairing'
     )
     return
   }
@@ -1435,10 +1484,28 @@ socket.on('user-connected', (/** @type {string} */ peerId) => {
   }
   addCall(call)
 })
-socket.on('user-disconnected', (/** @type {string} */ peerId) => {
-  roomPeers.delete(peerId)
-  removeCall(peerId)
-})
+socket.on(
+  'user-disconnected',
+  (/** @type {string} */ peerId, /** @type {unknown} */ reason) => {
+    const entry = calls.get(peerId)
+    // A normal Leave sends a namespace disconnect. Only transport failures
+    // establish lost room connectivity; older servers supply no reason.
+    if (
+      entry &&
+      (reason === 'ping timeout' ||
+        reason === 'transport close' ||
+        reason === 'transport error')
+    ) {
+      showError(
+        'Call connection',
+        "A call ended because the other person's room connection was lost. No automatic redial is attempted.",
+        entry.call.connectionId
+      )
+    }
+    roomPeers.delete(peerId)
+    removeCall(peerId)
+  }
+)
 
 if (!roomLockSupported) {
   roomPhase = 'unsupported'
