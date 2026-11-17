@@ -47,6 +47,11 @@ h1 {
   padding-top: 6rem;
 }
 
+/* A long unbroken room name wraps instead of widening the page */
+#title {
+  overflow-wrap: anywhere;
+}
+
 h2 {
   font-size: 1.125rem;
   line-height: 1.75rem;
