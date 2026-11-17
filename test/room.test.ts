@@ -2172,6 +2172,7 @@ void test('a browser without Web Locks cannot join, and says so', async () => {
     baseURL: ready(server, 'server').url
   })
   contexts.push(context)
+  await context.addInitScript(record)
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'locks', {
       value: undefined,
@@ -2188,6 +2189,17 @@ void test('a browser without Web Locks cannot join, and says so', async () => {
       'Pinto needs the Web Locks API to keep one tab per room, and this browser does not have it. Joining is disabled.'
     )
   await eventually(errorShows, true, 10_000)
+
+  // The button must stay disabled even with the pairing connection open:
+  // wait for the peer server's OPEN message, which room.js answers with a
+  // render, so the disabled check cannot pass on peer-not-open alone
+  const peerOpened = async () =>
+    page.evaluate(() =>
+      window.recorded.peerMessages.some((message) =>
+        message.includes('"type":"OPEN"')
+      )
+    )
+  await eventually(peerOpened, true, 10_000)
   assert.equal(await page.locator('#call').isDisabled(), true)
 })
 
