@@ -218,7 +218,7 @@ io.on('connection', (socket: Socket) => {
             `${socket.id} - user: ${escapeLogId(userId)} - left: ${roomId} (${reason})`
           )
           members.delete(userId)
-          socket.to(appRoom(roomId)).emit('user-disconnected', userId)
+          socket.to(appRoom(roomId)).emit('user-disconnected', userId, reason)
         }
       }
       if (members.size === 0) rooms.delete(roomId)

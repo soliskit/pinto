@@ -344,6 +344,30 @@ void describe('with the default settings', () => {
       assert.deepEqual(c.events.disconnected, ['peer-d'])
     })
 
+    void test('departure carries the server-observed cause, not a client-provided one', async () => {
+      const [a, b, c] = await Promise.all([connect(), connect(), connect()])
+      await join(a.socket, 'departure-cause', 'cause-a')
+      await join(b.socket, 'departure-cause', 'cause-b')
+      await join(c.socket, 'departure-cause', 'cause-c')
+      const departures: unknown[][] = []
+      a.socket.on('user-disconnected', (...args: unknown[]) =>
+        departures.push(args)
+      )
+      b.socket.disconnect()
+      await eventually(
+        () => Promise.resolve(departures),
+        [['cause-b', 'client namespace disconnect']]
+      )
+      c.socket.io.engine.close()
+      await eventually(
+        () => Promise.resolve(departures),
+        [
+          ['cause-b', 'client namespace disconnect'],
+          ['cause-c', 'transport close']
+        ]
+      )
+    })
+
     void test('ignores join-room without a room name and peer id', async () => {
       const [a, late] = await Promise.all([connect(), connect()])
       await join(a.socket, 'five', 'peer-a')
