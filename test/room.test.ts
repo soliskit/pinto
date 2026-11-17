@@ -2573,80 +2573,45 @@ void test('pairing recovery keeps an unrelated media error visible', async () =>
   )
 })
 
-void test('a late failed media update cannot end a replacement call', async () => {
-  const a = await openRoom('late-media-failure', recordRoomCalls)
-  const b = await openRoom('late-media-failure')
-  await join(a)
-  await join(b)
-  await eventually(status(a.page), '2nd in the room')
-  const rejectUpdate = await a.page.evaluateHandle(() => {
-    const sender = window.outgoingConns[0].peerConnection
-      .getSenders()
-      .find((each) => each.track?.kind === 'video')
-    if (!sender) throw Error('missing video sender')
-    let rejectUpdate: (error: Error) => void = () => {
-      throw Error('replacement was not requested')
-    }
-    sender.replaceTrack = () =>
-      new Promise((_resolve, reject) => {
-        rejectUpdate = reject
-      })
-    return () => {
-      rejectUpdate(Error('late old failure'))
-    }
-  })
-  await a.page.click('#camera')
-  await a.page.click('#call')
-  await eventually(status(b.page), '1st in the room')
-  // B initiates the replacement call after A rejoins.
-  await join(a)
-  await eventually(status(a.page), '2nd in the room')
-  await rejectUpdate.evaluate((reject) => {
-    reject()
-  })
-  assert.equal((await controls(a.page)).error, null)
-  assert.equal(await status(a.page)(), '2nd in the room')
-  await rejectUpdate.dispose()
-})
-
-void test('losing a remote room transport warns and preserves an unrelated call', async () => {
-  const a = await openRoom('remote-room-loss', recordRoomCalls)
-  const b = await openRoom('remote-room-loss')
-  const c = await openRoom('remote-room-loss')
-  await join(a)
-  await join(b)
-  await join(c)
-  await eventually(status(a.page), '3rd in the room')
-  const cdp = await b.page.context().newCDPSession(b.page)
-  await cdp.send('Network.enable')
-  await cdp.send('Network.emulateNetworkConditions', {
-    offline: true,
-    latency: 0,
-    downloadThroughput: 0,
-    uploadThroughput: 0
-  })
+/** Failure-only evidence; never change an assertion or wait for capture. */
+async function withCallFailureDiagnostics(
+  run: (rooms: Room[]) => Promise<void>
+) {
+  const rooms: Room[] = []
   try {
-    await eventually(
-      async () => (await controls(a.page)).error,
-      "Call connection: A call ended because the other person's room connection was lost. No automatic redial is attempted.",
-      60_000
-    )
+    await run(rooms)
   } catch (error) {
-    // Diagnostics must never replace or indefinitely delay the assertion.
-    // This helper server clears KEY and Twilio credentials; never log raw
-    // pairing payloads, which can contain SDP credentials even with fake media.
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
+      // Log the original failure before any fallible browser read. This helper
+      // server clears KEY and Twilio credentials; never log raw pairing payloads.
+      console.error('Call-state assertion', String(error).slice(0, 4000))
+      console.error(
+        'Call-state server',
+        JSON.stringify(
+          ready(server, 'server')
+            .output()
+            .split('\n')
+            .filter((line) => rooms.some((room) => line.includes(room.peerId)))
+            .slice(-30)
+        )
+      )
       await Promise.race([
-        (async () => {
-          const pages = await Promise.allSettled(
-            [a, b, c].map(async (room) => ({
-              peerId: room.peerId,
-              controls: await controls(room.page),
-              pairing: await room.page.evaluate(() => ({
-                sockets: window.recorded.peerSockets.map(
-                  (socket) => socket.readyState
-                ),
+        Promise.allSettled(
+          rooms.flatMap((room) => [
+            controls(room.page).then((value) => {
+              console.error(
+                'Call-state controls',
+                room.peerId,
+                JSON.stringify(value)
+              )
+              return null
+            }),
+            room.page
+              .evaluate(() => ({
+                sockets: window.recorded.peerSockets
+                  .slice(-10)
+                  .map((socket) => socket.readyState),
                 messageTypes: window.recorded.peerMessages
                   .slice(-10)
                   .map((message) => {
@@ -2654,39 +2619,31 @@ void test('losing a remote room transport warns and preserves an unrelated call'
                     return typeof parsed.type === 'string'
                       ? parsed.type
                       : 'unknown'
+                  }),
+                calls: ((window as Partial<Window>).outgoingConns ?? [])
+                  .slice(-10)
+                  .map((call) => {
+                    const connection =
+                      call.peerConnection as RTCPeerConnection | null
+                    return {
+                      peer: call.peer,
+                      connectionId: call.connectionId,
+                      open: call.open,
+                      connectionState: connection?.connectionState ?? null,
+                      iceConnectionState: connection?.iceConnectionState ?? null
+                    }
                   })
               }))
-            }))
-          )
-          const calls = await a.page.evaluate(() =>
-            window.outgoingConns.map((call) => ({
-              peer: call.peer,
-              connectionId: call.connectionId,
-              open: call.open,
-              connectionState: call.peerConnection.connectionState,
-              iceConnectionState: call.peerConnection.iceConnectionState
-            }))
-          )
-          console.error(
-            'Remote room loss diagnostic',
-            JSON.stringify({
-              assertion: String(error),
-              pages,
-              calls,
-              server: ready(server, 'server')
-                .output()
-                .split('\n')
-                .filter(
-                  (line) =>
-                    line.includes('remote-room-loss') ||
-                    [a.peerId, b.peerId, c.peerId].some((id) =>
-                      line.includes(id)
-                    )
+              .then((value) => {
+                console.error(
+                  'Call-state connections',
+                  room.peerId,
+                  JSON.stringify(value)
                 )
-                .slice(-30)
-            })
-          )
-        })(),
+                return null
+              })
+          ])
+        ),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
             reject(Error('diagnostic capture timed out'))
@@ -2694,20 +2651,88 @@ void test('losing a remote room transport warns and preserves an unrelated call'
         })
       ])
     } catch {
-      // Capture is best-effort; the original failure below remains decisive.
+      // Capture is best-effort; only the original failure decides the test.
     } finally {
       clearTimeout(timer)
     }
     throw error
   }
-  await eventually(status(a.page), '2nd in the room')
-  assert.equal(
-    await a.page.evaluate(
-      (id) => window.outgoingConns.find((each) => each.peer === id)?.open,
-      c.peerId
-    ),
-    true
-  )
+}
+
+void test('a late failed media update cannot end a replacement call', async () => {
+  await withCallFailureDiagnostics(async (rooms) => {
+    const a = await openRoom('late-media-failure', recordRoomCalls)
+    rooms.push(a)
+    const b = await openRoom('late-media-failure')
+    rooms.push(b)
+    await join(a)
+    await join(b)
+    await eventually(status(a.page), '2nd in the room')
+    const rejectUpdate = await a.page.evaluateHandle(() => {
+      const sender = window.outgoingConns[0].peerConnection
+        .getSenders()
+        .find((each) => each.track?.kind === 'video')
+      if (!sender) throw Error('missing video sender')
+      let rejectUpdate: (error: Error) => void = () => {
+        throw Error('replacement was not requested')
+      }
+      sender.replaceTrack = () =>
+        new Promise((_resolve, reject) => {
+          rejectUpdate = reject
+        })
+      return () => {
+        rejectUpdate(Error('late old failure'))
+      }
+    })
+    await a.page.click('#camera')
+    await a.page.click('#call')
+    await eventually(status(b.page), '1st in the room')
+    // B initiates the replacement call after A rejoins.
+    await join(a)
+    await eventually(status(a.page), '2nd in the room')
+    await rejectUpdate.evaluate((reject) => {
+      reject()
+    })
+    assert.equal((await controls(a.page)).error, null)
+    assert.equal(await status(a.page)(), '2nd in the room')
+    await rejectUpdate.dispose()
+  })
+})
+
+void test('losing a remote room transport warns and preserves an unrelated call', async () => {
+  await withCallFailureDiagnostics(async (rooms) => {
+    const a = await openRoom('remote-room-loss', recordRoomCalls)
+    rooms.push(a)
+    const b = await openRoom('remote-room-loss')
+    rooms.push(b)
+    const c = await openRoom('remote-room-loss')
+    rooms.push(c)
+    await join(a)
+    await join(b)
+    await join(c)
+    await eventually(status(a.page), '3rd in the room')
+    const cdp = await b.page.context().newCDPSession(b.page)
+    await cdp.send('Network.enable')
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: true,
+      latency: 0,
+      downloadThroughput: 0,
+      uploadThroughput: 0
+    })
+    await eventually(
+      async () => (await controls(a.page)).error,
+      "Call connection: A call ended because the other person's room connection was lost. No automatic redial is attempted.",
+      60_000
+    )
+    await eventually(status(a.page), '2nd in the room')
+    assert.equal(
+      await a.page.evaluate(
+        (id) => window.outgoingConns.find((each) => each.peer === id)?.open,
+        c.peerId
+      ),
+      true
+    )
+  })
 })
 
 for (const leave of ['local', 'remote']) {
