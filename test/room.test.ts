@@ -2735,6 +2735,91 @@ void test('losing a remote room transport warns and preserves an unrelated call'
   })
 })
 
+for (const reason of [
+  undefined,
+  'unknown',
+  'client namespace disconnect',
+  'ping timeout',
+  'transport close',
+  'transport error'
+]) {
+  void test(`room loss after call close with ${String(reason)} keeps the warning policy`, async () => {
+    const a = await openRoom('closed-call-loss', [
+      heldJoinAnswer,
+      recordRoomCalls
+    ])
+    const b = await openRoom('closed-call-loss')
+    const c = await openRoom('closed-call-loss')
+    await join(a)
+    await a.page.evaluate(() => {
+      window.releaseJoinAnswer()
+    })
+    await join(b)
+    await join(c)
+    await eventually(status(a.page), '3rd in the room')
+    await a.page.evaluate((id) => {
+      window.outgoingConns.find((call) => call.peer === id)?.close()
+    }, b.peerId)
+    await eventually(status(a.page), '2nd in the room')
+    await a.page.evaluate(
+      ({ peerId, reason }) => {
+        for (const listener of window.roomSocket.listeners('user-disconnected'))
+          listener(peerId, reason)
+      },
+      { peerId: b.peerId, reason }
+    )
+    const failure =
+      reason === 'ping timeout' ||
+      reason === 'transport close' ||
+      reason === 'transport error'
+    await eventually(
+      async () => (await controls(a.page)).error,
+      failure
+        ? "Call connection: A call ended because the other person's room connection was lost. No automatic redial is attempted."
+        : null
+    )
+    assert.equal(
+      await a.page.evaluate(
+        (id) => window.outgoingConns.find((call) => call.peer === id)?.open,
+        c.peerId
+      ),
+      true
+    )
+    // A duplicate announcement cannot create another warning after consumption.
+    if (!failure) {
+      await a.page.evaluate((id) => {
+        for (const listener of window.roomSocket.listeners('user-disconnected'))
+          listener(id, 'ping timeout')
+      }, b.peerId)
+      assert.equal((await controls(a.page)).error, null)
+    }
+  })
+}
+
+void test('local Leave retires a closed call before a later room-loss notice', async () => {
+  const a = await openRoom('closed-call-leave', [
+    heldJoinAnswer,
+    recordRoomCalls
+  ])
+  const b = await openRoom('closed-call-leave')
+  await join(a)
+  await a.page.evaluate(() => {
+    window.releaseJoinAnswer()
+  })
+  await join(b)
+  await eventually(status(a.page), '2nd in the room')
+  await a.page.evaluate(() => {
+    window.outgoingConns[0].close()
+  })
+  await eventually(status(a.page), '1st in the room')
+  await a.page.click('#call')
+  await a.page.evaluate((id) => {
+    for (const listener of window.roomSocket.listeners('user-disconnected'))
+      listener(id, 'ping timeout')
+  }, b.peerId)
+  assert.equal((await controls(a.page)).error, null)
+})
+
 for (const leave of ['local', 'remote']) {
   void test(`retiring an interrupted call on ${leave} Leave clears only its waiting warning`, async () => {
     const a = await openRoom('interrupted-retirement', recordRoomCalls)
