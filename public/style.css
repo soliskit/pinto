@@ -161,6 +161,23 @@ input::placeholder {
   cursor: pointer;
 }
 
+/* The photo chooser stays in the tab order without taking up room; its
+   focus shows on the preview that opens it */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#self-label:has(+ input:focus-visible) video {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
 .mute {
   background: #a06300;
 }
