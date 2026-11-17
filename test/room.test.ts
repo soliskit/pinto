@@ -2625,11 +2625,81 @@ void test('losing a remote room transport warns and preserves an unrelated call'
     downloadThroughput: 0,
     uploadThroughput: 0
   })
-  await eventually(
-    async () => (await controls(a.page)).error,
-    "Call connection: A call ended because the other person's room connection was lost. No automatic redial is attempted.",
-    60_000
-  )
+  try {
+    await eventually(
+      async () => (await controls(a.page)).error,
+      "Call connection: A call ended because the other person's room connection was lost. No automatic redial is attempted.",
+      60_000
+    )
+  } catch (error) {
+    // Diagnostics must never replace or indefinitely delay the assertion.
+    // This helper server clears KEY and Twilio credentials; never log raw
+    // pairing payloads, which can contain SDP credentials even with fake media.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        (async () => {
+          const pages = await Promise.allSettled(
+            [a, b, c].map(async (room) => ({
+              peerId: room.peerId,
+              controls: await controls(room.page),
+              pairing: await room.page.evaluate(() => ({
+                sockets: window.recorded.peerSockets.map(
+                  (socket) => socket.readyState
+                ),
+                messageTypes: window.recorded.peerMessages
+                  .slice(-10)
+                  .map((message) => {
+                    const parsed = JSON.parse(message) as { type?: unknown }
+                    return typeof parsed.type === 'string'
+                      ? parsed.type
+                      : 'unknown'
+                  })
+              }))
+            }))
+          )
+          const calls = await a.page.evaluate(() =>
+            window.outgoingConns.map((call) => ({
+              peer: call.peer,
+              connectionId: call.connectionId,
+              open: call.open,
+              connectionState: call.peerConnection.connectionState,
+              iceConnectionState: call.peerConnection.iceConnectionState
+            }))
+          )
+          console.error(
+            'Remote room loss diagnostic',
+            JSON.stringify({
+              assertion: String(error),
+              pages,
+              calls,
+              server: ready(server, 'server')
+                .output()
+                .split('\n')
+                .filter(
+                  (line) =>
+                    line.includes('remote-room-loss') ||
+                    [a.peerId, b.peerId, c.peerId].some((id) =>
+                      line.includes(id)
+                    )
+                )
+                .slice(-30)
+            })
+          )
+        })(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(Error('diagnostic capture timed out'))
+          }, 2000)
+        })
+      ])
+    } catch {
+      // Capture is best-effort; the original failure below remains decisive.
+    } finally {
+      clearTimeout(timer)
+    }
+    throw error
+  }
   await eventually(status(a.page), '2nd in the room')
   assert.equal(
     await a.page.evaluate(
