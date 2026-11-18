@@ -3,6 +3,44 @@ import { readFileSync, readdirSync, lstatSync } from 'node:fs'
 import { join } from 'node:path'
 import { atomic, binding, FILES } from './pinto-diagnostic-reporter.mjs'
 
+export const STAGES = Object.freeze([
+  'remote-repo',
+  'remote-main',
+  'remote-pr',
+  'source-validation',
+  'npm-ci',
+  'browser-mirror',
+  'browser-install',
+  'browser-pin',
+  'instrumenter-install',
+  'protected-recheck',
+  'reporter-overlay',
+  'generated-config',
+  'baseline',
+  'ledger-validation',
+  'export',
+  'unknown'
+])
+export const ERRORS = Object.freeze([
+  'none',
+  'http-401',
+  'http-403',
+  'http-404',
+  'http-429',
+  'http-5xx',
+  'http-other',
+  'network',
+  'timeout',
+  'assertion',
+  'child-nonzero',
+  'local-io',
+  'unknown'
+])
+export function setupFacts(stage = 'unknown', error = 'none') {
+  assert(STAGES.includes(stage))
+  assert(ERRORS.includes(error))
+  return { setupStage: stage, setupError: error }
+}
 export function validate(x, env) {
   const keys = (v, names) => {
     assert(v && typeof v === 'object' && !Array.isArray(v))
@@ -153,18 +191,21 @@ export function exportSummary(dir, out, env, facts) {
     schema: 1,
     ...binding(env),
     ...facts,
+    ...setupFacts(facts.setupStage, facts.setupError),
     failure: captureResult?.detail ?? null
   }
   atomic(out, result)
   return result
 }
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  const [dir, out, outcome, exitCode, cleanup] = process.argv.slice(2)
+  const [dir, out, outcome, exitCode, cleanup, stage, error] =
+    process.argv.slice(2)
   try {
     exportSummary(dir, out, process.env, {
       outcome,
       exitCode: Number(exitCode),
-      cleanupConfirmed: cleanup === 'true'
+      cleanupConfirmed: cleanup === 'true',
+      ...setupFacts(stage, error)
     })
   } catch {
     try {
@@ -172,6 +213,10 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
         schema: 1,
         ...binding(process.env),
         outcome: 'capture-refused',
+        ...setupFacts(
+          STAGES.includes(stage) ? stage : 'unknown',
+          ERRORS.includes(error) ? error : 'unknown'
+        ),
         exitCode: 2,
         cleanupConfirmed: false,
         failure: null

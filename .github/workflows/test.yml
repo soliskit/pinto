@@ -38,8 +38,6 @@ jobs:
           node-version: 26.13.0
           package-manager-cache: false
       - name: Run the fixed initial baseline with private runner-local output
-        env:
-          DIAGNOSTIC_API_TOKEN: ${{ github.token }}
         run: python3 diagnostic-helper/.github/pinto-diagnostic/run-diagnostic.py
       - name: Retain only the validated fixed summary for three days
         if: always()

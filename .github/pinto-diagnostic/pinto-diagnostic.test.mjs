@@ -15,7 +15,13 @@ import {
   capture,
   reporter
 } from './pinto-diagnostic-reporter.mjs'
-import { exportSummary, validate } from './pinto-diagnostic-export.mjs'
+import {
+  exportSummary,
+  validate,
+  setupFacts,
+  STAGES,
+  ERRORS
+} from './pinto-diagnostic-export.mjs'
 const env = {
   DIAGNOSTIC_TARGET: '5bce64236564b992ad66574afeb3b0033f3d286b',
   DIAGNOSTIC_ROLE: 'dependency',
@@ -317,4 +323,15 @@ test('passing summary demands zero exit clean wrapper and absent failure', () =>
       cleanupConfirmed: true
     })
   )
+})
+
+test('setup facts accept only closed categories and never arbitrary strings', () => {
+  for (const stage of STAGES)
+    for (const error of ERRORS)
+      assert.deepEqual(setupFacts(stage, error), {
+        setupStage: stage,
+        setupError: error
+      })
+  assert.throws(() => setupFacts(secret, 'none'))
+  assert.throws(() => setupFacts('remote-repo', secret))
 })

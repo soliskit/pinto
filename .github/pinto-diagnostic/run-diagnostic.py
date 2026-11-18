@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -33,28 +34,46 @@ PROTECTED = [
 ]
 
 
-def api(path):
-    token = os.environ.pop("DIAGNOSTIC_API_TOKEN")
-    try:
-        req = urllib.request.Request(
-            "https://api.github.com/repos/soliskit/pinto/" + path,
-            headers={
-                "Authorization": "Bearer " + token,
-                "Accept": "application/vnd.github+json",
-            },
+STAGE = "remote-repo"
+ERROR = "none"
+
+
+def classify(error):
+    if isinstance(error, urllib.error.HTTPError):
+        return {401: "http-401", 403: "http-403", 404: "http-404", 429: "http-429"}.get(
+            error.code, "http-5xx" if 500 <= error.code <= 599 else "http-other"
         )
-        with urllib.request.urlopen(req, timeout=30) as response:
-            return json.load(response)
-    finally:
-        os.environ["DIAGNOSTIC_API_TOKEN"] = token
+    if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+        return "timeout"
+    if isinstance(error, urllib.error.URLError):
+        return "network"
+    if isinstance(error, AssertionError):
+        return "assertion"
+    if isinstance(error, OSError):
+        return "local-io"
+    return "unknown"
+
+
+def api(path):
+    if path not in ["", "git/ref/heads/main", "pulls/346"]:
+        raise ValueError("fixed-path-refused")
+    url = "https://api.github.com/repos/soliskit/pinto" + ("/" + path if path else "")
+    # These are public metadata reads. No authenticated workflow token is needed.
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.load(response)
 
 
 def check_remote():
+    global STAGE
+    STAGE = "remote-repo"
     repo = api("")
     if repo.get("private") is not False or repo.get("visibility") != "public":
         raise RuntimeError("zero-cost-refused")
+    STAGE = "remote-main"
     if api("git/ref/heads/main")["object"]["sha"] != TARGETS["base"]:
         raise RuntimeError("drift-refused")
+    STAGE = "remote-pr"
     pr = api("pulls/346")
     if (
         pr["state"] != "open"
@@ -105,6 +124,8 @@ def finish(root, source, helper, env, log, outcome, code, cleanup):
             outcome,
             str(code if 0 <= code <= 255 else 2),
             str(cleanup).lower(),
+            STAGE,
+            ERROR,
         ],
         source,
         env,
@@ -119,6 +140,7 @@ def finish(root, source, helper, env, log, outcome, code, cleanup):
 
 
 def main():
+    global STAGE, ERROR
     role = os.environ["DIAGNOSTIC_ROLE"]
     target = TARGETS[role]
     if os.environ["DIAGNOSTIC_TARGET"] != target:
@@ -161,6 +183,7 @@ def main():
             def git(*args):
                 return subprocess.check_output(["git", *args], cwd=source, stderr=log)
 
+            STAGE = "source-validation"
             assert git("rev-parse", "HEAD").decode().strip() == target
             assert not git("status", "--porcelain")
             for file in PROTECTED:
@@ -180,40 +203,57 @@ def main():
                 json.loads((source / "package.json").read_text())["engines"]["node"]
                 == "26.13.0"
             )
-            for command in [
-                ["npm", "ci"],
-                [
-                    "sudo",
-                    "sed",
-                    "-i",
-                    "/azure\\.archive\\.ubuntu\\.com/d",
-                    "/etc/apt/apt-mirrors.txt",
-                ],
-                ["npx", "playwright", "install", "--with-deps", "chromium"],
-                [
-                    "node",
-                    "-e",
-                    "process.exit(require('playwright/package.json').version==='1.65.1'?0:1)",
-                ],
-                [
-                    "npm",
-                    "install",
-                    "--prefix",
-                    str(root / "mutation-tools"),
-                    "--no-save",
-                    "--no-audit",
-                    "--no-fund",
-                    "@stryker-mutator/instrumenter@10.1.1",
-                ],
+            for stage, command in [
+                ("npm-ci", ["npm", "ci"]),
+                (
+                    "browser-mirror",
+                    [
+                        "sudo",
+                        "sed",
+                        "-i",
+                        "/azure\\.archive\\.ubuntu\\.com/d",
+                        "/etc/apt/apt-mirrors.txt",
+                    ],
+                ),
+                (
+                    "browser-install",
+                    ["npx", "playwright", "install", "--with-deps", "chromium"],
+                ),
+                (
+                    "browser-pin",
+                    [
+                        "node",
+                        "-e",
+                        "process.exit(require('playwright/package.json').version==='1.65.1'?0:1)",
+                    ],
+                ),
+                (
+                    "instrumenter-install",
+                    [
+                        "npm",
+                        "install",
+                        "--prefix",
+                        str(root / "mutation-tools"),
+                        "--no-save",
+                        "--no-audit",
+                        "--no-fund",
+                        "@stryker-mutator/instrumenter@10.1.1",
+                    ],
+                ),
             ]:
+                STAGE = stage
                 if run(command) != 0:
+                    ERROR = "child-nonzero"
                     raise RuntimeError("setup-failed")
+            STAGE = "protected-recheck"
             for file in PROTECTED:
                 assert (source / file).read_bytes() == git("show", target + ":" + file)
+            STAGE = "reporter-overlay"
             (source / ".github/scripts/pinto-diagnostic-reporter.mjs").write_bytes(
                 (helper / "pinto-diagnostic-reporter.mjs").read_bytes()
             )
             env["INSTRUMENTER_PREFIX"] = str(root / "mutation-tools")
+            STAGE = "generated-config"
             config = root / "stryker.shard.json"
             if (
                 run(
@@ -226,8 +266,10 @@ def main():
                 )
                 != 0
             ):
+                ERROR = "child-nonzero"
                 raise RuntimeError("setup-failed")
             check_remote()
+            STAGE = "baseline"
             command = (
                 'exec env FIRST_FAIL_REPORTER_OVERRIDE="$PWD/.github/scripts/pinto-diagnostic-reporter.mjs" node .github/scripts/run-tests-first-fail.mjs -- --test-timeout=120000 '
                 + " ".join(FILES)
@@ -259,6 +301,7 @@ def main():
                 ],
                 timeout=2400,
             )
+            STAGE = "ledger-validation"
             terminals = list(ledger.glob("*.terminal.json"))
             starts = list(ledger.glob("*.start.json"))
             assert len(terminals) == len(starts) == 1
@@ -289,8 +332,10 @@ def main():
                 else "capture-refused"
             )
         except subprocess.TimeoutExpired:
+            ERROR = "timeout"
             outcome, code = "interrupted", 2
-        except BaseException as error:
+        except Exception as error:
+            ERROR = ERROR if ERROR != "none" else classify(error)
             outcome, code = (
                 str(error)
                 if str(error) in ["drift-refused", "zero-cost-refused"]
@@ -303,7 +348,7 @@ def main():
 if __name__ == "__main__":
     try:
         result = main()
-    except BaseException:
+    except Exception:
         print("diagnostic-refused", flush=True)
         result = 2
     sys.exit(result)
