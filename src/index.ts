@@ -67,6 +67,9 @@ const PAGE_HEADERS = {
 }
 
 const app = express()
+// The framework's X-Powered-By header names the stack on Express-handled
+// responses; application HTTP responses must not carry it.
+app.disable('x-powered-by')
 const server = http.createServer(app)
 const io = new SocketServer(server)
 const peerServer = ExpressPeerServer(server, {
@@ -85,6 +88,9 @@ const peerServer = ExpressPeerServer(server, {
     return wss
   }
 })
+// The mounted PeerJS app is an Express app of its own; its own
+// X-Powered-By setting would stamp every request passing through it.
+peerServer.disable('x-powered-by')
 
 app.use((req, res, next) => {
   // Dot-only room names are invalid under the room-link rule; refuse them

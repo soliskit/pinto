@@ -136,6 +136,21 @@ void describe('with the default settings', () => {
       )
     })
 
+    void test('application responses do not advertise the server framework', async () => {
+      for (const path of [
+        '/',
+        '/index.html',
+        '/room/lobby',
+        '/room.html',
+        '/style.css',
+        '/config',
+        '/nothing-here'
+      ]) {
+        const response = await get(path)
+        assert.equal(response.headers.get('x-powered-by'), null, path)
+      }
+    })
+
     void test('the socket sources come from authorized configuration', async () => {
       const port = new URL(server.url).port
       if (process.env.RENDER_EXTERNAL_HOSTNAME === undefined) {
