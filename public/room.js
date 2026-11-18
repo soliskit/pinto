@@ -109,13 +109,40 @@ function configTiming(configJson, key, fallback) {
     : fallback
 }
 
-const configResponse = await fetch('/config')
-if (!configResponse.ok) {
-  throw Error(
-    `Connection settings could not be loaded (${String(configResponse.status)}).`
-  )
+// The whole /config exchange - request and response body - is bounded.
+// 10 s leaves room for the server's own 5 s relay-fetch fallback plus
+// network margin; it is a budget, not a delivery guarantee for every
+// network.
+const CONFIG_REQUEST_TIMEOUT_MS = 10_000
+const configController = new AbortController()
+const configTimer = setTimeout(() => {
+  configController.abort()
+}, CONFIG_REQUEST_TIMEOUT_MS)
+/** @type {unknown} */
+let configJson
+try {
+  const configResponse = await fetch('/config', {
+    signal: configController.signal
+  })
+  if (!configResponse.ok) {
+    throw Error(
+      `Connection settings could not be loaded (${String(configResponse.status)}).`
+    )
+  }
+  configJson = await configResponse.json()
+} catch (error) {
+  // Only this controller's own timeout is relabeled; every other failure
+  // (HTTP status, bad JSON, network) keeps its original error.
+  if (configController.signal.aborted) {
+    throw Error(
+      'Connection settings could not be loaded (no answer within 10 seconds).',
+      { cause: error }
+    )
+  }
+  throw error
+} finally {
+  clearTimeout(configTimer)
 }
-const configJson = /** @type {unknown} */ (await configResponse.json())
 const config = /** @type {{ iceServers: RTCIceServer[] }} */ (configJson)
 // Test suites can ask the server for shortened timings; production serves
 // none and the page keeps the fallback values.
