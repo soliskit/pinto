@@ -64,6 +64,9 @@ let muted = false
 let joined = false
 /** @type {Map<string, { call: MediaConnection, video: HTMLVideoElement }>} */
 const calls = new Map()
+/** Closed calls awaiting the server's room-departure cause, at most one per member.
+ * @type {Map<string, string>} */
+const closedRoomCalls = new Map()
 /** Peer ids the server says are in the room; only these are called or answered */
 const roomPeers = new Set()
 /** False until the server answers our join with the room roster */
@@ -925,6 +928,7 @@ async function applyMic() {
 
 /** @param {MediaConnection} call */
 function addCall(call) {
+  closedRoomCalls.delete(call.peer)
   removeCall(call.peer)
   const video = document.createElement('video')
   video.autoplay = true
@@ -937,7 +941,9 @@ function addCall(call) {
     render()
   })
   call.on('close', () => {
-    if (calls.get(call.peer)?.call === call) removeCall(call.peer)
+    if (calls.get(call.peer)?.call !== call) return
+    closedRoomCalls.set(call.peer, call.connectionId)
+    removeCall(call.peer)
   })
   call.on('iceStateChanged', (state) => {
     if (calls.get(call.peer)?.call !== call) return
@@ -1107,6 +1113,7 @@ function retireAdmission(phase) {
       /** @type {{ data: unknown[] }} */ (packet).data[0] !== 'join-room'
   )
   for (const peerId of calls.keys()) removeCall(peerId)
+  closedRoomCalls.clear()
   roomPeers.clear()
   rosterLoaded = false
   for (const call of earlyCalls.splice(0)) retireCallFully(call)
@@ -1172,6 +1179,7 @@ callButton.addEventListener('click', () => {
         /** @type {{ data: unknown[] }} */ (packet).data[0] !== 'join-room'
     )
     for (const peerId of calls.keys()) removeCall(peerId)
+    closedRoomCalls.clear()
     roomPeers.clear()
     rosterLoaded = false
     for (const call of earlyCalls.splice(0)) retireCallFully(call)
@@ -1456,6 +1464,7 @@ socket.on('user-connected', (/** @type {string} */ peerId) => {
   // stray membership can still announce joiners to it
   if (!joined) return
   roomPeers.add(peerId)
+  closedRoomCalls.delete(peerId)
   // Accounting failed closed: no new calls, with the reason shown
   if (retentionBroken) {
     showError(
@@ -1487,11 +1496,13 @@ socket.on('user-connected', (/** @type {string} */ peerId) => {
 socket.on(
   'user-disconnected',
   (/** @type {string} */ peerId, /** @type {unknown} */ reason) => {
-    const entry = calls.get(peerId)
+    const connectionId =
+      calls.get(peerId)?.call.connectionId ?? closedRoomCalls.get(peerId)
+    closedRoomCalls.delete(peerId)
     // A normal Leave sends a namespace disconnect. Only transport failures
     // establish lost room connectivity; older servers supply no reason.
     if (
-      entry &&
+      connectionId &&
       (reason === 'ping timeout' ||
         reason === 'transport close' ||
         reason === 'transport error')
@@ -1499,7 +1510,7 @@ socket.on(
       showError(
         'Call connection',
         "A call ended because the other person's room connection was lost. No automatic redial is attempted.",
-        entry.call.connectionId
+        connectionId
       )
     }
     roomPeers.delete(peerId)
