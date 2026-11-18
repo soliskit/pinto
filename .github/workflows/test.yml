@@ -1,399 +1,51 @@
-name: Test
+name: Pinto bounded baseline diagnostic
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-  schedule:
-    - cron: '0 7 * * 6'
-      timezone: 'America/Los_Angeles'
   workflow_dispatch:
 
 permissions:
   contents: read
-
-# A newer push to the same branch replaces a run still in progress.
-# Scheduled and manual runs use a separate group so they never cancel
-# or replace push or pull request runs, queued or running
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '-weekly' || '' }}
-  cancel-in-progress: true
+  actions: read
 
 jobs:
-  test:
+  baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      tests: ${{ steps.counts.outputs.tests }}
-      skipped: ${{ steps.counts.outputs.skipped }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
-      - run: npx playwright install --with-deps chromium
-      - name: Check Playwright package version
-        run: node -e "process.exit(require('playwright/package.json').version==='1.65.1'?0:1)"
-      - uses: actions/setup-python@v6
-      - run: pip install ruff==0.17.4
-      - run: ruff check .
-      - run: ruff format --check .
-      - run: npm run typecheck
-      - run: npm run lint
-      - name: Allow unprivileged low-port binds for the default-port probe
-        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-      - name: Run the tests
-        shell: bash
-        run: |
-          set -o pipefail
-          npm test 2>&1 | tee test-output.txt
-      - name: Count the tests
-        id: counts
-        if: always()
-        shell: bash
-        run: |
-          count() { grep -E "^(#|ℹ) $1 [0-9]+" test-output.txt | tail -n 1 | grep -oE '[0-9]+$' || true; }
-          echo "tests=$(count tests)" >> "$GITHUB_OUTPUT"
-          echo "skipped=$(count skipped)" >> "$GITHUB_OUTPUT"
-
-  # Final gate. Fails unless the test job succeeded, ran at least one test
-  # and skipped none. Skipped is not a pass.
-  suites-ran:
-    name: Suites ran
-    needs: test
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - env:
-          TEST_RESULT: ${{ needs.test.result }}
-          TEST_TESTS: ${{ needs.test.outputs.tests }}
-          TEST_SKIPPED: ${{ needs.test.outputs.skipped }}
-        run: |
-          echo "test: result=$TEST_RESULT tests=${TEST_TESTS:-none} skipped=${TEST_SKIPPED:-none}"
-          [ "$TEST_RESULT" = success ] || exit 1
-          [ "${TEST_TESTS:-0}" -ge 1 ] || exit 1
-          [ "${TEST_SKIPPED:-0}" -eq 0 ] || exit 1
-
-  webkit:
-    # A trial, not a required check. Runs on pushes, weekly and manual runs; skipped on pull requests.
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
-      - run: npx playwright install --with-deps webkit
-      - run: PINTO_BROWSER=webkit node --test --test-timeout=120000 test/home.test.ts test/element.test.ts
-
-  # Mutation selection: on every pull request, classify each changed path
-  # against a positive definition of the critical surface: what the app's
-  # behavior or the mutation verdict depends on. The definition names the
-  # server and adapters (src/), the pages, client scripts and styles served
-  # verbatim to the browser tests (public/), the client type declarations
-  # (types/), the tests, helpers, fixtures and measurement tooling (test/),
-  # the CI definitions (.github/, including the mutation ranges and this
-  # classifier), the dependencies including the served PeerJS client
-  # (package.json, package-lock.json), the deployment configuration
-  # (render.yaml), the tool configuration (including .gitignore), and the
-  # requirements contract (docs/requirements.md), protected as a contract
-  # whether or not a test reads it. A change touching the definition runs
-  # every shard, fresh and in full. A changed path outside the definition
-  # does not trigger mutation: the plan job lists each such path in the run
-  # log and the check summary, and the ordinary checks still run on the
-  # pull request. When a test, build step or app process starts reading a
-  # new file, that file joins the definition in the same change. A detected
-  # rename is classified on both its old and new paths; a symlink,
-  # executable bit or typechange runs every shard, and if the diff itself
-  # cannot be computed the plan job fails instead of guessing. Scheduled,
-  # push and manual runs always get the full matrix. The weekly full sweep
-  # stays as is.
-  plan:
-    name: Mutation plan
-    runs-on: ubuntu-latest
-    outputs:
-      verdict: ${{ steps.classify.outputs.verdict }}
-      base_sha: ${{ steps.classify.outputs.base_sha }}
-      merge_base: ${{ steps.classify.outputs.merge_base }}
-      head_sha: ${{ steps.classify.outputs.head_sha }}
-    steps:
-      - uses: actions/checkout@v7
-        if: github.event_name == 'pull_request'
-        with:
-          persist-credentials: false
-          # The base branch's full history, so the fork point exists.
-          fetch-depth: 0
-      - id: classify
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "Not a pull request: full sweep."
-            echo "verdict=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Resolve the moving base ref to a literal SHA, record the literal
-          # fork point and head; only literal SHAs are ever diffed. These
-          # SHAs certify the selection only; the runs check out the pull
-          # request's merge state as before.
-          git fetch --no-tags origin "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
-          base_sha=$(git rev-parse "origin/$GITHUB_BASE_REF")
-          head_sha="${{ github.event.pull_request.head.sha }}"
-          echo "base_sha=$base_sha" | tee -a "$GITHUB_OUTPUT"
-          echo "head_sha=$head_sha" | tee -a "$GITHUB_OUTPUT"
-          if ! git cat-file -e "$head_sha"; then
-            git fetch --no-tags origin "$head_sha"
-          fi
-          if ! merge_base=$(git merge-base "$base_sha" "$head_sha"); then
-            echo "The fork point cannot be resolved; failing closed."
-            exit 1
-          fi
-          echo "merge_base=$merge_base" | tee -a "$GITHUB_OUTPUT"
-          # Endpoint delta (the two-endpoint form of A...B): what this pull
-          # request itself changes. --raw -z carries both revisions' modes
-          # and both paths on a rename, NUL-safe. -M keeps rename detection
-          # on; a detected rename classifies the old AND the new path.
-          git diff --raw -z -M "$merge_base" "$head_sha" > "$RUNNER_TEMP/diff.raw"
-          verdict=zero
-          changed=0
-          : > "$RUNNER_TEMP/unmatched.list"
-          classify() {
-            case "$1" in
-              # The positive critical definition: what the app's behavior or
-              # the mutation verdict depends on. A path outside it does not
-              # trigger mutation; it is listed in the run log and the check
-              # summary, and the ordinary checks still run.
-              src/*|public/*|types/*|test/*|.github/*) verdict=full ;;
-              docs/requirements.md) verdict=full ;;  # requirements contract; REQ IDs cited by tests
-              package.json|package-lock.json|render.yaml) verdict=full ;;
-              tsconfig.json|tsconfig.client.json|eslint.config.mjs|.prettierrc.json|.prettierignore|ruff.toml|lefthook.yml) verdict=full ;;
-              .gitignore) verdict=full ;;
-              *) echo "$1" >> "$RUNNER_TEMP/unmatched.list" ;;
-            esac
-          }
-          while IFS= read -r -d '' meta; do
-            [ -n "$meta" ] || continue
-            IFS= read -r -d '' path1
-            changed=1
-            srcmode=$(echo "$meta" | awk '{print substr($1, 2)}')  # strip the leading colon
-            dstmode=$(echo "$meta" | awk '{print $2}')
-            status=$(echo "$meta" | awk '{print $5}')
-            # Strict rule: a symlink, executable bit, submodule or
-            # typechange is FULL. Adds, deletes and edits classify by path.
-            case "$srcmode $dstmode" in
-              *120000*|*100755*|*160000*) verdict=full ;;
-            esac
-            case "$status" in
-              T*) verdict=full ;;
-            esac
-            case "$status" in
-              R*|C*)
-                IFS= read -r -d '' path2
-                classify "$path1"
-                classify "$path2"
-                ;;
-              *)
-                classify "$path1"
-                ;;
-            esac
-          done < "$RUNNER_TEMP/diff.raw"
-          if [ "$changed" -eq 0 ]; then
-            echo "The pull request changes no files: a legitimate, reported empty diff."
-          fi
-          echo "verdict=$verdict" | tee -a "$GITHUB_OUTPUT"
-          if [ -s "$RUNNER_TEMP/unmatched.list" ]; then
-            if [ "$verdict" = zero ]; then
-              echo "Outside the critical definition (mutation not triggered; the ordinary checks run separately):"
-            else
-              echo "Outside the critical definition (the full run is still triggered for this pull request):"
-            fi
-            while IFS= read -r p; do
-              echo "  $p"
-              echo "::notice title=Outside the critical definition::$p"
-            done < "$RUNNER_TEMP/unmatched.list"
-            {
-              echo '### Paths outside the critical definition'
-              echo ''
-              if [ "$verdict" = zero ]; then
-                echo 'Every changed path is outside the critical definition in this workflow, so no mutation run was triggered.'
-              else
-                echo 'These changed paths are outside the critical definition; the full mutation run is still triggered for this pull request.'
-              fi
-              echo 'The ordinary checks run separately on this pull request. If any of these paths can change behavior under test, add the path to the definition in this workflow.'
-              echo ''
-              while IFS= read -r p; do echo "- \`$p\`"; done < "$RUNNER_TEMP/unmatched.list"
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ "$verdict" = zero ]; then
-            echo "No changed path is in the critical definition: mutation not triggered; the ordinary checks run separately."
-          else
-            echo "Full sweep: every mutation target."
-          fi
-
-
-  # [PINTO] Mutation matrix, single-sourced from .github/mutation-ranges.json:
-  # whole-file shards plus ranged shards for the two dense targets
-  # (public/room.js, src/index.ts). A shard may carry a mutator family list,
-  # splitting one range into several jobs that each stay within the time cap.
-  # The guard job validates every ranged target before any mutation run: the
-  # AST span check runs on the original whole-file tiling, and a direct
-  # enumeration proves the planned shards cover each whole file's mutants
-  # exactly once.
-  # Each slice runs ONLY the test files that exercise its target (the Tetris
-  # per-file philosophy). Consequence, stated honestly: a mutant whose only
-  # killing test lives in an unmapped file survives; the per-slice kill gate
-  # proves each mapping kills before merge.
-  mutation-plan:
-    name: Mutation matrix
-    needs: plan
-    if: needs.plan.outputs.verdict == 'full'
-    runs-on: ubuntu-latest
-    outputs:
-      include: ${{ steps.read.outputs.include }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - id: read
-        run: echo "include=$(jq -c '.include' .github/mutation-ranges.json)" >> "$GITHUB_OUTPUT"
-
-  # The boundary check runs before any slice: a wrong range fails fast here
-  # instead of silently skipping mutants in every slice that spans it. The
-  # span check sees the original whole-file tiling: untouched slice ranges
-  # plus each re-sharded region's full range (the span of its shards), so
-  # every boundary that predates this change is AST-checked unchanged while
-  # the coverage check then proves by direct enumeration that every planned
-  # shard's mutants are covered exactly once, including mutator-family splits
-  # and the new sub-range boundaries inside re-sharded regions.
-  mutation-guard:
-    name: Mutation range guard
-    needs: plan
-    if: needs.plan.outputs.verdict == 'full'
-    runs-on: ubuntu-latest
-    env:
-      STRYKER_VERSION: '10.1.1'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - name: Check every ranged target's slices
-        shell: bash
-        run: |
-          set -euo pipefail
-          for target in room index; do
-            file=$(jq -r --arg t "$target" '[.include[] | select(.target == $t)][0].mutate | split(":")[0]' .github/mutation-ranges.json)
-            ranges=$(jq -r --arg t "$target" '[.include[] | select(.target == $t) | {region: (.shard | sub("-[a-z]$";"")), r: (.mutate | split(":")[1] | split("-") | map(tonumber))}] | group_by(.region) | map([(map(.r[0]) | min), (map(.r[1]) | max)]) | unique | sort_by(.[0]) | map("\(.[0])-\(.[1])") | join(" ")' .github/mutation-ranges.json)
-            node .github/scripts/check-mutation-ranges.mjs "$file" $ranges
-          done
-      - name: Install the pinned instrumenter (scratch prefix, not a dependency)
-        run: npm install --prefix "$RUNNER_TEMP/mutation-tools" --no-save --no-audit --no-fund "@stryker-mutator/instrumenter@${STRYKER_VERSION}"
-      - name: Verify planned shards cover each ranged file exactly once
-        run: INSTRUMENTER_PREFIX="$RUNNER_TEMP/mutation-tools" node .github/scripts/check-planned-coverage.mjs
-
-  mutation:
-    name: mutation (${{ matrix.shard }})
-    needs: [plan, mutation-plan, mutation-guard]
-    if: needs.plan.outputs.verdict == 'full'
-    runs-on: ubuntu-latest
-    env:
-      STRYKER_VERSION: '10.1.1'
-    timeout-minutes: ${{ matrix.timeout }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        include: ${{ fromJSON(needs.mutation-plan.outputs.include) }}
+        include:
+          - role: dependency
+            target: 5bce64236564b992ad66574afeb3b0033f3d286b
+          - role: base
+            target: 663d115427e47444a316b588a6ba9014d82d2e95
+    env:
+      DIAGNOSTIC_ROLE: ${{ matrix.role }}
+      DIAGNOSTIC_TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v7
         with:
+          path: diagnostic-helper
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.target }}
+          path: target
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
-          cache: npm
-      # [PINTO] Every slice installs dependencies: Pinto's tests import
-      # express, socket.io and peers, unlike zero-dependency Salutant.
-      - run: npm ci
-      - run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
-        if: matrix.browser == 'chromium'
-      # The default-port probe tests (index slices) bind ports 80/443
-      # directly; the same low-port allowance the main test job uses keeps
-      # them on that direct path instead of the test's namespace fallback.
-      - name: Allow unprivileged low-port binds for the default-port probe
-        if: contains(matrix.tests, 'default-ports')
-        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-      - run: npx playwright install --with-deps chromium
-        if: matrix.browser == 'chromium'
-      - name: Check Playwright package version
-        if: matrix.browser == 'chromium'
-        run: node -e "process.exit(require('playwright/package.json').version==='1.65.1'?0:1)"
-      - name: Install the pinned instrumenter (scratch prefix, not a dependency)
-        run: npm install --prefix "$RUNNER_TEMP/mutation-tools" --no-save --no-audit --no-fund "@stryker-mutator/instrumenter@${STRYKER_VERSION}"
-      # Mutator-family shards carry their exclusion list in a generated config
-      # (Stryker's mutator option has no command-line flag); command-line
-      # options still apply and take precedence over the file.
-      - name: Write mutator-family shard config
-        if: matrix.mutators != null
-        run: INSTRUMENTER_PREFIX="$RUNNER_TEMP/mutation-tools" node .github/scripts/write-shard-config.mjs "${{ matrix.shard }}" "$RUNNER_TEMP/stryker.shard.json"
-      # The run id is minted before Stryker so the literal value lands inside
-      # the recorded command string: the ledger gate binds the report to this
-      # run by reading FIRST_FAIL_RUN_ID/FIRST_FAIL_SHARD/GITHUB_SHA back out
-      # of config.commandRunner.command in the report itself.
-      - name: Mint the first-fail run id
-        shell: bash
-        run: |
-          set -euo pipefail
-          FIRST_FAIL_RUN_ID="$(node -e 'console.log(crypto.randomUUID())')"
-          echo "FIRST_FAIL_RUN_ID=$FIRST_FAIL_RUN_ID" >> "$GITHUB_ENV"
-      - name: Run Stryker
-        shell: bash
-        run: |
-          set -euo pipefail
-          config=()
-          if [ -f "$RUNNER_TEMP/stryker.shard.json" ]; then config=("$RUNNER_TEMP/stryker.shard.json"); fi
-          npx --yes "@stryker-mutator/core@${STRYKER_VERSION}" run "${config[@]}" \
-            --ignorePatterns tsconfig.json,tsconfig.client.json \
-            --testRunner command \
-            --commandRunner.command "${{ format('exec env FIRST_FAIL_RUN_ID={0} FIRST_FAIL_LEDGER_DIR={4}/first-fail-ledger FIRST_FAIL_SHARD={1} GITHUB_SHA={2} node .github/scripts/run-tests-first-fail.mjs -- --test-timeout=120000 {3}', env.FIRST_FAIL_RUN_ID, matrix.shard, github.sha, matrix.tests, github.workspace) }}" \
-            --mutate "${{ matrix.mutate }}" \
-            --reporters clear-text,json --coverageAnalysis off \
-            --concurrency 1 --timeoutMS ${{ matrix.browser == 'chromium' && 120000 || 20000 }}
-      # Pinto configures no score gate (matching salutant): Stryker's
-      # thresholds.break defaults to null and nothing here sets it, so no
-      # score can fail a run. Fail closed on intent instead: every slice's
-      # report is compared against the mutants the pinned instrumenter
-      # enumerates for that shard - a missing report, a missing, unexpected
-      # or duplicated mutant or an unrecognized status fails the job - and
-      # every slice must generate at least one mutant AND kill at least one:
-      # a zero-kill slice stops the rollout. Status counts and survivor
-      # identities go to the job summary and log.
-      - name: Verify this slice's report against its expected mutants
-        shell: bash
-        run: INSTRUMENTER_PREFIX="$RUNNER_TEMP/mutation-tools" node .github/scripts/verify-mutation-report.mjs "${{ matrix.shard }}"
-      # A mutant verdict counts only when the wrapper's own ledger proves a
-      # clean, verified test failure for it, bound to this job's minted run
-      # id, this shard and this head. Wrapper errors, orphan or stale records
-      # and foreign reports block the job instead of counting.
-      - name: Gate verdicts on the wrapper ledger
-        shell: bash
-        run: node .github/scripts/check-ledger-v2.mjs --ledger "$GITHUB_WORKSPACE/first-fail-ledger" --report reports/mutation/mutation.json --shard "${{ matrix.shard }}" --head "${{ github.sha }}" --run-id "$FIRST_FAIL_RUN_ID"
-      - name: Upload this slice's mutation report
-        if: always() && hashFiles('reports/mutation/mutation.json') != ''
+          node-version: 26.13.0
+          package-manager-cache: false
+      - name: Run the fixed initial baseline with private runner-local output
+        env:
+          DIAGNOSTIC_API_TOKEN: ${{ github.token }}
+        run: python3 diagnostic-helper/.github/pinto-diagnostic/run-diagnostic.py
+      - name: Retain only the validated fixed summary for three days
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: mutation-report-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
-          path: |
-            reports/mutation/mutation.json
-            first-fail-ledger
-          if-no-files-found: ignore
+          name: pinto-baseline-${{ matrix.role }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pinto-diagnostic-${{ matrix.role }}/export/summary.json
+          if-no-files-found: error
+          retention-days: 3
