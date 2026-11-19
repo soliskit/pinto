@@ -1159,3 +1159,448 @@ void test('an unknown-source flood never drains a waiting call', async () => {
   member.disconnect()
   ghost.close()
 })
+
+/** Records every join-room emit's [room, id] arguments and holds the page's
+ *  processing of each arrived answer until released, so a test can inspect
+ *  the pending window. Ack errors (timeout, disconnect flush) deliver
+ *  immediately, the way socket.io would deliver them. */
+function spyJoin() {
+  let realIo: typeof import('socket.io-client').io
+  Object.defineProperty(window, 'io', {
+    configurable: true,
+    get() {
+      return (...args: Parameters<typeof import('socket.io-client').io>) => {
+        const socket = realIo(...args)
+        window.roomSocket = socket
+        const realEmit = socket.emit.bind(socket)
+        socket.emit = (event: string, ...rest: unknown[]) => {
+          if (event !== 'join-room') return realEmit(event, ...rest)
+          window.joinEmits.push(rest.slice(0, 2))
+          const callback = rest.at(-1) as
+            ((...answer: unknown[]) => unknown) | undefined
+          if (typeof callback !== 'function') return realEmit(event, ...rest)
+          rest.pop()
+          return realEmit(event, ...rest, (...answer: unknown[]) => {
+            const [error] = answer as [Error | null, ...unknown[]]
+            if (error !== null) return Reflect.apply(callback, io, answer)
+            window.heldJoinAnswers.push({
+              answer,
+              release: () => Reflect.apply(callback, io, answer)
+            })
+          })
+        }
+        return socket
+      }
+    },
+    set(value: typeof import('socket.io-client').io) {
+      realIo = value
+    }
+  })
+  window.joinEmits = []
+  window.heldJoinAnswers = []
+  window.releaseJoinAnswer = () => {
+    const held = window.heldJoinAnswers.shift()
+    if (!held) throw new Error('no held join answer to release')
+    held.release()
+  }
+}
+
+// Keeps a pairing outage real for as long as a test needs it: while
+// blocked, every PeerJS reconnect attempt gets a socket that closes at
+// once, so the app's reconnect retry keeps failing instead of racing the
+// assertions. Unblocking lets the next scheduled retry connect for real.
+// Keeps a pairing outage down for a whole window. The composition is
+// honest: the first pairing socket is a REAL socket the test closes; every
+// reconnect attempt while blocked is intercepted and answered with
+// BlockedSocket, a FAKE WebSocket that never opens and reports itself
+// closed 20 ms after construction. The window is therefore one real
+// socket loss followed by a controlled, simulated sustained outage - not
+// a real network failure. PeerJS-level state (peer.open/disconnected/id)
+// is deliberately NOT asserted here: the page never exposes its Peer
+// instance, and the fake cannot drive the library's internal lifecycle -
+// PeerJS attaches its close handler by onclose property assignment (see
+// the vendored dist), which BlockedSocket's event listeners never reach,
+// so under this guard peer.disconnected reflects harness artifacts, not
+// real state. Claims stay at socket level.
+function reconnectGuard() {
+  const RealWebSocket = window.WebSocket
+  class BlockedSocket {
+    binaryType: BinaryType = 'blob'
+    readonly readyState = 3
+    readonly url: string
+    private readonly listeners: Record<string, ((event: never) => void)[]> = {}
+    constructor(url: string | URL) {
+      this.url = String(url)
+      setTimeout(() => {
+        ;(this.listeners['close'] ?? []).forEach((listener) => {
+          listener(new CloseEvent('close') as never)
+        })
+      }, 20)
+    }
+    addEventListener(type: string, listener: (event: never) => void) {
+      ;(this.listeners[type] ??= []).push(listener)
+    }
+    removeEventListener(type: string, listener: (event: never) => void) {
+      this.listeners[type] = (this.listeners[type] ?? []).filter(
+        (kept) => kept !== listener
+      )
+    }
+    send() {}
+    close() {}
+  }
+  window.blockPairingReconnect = () => {
+    window.WebSocket = function (
+      this: unknown,
+      url: string | URL,
+      protocols?: string | string[]
+    ) {
+      if (String(url).includes('/peerjs')) return new BlockedSocket(url)
+      return new RealWebSocket(url, protocols)
+    } as unknown as typeof window.WebSocket
+  }
+  window.unblockPairingReconnect = () => {
+    window.WebSocket = RealWebSocket
+  }
+}
+
+// The server's real join-room acknowledgement reaches the client but is
+// never delivered to the application: the first ack packet is dropped at
+// socket.io's ack dispatch (socket.onack), before it can be matched to
+// the registered ack callback. The app's own callback passes through
+// untouched (wrapped only to record the outcome), so socket.io's
+// acknowledgement timeout - armed by the app's own
+// .timeout(REQUEST_TIMEOUT_MS) wrapper - fires NATIVELY with its own
+// error, and the app's unmodified retry path runs. No harness timer, no
+// injected error. Later attempts' acks are delivered normally. This is
+// delivery suppression at the client ack-dispatch boundary, not
+// wire-level packet loss: request and answer both cross the real
+// transport, and the answer's arrival at the client is real. What the
+// test exercises natively is the app's timeout-and-retry handling when
+// an answer never reaches its callback.
+function suppressJoinAckDelivery() {
+  let realIo: typeof import('socket.io-client').io
+  let suppressed = false
+  Object.defineProperty(window, 'io', {
+    configurable: true,
+    get() {
+      return (...args: Parameters<typeof import('socket.io-client').io>) => {
+        const socket = realIo(...args)
+        window.roomSocket = socket
+        const realEmit = socket.emit.bind(socket)
+        socket.emit = (event: string, ...rest: unknown[]) => {
+          if (event !== 'join-room') return realEmit(event, ...rest)
+          window.joinEmits.push(rest.slice(0, 2))
+          const callback = rest.at(-1) as
+            ((...answer: unknown[]) => unknown) | undefined
+          if (typeof callback !== 'function') return realEmit(event, ...rest)
+          rest.pop()
+          // The app's own callback is what socket.io registers and arms
+          // its native ack timeout on; the wrapper only records outcomes
+          const attempt: {
+            id: number
+            outcome?: { answer: unknown[] } | { error: string }
+          } = { id: window.joinAttempts.length + 1 }
+          window.joinAttempts.push(attempt)
+          return realEmit(event, ...rest, (...answer: unknown[]) => {
+            const [error] = answer as [Error | null, ...unknown[]]
+            if (error !== null) attempt.outcome = { error: String(error) }
+            else attempt.outcome = { answer }
+            return Reflect.apply(callback, socket, answer)
+          })
+        }
+        // Ack ids increment per ack-carrying emit, and join-room is the
+        // first on this socket, so the first ack packet to arrive is the
+        // suppressed one. socket.onack is library-private; the cast is
+        // the harness reaching the dispatch point it must suppress.
+        type OnAck = (packet: { id: number }) => void
+        const dispatch = socket as unknown as { onack: OnAck }
+        const realOnAck = dispatch.onack.bind(socket)
+        dispatch.onack = (packet) => {
+          if (!suppressed && window.joinEmits.length > 0) {
+            suppressed = true
+            return
+          }
+          realOnAck(packet)
+        }
+        return socket
+      }
+    },
+    set(value: typeof import('socket.io-client').io) {
+      realIo = value
+    }
+  })
+  window.joinEmits = []
+  window.joinAttempts = []
+}
+
+// The false-joined defect (audit decision 3): the joined title must never
+// appear before the server confirms admission, and a Join attempted while
+// the pairing connection is down must be refused. Title, ordinal status,
+// the emitted id, the pairing connection's state and actual server
+// membership are asserted separately, never merged into one claim.
+
+void test('a Join attempted during a sustained pairing outage is refused: control disabled, no emit, no admission', async () => {
+  const room = await openRoom('outage-join', [spyJoin, reconnectGuard])
+  // One real pairing socket is closed, and every reconnect attempt is
+  // intercepted by a fake instantly-closed socket: a controlled,
+  // simulated sustained outage after one real socket loss (see
+  // reconnectGuard), kept down for the whole window
+  await room.page.evaluate(() => {
+    window.blockPairingReconnect()
+    window.recorded.peerSockets[0].close()
+  })
+  await eventually(
+    async () => (await controls(room.page)).error,
+    'Connection problem: network: Lost connection to server.'
+  )
+  const from = ready(server, 'server').output().length
+  const pairingState = () =>
+    room.page.evaluate(() => ({
+      sockets: window.recorded.peerSockets.length,
+      firstClosed: window.recorded.peerSockets[0].readyState === 3,
+      emits: window.joinEmits.length
+    }))
+  // The outage render must leave Join actually disabled: asserted
+  // explicitly. A click conditional on the control being enabled could
+  // pass from the handler guard alone while the disabled-state render
+  // regresses undetected, so no conditional click happens here
+  await eventually(
+    async () => (await controls(room.page)).call,
+    'Join (disabled)'
+  )
+  // While the pairing connection is down: no joined display, no join
+  // emit, no new pairing socket, and no server admission. Observations
+  // are socket-level only (see reconnectGuard)
+  await eventually(pairingState, { sockets: 1, firstClosed: true, emits: 0 })
+  await eventually(
+    async () => {
+      const shown = await controls(room.page)
+      const admitted = ready(server, 'server')
+        .output()
+        .slice(from)
+        .includes(`user: ${room.peerId} - joined: outage-join`)
+      return { heading: shown.heading, status: shown.status, admitted }
+    },
+    {
+      heading: 'Join outage-join',
+      status: 'Press Join to start the call',
+      admitted: false
+    }
+  )
+  // Still down at the end of the window: the outage never healed mid-test
+  assert.deepEqual(await pairingState(), {
+    sockets: 1,
+    firstClosed: true,
+    emits: 0
+  })
+  // The refusal says why: the pairing outage error stays shown
+  assert.match((await controls(room.page)).error ?? '', /Connection problem/)
+  await room.page.evaluate(() => {
+    window.unblockPairingReconnect()
+  })
+})
+
+void test('SYNTHETIC (harness-forced control): the Join handler itself refuses while pairing is down, with the reason shown', async () => {
+  // SYNTHETIC: the disabled control is force-enabled by the harness so the
+  // click reaches the handler and exercises its refusal branch directly.
+  // This is not a user-path reproduction; the honest UI behavior is the
+  // disabled control covered by the previous test.
+  const room = await openRoom('outage-synthetic', [spyJoin, reconnectGuard])
+  await room.page.evaluate(() => {
+    window.blockPairingReconnect()
+    window.recorded.peerSockets[0].close()
+  })
+  await eventually(
+    async () => (await controls(room.page)).error,
+    'Connection problem: network: Lost connection to server.'
+  )
+  const from = ready(server, 'server').output().length
+  await room.page.evaluate(() => {
+    ;(document.getElementById('call') as HTMLButtonElement).disabled = false
+  })
+  await room.page.click('#call')
+  // The handler refuses with the exact reason for the refusal
+  await eventually(
+    async () =>
+      ((await controls(room.page)).error ?? '').includes(
+        'The connection to the server is down, so joining is unavailable.'
+      ),
+    true
+  )
+  // No emit, no admission, no joined display, and the control is
+  // disabled again by the refusal's render
+  assert.equal(await room.page.evaluate(() => window.joinEmits.length), 0)
+  const shown = await controls(room.page)
+  assert.equal(shown.heading, 'Join outage-synthetic')
+  assert.equal(shown.status, 'Press Join to start the call')
+  assert.ok(shown.call.endsWith('(disabled)'))
+  const admitted = ready(server, 'server')
+    .output()
+    .slice(from)
+    .includes(`user: ${room.peerId} - joined: outage-synthetic`)
+  assert.equal(admitted, false)
+  await room.page.evaluate(() => {
+    window.unblockPairingReconnect()
+  })
+})
+
+void test('a roster answer held mid-join shows no joined title before processing, even when pairing drops', async () => {
+  const room = await openRoom('outage-mid-join', [spyJoin, reconnectGuard])
+  const from = ready(server, 'server').output().length
+  await room.page.click('#call')
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  // The emit carried this page's real room and id, exactly once
+  assert.deepEqual(await room.page.evaluate(() => window.joinEmits), [
+    ['outage-mid-join', room.peerId]
+  ])
+  // Pending feedback while the answer is held: the title claims no
+  // membership, and the status says the join is in flight
+  const pending = await controls(room.page)
+  assert.equal(pending.heading, 'Join outage-mid-join')
+  assert.equal(pending.status, 'Joining...')
+  // Pairing drops while the answer is still held, and the outage is kept
+  // real: reconnects fail for the whole down window
+  await room.page.evaluate(() => {
+    window.blockPairingReconnect()
+    window.recorded.peerSockets[0].close()
+  })
+  await eventually(
+    async () => (await controls(room.page)).error,
+    'Connection problem: network: Lost connection to server.'
+  )
+  // While truly down with the answer still held: no joined title, still
+  // exactly one emit with the original id, no new pairing socket
+  // (socket-level observations only, see reconnectGuard)
+  assert.deepEqual(
+    await room.page.evaluate(() => ({
+      sockets: window.recorded.peerSockets.length,
+      firstClosed: window.recorded.peerSockets[0].readyState === 3,
+      emits: window.joinEmits.length
+    })),
+    { sockets: 1, firstClosed: true, emits: 1 }
+  )
+  assert.equal((await controls(room.page)).heading, 'Join outage-mid-join')
+  // The server did admit the page when the request arrived; membership is
+  // real while pairing is down - two separate facts, asserted separately
+  await ready(server, 'server').waitForOutput(
+    `user: ${room.peerId} - joined: outage-mid-join`,
+    from
+  )
+  // Reconnect allowed again; releasing the held answer now shows the real
+  // membership and the outage side by side
+  await room.page.evaluate(() => {
+    window.unblockPairingReconnect()
+    window.releaseJoinAnswer()
+  })
+  await eventually(
+    async () => (await controls(room.page)).heading,
+    'You are in outage-mid-join'
+  )
+  const joined = await controls(room.page)
+  assert.equal(joined.status, '1st in the room')
+  assert.match(joined.error ?? '', /Connection problem/)
+  // The pairing session recovers on a new socket; the join's emitted id
+  // stays the original one (recorded above), no second join is emitted
+  await eventually(
+    async () => room.page.evaluate(() => window.recorded.peerSockets.length),
+    2
+  )
+  assert.equal(await room.page.evaluate(() => window.joinEmits.length), 1)
+})
+
+void test('a room-socket loss mid-join retires the admission; the already-arrived stale answer restores nothing when released', async () => {
+  const room = await openRoom('outage-room-socket', [spyJoin])
+  const from = ready(server, 'server').output().length
+  await room.page.click('#call')
+  await room.page.waitForFunction(() => window.heldJoinAnswers.length === 1)
+  // The answer arrived at the transport and is held at the page; the room
+  // socket drops before the page processes it
+  await room.page.evaluate(() => {
+    window.roomSocket.disconnect()
+  })
+  await eventually(
+    async () => {
+      const shown = await controls(room.page)
+      return {
+        heading: shown.heading,
+        status: shown.status,
+        error: shown.error
+      }
+    },
+    {
+      heading: 'Join outage-room-socket',
+      status: 'Connection lost - press Join to rejoin',
+      error:
+        'Connection problem: The connection to the room was lost. Press Join to rejoin.'
+    }
+  )
+  // The server drops the membership with the socket: the admission that
+  // the held answer would have confirmed is gone
+  await ready(server, 'server').waitForOutput(
+    `user: ${room.peerId} - left: outage-room-socket`,
+    from
+  )
+  // Releasing the stale answer now must restore nothing: no title, no
+  // ordinal membership, no error change. Give the page a beat to process
+  // it, then verify the retired state is unchanged
+  await room.page.evaluate(() => {
+    window.releaseJoinAnswer()
+  })
+  await room.page.waitForTimeout(300)
+  const after = await controls(room.page)
+  assert.equal(after.heading, 'Join outage-room-socket')
+  assert.equal(after.status, 'Connection lost - press Join to rejoin')
+  assert.match(after.error ?? '', /connection to the room was lost/)
+})
+
+void test('a server acknowledgement suppressed at delivery fires the native ack timeout; only the retried join shows the confirmed admission', async () => {
+  // The server's real answer arrives at the client but is dropped at
+  // socket.io's ack dispatch, so the timeout the app armed with
+  // .timeout(REQUEST_TIMEOUT_MS) fires natively. This is not wire-level
+  // packet loss (see suppressJoinAckDelivery); what runs unmodified is
+  // the app's timeout-and-retry path when an answer never reaches it.
+  const room = await openRoom('ack-suppressed', [suppressJoinAckDelivery])
+  const from = ready(server, 'server').output().length
+  await room.page.click('#call')
+  await room.page.waitForFunction(() => window.joinEmits.length === 1)
+  // The request reached the server (membership is real) but the answer
+  // is never delivered to the app: while delivery is suppressed the
+  // title claims no membership and the status says the join is in flight
+  await ready(server, 'server').waitForOutput(
+    `user: ${room.peerId} - joined: ack-suppressed`,
+    from
+  )
+  const pending = await controls(room.page)
+  assert.equal(pending.heading, 'Join ack-suppressed')
+  assert.equal(pending.status, 'Joining...')
+  // The first attempt's outcome is socket.io's own timeout error: no
+  // harness timer produced it. The suite's served timings shorten
+  // requestTimeoutMs to 500 ms (production fallback 5 s); the mechanism
+  // is identical, only the wait differs
+  await eventually(
+    async () =>
+      (await room.page.evaluate(() => window.joinAttempts)).at(0)?.outcome,
+    { error: 'Error: operation has timed out' }
+  )
+  // The app retries on its own, the retry's ack is delivered, and only
+  // that answered retry shows the confirmed admission
+  await eventually(
+    async () => (await controls(room.page)).heading,
+    'You are in ack-suppressed',
+    15_000
+  )
+  const joined = await controls(room.page)
+  assert.equal(joined.status, '1st in the room')
+  assert.deepEqual(await room.page.evaluate(() => window.joinEmits), [
+    ['ack-suppressed', room.peerId],
+    ['ack-suppressed', room.peerId]
+  ])
+  // The server logged the membership exactly once: the retry re-used the
+  // same connection and id, so no duplicate admission
+  const joins = ready(server, 'server')
+    .output()
+    .slice(from)
+    .split('\n')
+    .filter((line) => line.includes(`user: ${room.peerId} - joined:`))
+  assert.equal(joins.length, 1)
+})
