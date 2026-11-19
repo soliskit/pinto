@@ -64,7 +64,7 @@
     {
       "shard": "index-50-88",
       "target": "index",
-      "mutate": "src/index.ts:50-88",
+      "mutate": "src/index.ts:50-94",
       "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
       "browser": "chromium",
       "timeout": 45
@@ -72,7 +72,7 @@
     {
       "shard": "index-89-117",
       "target": "index",
-      "mutate": "src/index.ts:89-117",
+      "mutate": "src/index.ts:95-123",
       "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
       "browser": "chromium",
       "timeout": 45
@@ -80,7 +80,7 @@
     {
       "shard": "index-118-158",
       "target": "index",
-      "mutate": "src/index.ts:118-158",
+      "mutate": "src/index.ts:124-164",
       "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
       "browser": "chromium",
       "timeout": 45
@@ -88,7 +88,7 @@
     {
       "shard": "index-159-228-a",
       "target": "index",
-      "mutate": "src/index.ts:159-228",
+      "mutate": "src/index.ts:165-234",
       "mutators": [
         "BlockStatement"
       ],
@@ -99,7 +99,7 @@
     {
       "shard": "index-159-228-b",
       "target": "index",
-      "mutate": "src/index.ts:159-228",
+      "mutate": "src/index.ts:165-234",
       "mutators": [
         "EqualityOperator",
         "BooleanLiteral",
@@ -112,7 +112,7 @@
     {
       "shard": "index-159-228-c",
       "target": "index",
-      "mutate": "src/index.ts:159-228",
+      "mutate": "src/index.ts:165-234",
       "mutators": [
         "CallExpression",
         "OptionalChaining",
@@ -125,7 +125,7 @@
     {
       "shard": "index-159-228-d",
       "target": "index",
-      "mutate": "src/index.ts:159-228",
+      "mutate": "src/index.ts:165-234",
       "mutators": [
         "LogicalOperator",
         "MethodExpression"
@@ -137,7 +137,7 @@
     {
       "shard": "index-159-228-e",
       "target": "index",
-      "mutate": "src/index.ts:159-170",
+      "mutate": "src/index.ts:165-176",
       "mutators": [
         "StringLiteral"
       ],
@@ -148,7 +148,7 @@
     {
       "shard": "index-159-228-f",
       "target": "index",
-      "mutate": "src/index.ts:171-228",
+      "mutate": "src/index.ts:177-234",
       "mutators": [
         "StringLiteral"
       ],
@@ -159,7 +159,7 @@
     {
       "shard": "index-159-228-g",
       "target": "index",
-      "mutate": "src/index.ts:159-184",
+      "mutate": "src/index.ts:165-190",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -170,7 +170,7 @@
     {
       "shard": "index-159-228-h",
       "target": "index",
-      "mutate": "src/index.ts:185-228",
+      "mutate": "src/index.ts:191-234",
       "mutators": [
         "ConditionalExpression"
       ],
@@ -181,7 +181,7 @@
     {
       "shard": "index-229-241",
       "target": "index",
-      "mutate": "src/index.ts:229-241",
+      "mutate": "src/index.ts:235-247",
       "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
       "browser": "chromium",
       "timeout": 45
@@ -189,7 +189,7 @@
     {
       "shard": "index-242-272",
       "target": "index",
-      "mutate": "src/index.ts:242-272",
+      "mutate": "src/index.ts:248-278",
       "tests": "test/server.test.ts test/default-ports.test.ts test/port-validation.test.ts",
       "browser": "chromium",
       "timeout": 45
