@@ -1046,7 +1046,11 @@ function clearError(/** @type {string} */ key) {
 
 function render() {
   document.title = `Pinto | ${roomName}`
-  title.textContent = joined ? `You are in ${roomName}` : `Join ${roomName}`
+  // Only a confirmed admission shows membership: during a pending join the
+  // toggle already reads joined so a second click can Leave, but the title
+  // waits for the server's roster answer
+  title.textContent =
+    roomPhase === 'joined' ? `You are in ${roomName}` : `Join ${roomName}`
   status.textContent =
     roomPhase === 'pending'
       ? 'Joining...'
@@ -1221,6 +1225,17 @@ callButton.addEventListener('click', () => {
       showError(
         'Connection problem',
         'Pinto cannot account for the messages the pairing library stores, so joining is disabled.'
+      )
+      render()
+      return
+    }
+    // Joining needs a live pairing connection: refuse while it is down
+    // rather than show a room membership that cannot call or be called
+    if (!peer.open || peer.disconnected) {
+      showError(
+        'Connection problem',
+        'The connection to the server is down, so joining is unavailable.',
+        'pairing'
       )
       render()
       return
@@ -1477,6 +1492,9 @@ peer.on('disconnected', () => {
     reconnectAttempts += 1
     peer.reconnect()
   }, PEER_RECONNECT_DELAY_MS)
+  // peer.open is already false here: redraw so Join disables while the
+  // pairing connection is down (the open handler's render re-enables it)
+  render()
 })
 peer.on('error', (/** @type {{ type?: string, message?: string }} */ error) => {
   showError(

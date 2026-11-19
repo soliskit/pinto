@@ -20,9 +20,18 @@ declare global {
     releaseJoinAnswer: () => void
     /** The room page's socket, stashed by the heldJoinAnswer test init */
     roomSocket: ReturnType<typeof io>
-    /** Join-room attempts tagged by the heldJoinAnswer test init, in
-     *  emission order; the outcome records the ack resolving in either
-     *  direction. Harness metadata only, never transmitted */
+    /** [room, id] arguments of every join-room emit, in emission order
+     *  (spyJoin and suppressJoinAckDelivery test inits) */
+    joinEmits: unknown[][]
+    /** Makes every PeerJS reconnect fail until unblocked, keeping a
+     *  pairing outage real for the whole window (reconnectGuard init) */
+    blockPairingReconnect: () => void
+    /** Lets PeerJS reconnects use real sockets again (reconnectGuard) */
+    unblockPairingReconnect: () => void
+    /** Join-room attempts tagged by the heldJoinAnswer and
+     *  suppressJoinAckDelivery test inits, in emission order; the outcome
+     *  records the ack resolving in either direction. Harness metadata
+     *  only, never transmitted */
     joinAttempts: {
       id: number
       outcome?: { answer: unknown[] } | { error: string }
